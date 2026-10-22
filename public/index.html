@@ -76,20 +76,16 @@
       delete players[id];
     });
 
-    // Klik for at flytte øjeblikkeligt
     canvas.addEventListener('click', (e) => {
       const rect = canvas.getBoundingClientRect();
       const clickX = Math.round(e.clientX - rect.left);
       const clickY = Math.round(e.clientY - rect.top);
 
       if (myId && players[myId]) {
-        players[myId].x = clickX;
-        players[myId].y = clickY;
         socket.emit('move', { x: clickX, y: clickY });
       }
     });
 
-    // Tastatur til direkte live-skrivning
     window.addEventListener('keydown', (e) => {
       if (!myId || !players[myId]) return;
 
@@ -116,23 +112,18 @@
       });
     });
 
-    // Blinken af cursor
     let showCursor = true;
     setInterval(() => { showCursor = !showCursor; }, 500);
 
-    // Tegne-loop
     function draw() {
-      // Sort baggrund
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Tegn alle spillere
       for (const id in players) {
         const p = players[id];
         const isMe = (id === myId);
 
-        // Tegn Avatar (Cirkel)
-        ctx.fillStyle = isMe ? '#4a90e2' : '#e74c3c';
+        ctx.fillStyle = '#2ecc71';
         ctx.beginPath();
         ctx.arc(p.x, p.y, 16, 0, Math.PI * 2);
         ctx.fill();
@@ -141,13 +132,11 @@
         ctx.lineWidth = 2;
         ctx.stroke();
 
-        // Navnetag
         ctx.fillStyle = '#ffffff';
         ctx.font = '10px Arial';
         ctx.textAlign = 'center';
         ctx.fillText(p.name, p.x, p.y + 28);
 
-        // Taleboble (prioriterer aktiv besked fremfor live-skrivning)
         const displayText = p.text || p.typingText;
         const isTypingActive = p.typingText && !p.text;
 
@@ -171,7 +160,6 @@
       const bx = x - bw / 2;
       const by = y - bh;
 
-      // Taleboble krop
       ctx.fillStyle = '#e2e8f0';
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = 1.5;
@@ -180,7 +168,6 @@
       ctx.fill();
       ctx.stroke();
 
-      // Taleboble pil/spids
       ctx.beginPath();
       ctx.moveTo(x - 5, by + bh);
       ctx.lineTo(x, by + bh + 6);
@@ -189,7 +176,6 @@
       ctx.fill();
       ctx.stroke();
 
-      // Tekst
       ctx.fillStyle = '#000000';
       ctx.textAlign = 'left';
       ctx.fillText(text, bx + padding, by + 15);
