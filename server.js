@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const server = http.createServer(app);
@@ -10,8 +11,18 @@ const io = new Server(server, {
 
 app.use(express.static('public'));
 
+// Nodemailer opsætning med dine direkte oplysninger indtil lancering
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: 'Tomutubee@gmail.com',
+    pass: 'aqygvpvdnmefiyag'
+  }
+});
+
 const AVATAR_RADIUS = 16;
 const players = {};
+const verificationCodes = {}; // email -> { code, username }
 
 function getValidPosition(socketId, targetX, targetY) {
   let x = targetX;
@@ -47,23 +58,65 @@ function getValidPosition(socketId, targetX, targetY) {
 }
 
 io.on('connection', (socket) => {
-  console.log('Ny spiller tilsluttet:', socket.id);
+  console.log('Ny forbindelse:', socket.id);
 
-  let startX = Math.floor(Math.random() * 300) + 50;
-  let startY = Math.floor(Math.random() * 200) + 100;
-  const validStart = getValidPosition(socket.id, startX, startY);
+  socket.on('request-code', async ({ username, email }) => {
+    if (!username || !email || !email.includes('@')) {
+      socket.emit('error-msg', 'Indtast venligst et gyldigt brugernavn og e-mail.');
+      return;
+    }
 
-  players[socket.id] = {
-    id: socket.id,
-    x: validStart.x,
-    y: validStart.y,
-    name: 'Spiller ' + socket.id.slice(0, 4),
-    text: '',
-    typingText: ''
-  };
+    const cleanName = username.trim().slice(0, 15);
+    const cleanEmail = email.trim().toLowerCase();
 
-  socket.emit('currentPlayers', players);
-  socket.broadcast.emit('newPlayer', players[socket.id]);
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    verificationCodes[socket.id] = { code, username: cleanName, email: cleanEmail };
+
+    const mailOptions = {
+      from: 'Tomutubee@gmail.com',
+      to: cleanEmail,
+      subject: 'Din verifikationskode til 2D Chat',
+      text: `Hej ${cleanName},\n\nDin verifikationskode til 2D Chat er: ${code}\n\nIndtast koden på skærmen for at logge ind.`
+    };
+
+    try {
+      await transporter.sendMail(mailOptions);
+      socket.emit('code-sent', 'Verifikationskode er sendt til din e-mail!');
+    } catch (err) {
+      console.error('Fejl ved afsendelse af e-mail:', err);
+      socket.emit('error-msg', 'Kunne ikke sende e-mail. Tjek e-mailadresse eller opsætning.');
+    }
+  });
+
+  socket.on('verify-code', (submittedCode) => {
+    const record = verificationCodes[socket.id];
+    if (!record) {
+      socket.emit('error-msg', 'Anmod om en kode først.');
+      return;
+    }
+
+    if (record.code === submittedCode.trim()) {
+      delete verificationCodes[socket.id];
+
+      let startX = Math.floor(Math.random() * 300) + 50;
+      let startY = Math.floor(Math.random() * 200) + 100;
+      const validStart = getValidPosition(socket.id, startX, startY);
+
+      players[socket.id] = {
+        id: socket.id,
+        x: validStart.x,
+        y: validStart.y,
+        name: record.username,
+        text: '',
+        typingText: ''
+      };
+
+      socket.emit('login-success', players);
+      socket.broadcast.emit('newPlayer', players[socket.id]);
+    } else {
+      socket.emit('error-msg', 'Forkert verifikationskode. Prøv igen.');
+    }
+  });
 
   socket.on('move', (pos) => {
     if (players[socket.id]) {
@@ -88,8 +141,11 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log('Spiller afbrudt:', socket.id);
-    delete players[socket.id];
-    io.emit('playerDisconnected', socket.id);
+    delete verificationCodes[socket.id];
+    if (players[socket.id]) {
+      delete players[socket.id];
+      io.emit('playerDisconnected', socket.id);
+    }
   });
 });
 
