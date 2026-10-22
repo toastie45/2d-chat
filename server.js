@@ -11,7 +11,7 @@ const io = new Server(server, {
 
 app.use(express.static('public'));
 
-// Nodemailer opsætning med dine direkte oplysninger indtil lancering
+// Nodemailer opsætning med dine oplysninger
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
