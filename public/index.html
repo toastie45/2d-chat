@@ -89,9 +89,18 @@
       text-align: center;
       height: 15px;
     }
-    #step-code, #step-password {
+    
+    /* Dynamiske trin: Skjult som standard, vises kun når klassen .active er på */
+    .login-step {
       display: none;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
     }
+    .login-step.active {
+      display: flex;
+    }
+
     canvas {
       display: none;
     }
@@ -102,8 +111,9 @@
 
   <div id="game-container">
     <div id="login-screen">
+      
       <!-- Trin 1: Brugernavn, E-mail, Fødselsdato og Regler -->
-      <div id="step-info" style="display: flex; flex-direction: column; align-items: center; width: 100%;">
+      <div id="step-info" class="login-step active">
         <h2>Opret bruger</h2>
         <input type="text" id="username-input" class="input-field" placeholder="Skriv ønsket brugernavn" maxlength="15" autocomplete="off" />
         <input type="email" id="email-input" class="input-field" placeholder="Din e-mailadresse..." autocomplete="off" />
@@ -120,15 +130,15 @@
       </div>
 
       <!-- Trin 2: Verifikationskode -->
-      <div id="step-code" style="display: flex; flex-direction: column; align-items: center; width: 100%;">
+      <div id="step-code" class="login-step">
         <h2>Tjek din e-mail</h2>
         <p style="font-size: 11px; color: #aaa; margin-bottom: 10px; text-align: center;">Indtast den 6-cifrede kode sendt til din e-mail</p>
         <input type="text" id="code-input" class="input-field" placeholder="6-cifret kode..." maxlength="6" autocomplete="off" />
         <button id="verify-btn" class="action-btn">Bekræft kode</button>
       </div>
 
-      <!-- Trin 3: Nyt trin i samme fane til kodeord -->
-      <div id="step-password" style="display: flex; flex-direction: column; align-items: center; width: 100%;">
+      <!-- Trin 3: Kodeord -->
+      <div id="step-password" class="login-step">
         <h2>Lav kodeord</h2>
         <p style="font-size: 11px; color: #aaa; margin-bottom: 10px; text-align: center;">Vælg et sikkert kodeord til din konto</p>
         <input type="password" id="password-input" class="input-field" placeholder="Skriv ønsket kodeord" autocomplete="off" />
@@ -216,16 +226,18 @@
       socket.emit('set-password', password);
     });
 
+    // Dynamisk skift til trin 2 (Verifikation)
     socket.on('code-sent', (msg) => {
-      stepInfo.style.display = 'none';
-      stepCode.style.display = 'flex';
+      stepInfo.classList.remove('active');
+      stepCode.classList.add('active');
       errorMsg.style.color = '#2ecc71';
       errorMsg.textContent = msg;
     });
 
+    // Dynamisk skift til trin 3 (Kodeord)
     socket.on('code-verified', (msg) => {
-      stepCode.style.display = 'none';
-      stepPassword.style.display = 'flex';
+      stepCode.classList.remove('active');
+      stepPassword.classList.add('active');
       errorMsg.style.color = '#2ecc71';
       errorMsg.textContent = msg;
     });
