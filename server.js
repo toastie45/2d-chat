@@ -22,6 +22,7 @@ const transporter = nodemailer.createTransport({
 const AVATAR_RADIUS = 16;
 const players = {};
 const verificationCodes = {};
+const registeredUsers = {}; // Gemmer oprettede brugere: brugernavn -> { password, email }
 
 function getValidPosition(socketId, targetX, targetY) {
   let x = targetX;
@@ -59,9 +60,18 @@ function getValidPosition(socketId, targetX, targetY) {
 io.on('connection', (socket) => {
   console.log('Ny forbindelse:', socket.id);
 
+  // 1. Anmod om verifikationskode ved oprettelse
   socket.on('request-code', async ({ username, email, birthdate }) => {
     if (!username || !email || !birthdate) {
       socket.emit('error-msg', 'Udfyld venligst alle felter.');
+      return;
+    }
+
+    const cleanName = username.trim().slice(0, 15);
+
+    // Tjek om brugernavnet allerede findes
+    if (registeredUsers[cleanName]) {
+      socket.emit('error-msg', 'Brugernavnet er allerede optaget. Vælg et andet eller log ind.');
       return;
     }
 
@@ -78,9 +88,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const cleanName = username.trim().slice(0, 15);
     const cleanEmail = email.trim().toLowerCase();
-
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     verificationCodes[socket.id] = { code, username: cleanName, email: cleanEmail };
 
@@ -97,11 +105,11 @@ io.on('connection', (socket) => {
     } catch (err) {
       console.error('Gmail fejl:', err.message);
       console.log(`>>> [FALLBACK KODE TIL ${cleanEmail}]: ${code} <<<`);
-      // Sender alligevel signal, så du kommer videre og kan se koden i Render Logs
       socket.emit('code-sent', 'Kode genereret! (Tjek Render Logs hvis mail blokeres)');
     }
   });
 
+  // 2. Tjek koden
   socket.on('verify-code', (submittedCode) => {
     const record = verificationCodes[socket.id];
     if (!record) {
@@ -116,6 +124,7 @@ io.on('connection', (socket) => {
     }
   });
 
+  // 3. Gem kodeord og opret bruger permanent i sessionen
   socket.on('set-password', (password) => {
     const record = verificationCodes[socket.id];
     if (!record) {
@@ -128,6 +137,12 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Gem brugeren i vores "database" (hukommelse)
+    registeredUsers[record.username] = {
+      password: password.trim(),
+      email: record.email
+    };
+
     delete verificationCodes[socket.id];
 
     let startX = Math.floor(Math.random() * 300) + 50;
@@ -139,6 +154,39 @@ io.on('connection', (socket) => {
       x: validStart.x,
       y: validStart.y,
       name: record.username,
+      text: '',
+      typingText: ''
+    };
+
+    socket.emit('login-success', players);
+    socket.broadcast.emit('newPlayer', players[socket.id]);
+  });
+
+  // 4. Direkte Login for eksisterende brugere
+  socket.on('login', ({ username, password }) => {
+    const cleanName = username ? username.trim() : '';
+    const cleanPass = password ? password.trim() : '';
+
+    if (!cleanName || !cleanPass) {
+      socket.emit('error-msg', 'Udfyld venligst brugernavn og kodeord.');
+      return;
+    }
+
+    const user = registeredUsers[cleanName];
+    if (!user || user.password !== cleanPass) {
+      socket.emit('error-msg', 'Forkert brugernavn eller kodeord.');
+      return;
+    }
+
+    let startX = Math.floor(Math.random() * 300) + 50;
+    let startY = Math.floor(Math.random() * 200) + 100;
+    const validStart = getValidPosition(socket.id, startX, startY);
+
+    players[socket.id] = {
+      id: socket.id,
+      x: validStart.x,
+      y: validStart.y,
+      name: cleanName,
       text: '',
       typingText: ''
     };
