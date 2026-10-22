@@ -1,7 +1,7 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
 const app = express();
 const server = http.createServer(app);
@@ -11,13 +11,8 @@ const io = new Server(server, {
 
 app.use(express.static('public'));
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: 'Tomutubee@gmail.com',
-    pass: 'aqygvpvdnmefiyag'
-  }
-});
+// Resend API-nøgle indsat midlertidigt indtil lancering
+const resend = new Resend('re_A3qoaUGv_Gem6fxqNJPZr94YuRXcn2Wzz');
 
 const AVATAR_RADIUS = 16;
 const players = {};
@@ -61,7 +56,7 @@ io.on('connection', (socket) => {
 
   socket.on('request-code', async ({ username, email, birthdate }) => {
     if (!username || !email || !birthdate) {
-      socket.emit('error-msg', 'Udfyld venligst alle felter og fødselsdato.');
+      socket.emit('error-msg', 'Udfyld venligst alle felter.');
       return;
     }
 
@@ -74,7 +69,7 @@ io.on('connection', (socket) => {
     }
 
     if (age < 13) {
-      socket.emit('error-msg', 'Du skal være mindst 13 år for at deltage i spillet.');
+      socket.emit('error-msg', 'Du skal være mindst 13 år for at deltage.');
       return;
     }
 
@@ -84,21 +79,18 @@ io.on('connection', (socket) => {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     verificationCodes[socket.id] = { code, username: cleanName, email: cleanEmail };
 
-    const mailOptions = {
-      from: 'Tomutubee@gmail.com',
-      to: cleanEmail,
-      subject: 'Din verifikationskode til 2D Chat',
-      text: `Hej ${cleanName},\n\nDin verifikationskode til 2D Chat er: ${code}\n\nIndtast koden på skærmen for at fortsætte.`
-    };
-
     try {
-      await transporter.sendMail(mailOptions);
+      await resend.emails.send({
+        from: '2D Chat <onboarding@resend.dev>',
+        to: [cleanEmail],
+        subject: 'Din verifikationskode til 2D Chat',
+        html: `<p>Hej <strong>${cleanName}</strong>,</p><p>Din verifikationskode er: <h2>${code}</h2></p>`
+      });
+
       socket.emit('code-sent', 'Verifikationskode er sendt til din e-mail!');
     } catch (err) {
-      console.error('Gmail blokerede afsendelsen (standard på Render):', err.message);
-      // FALLBACK: Sender koden igennem alligevel, så du kan se den i Render Logs og teste flowet!
-      console.log(`>>> [TEST/FALLBACK KODE TIL ${cleanEmail}]: ${code} <<<`);
-      socket.emit('code-sent', 'Koden er genereret! (Se Render logs hvis mail blokeres)');
+      console.error('Fejl ved Resend afsendelse:', err);
+      socket.emit('error-msg', 'Kunne ikke sende e-mail. Tjek e-mailadresse.');
     }
   });
 
