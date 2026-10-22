@@ -38,22 +38,22 @@
       flex-direction: column;
       justify-content: center;
       align-items: center;
-      padding: 20px;
+      padding: 15px;
       z-index: 10;
     }
     #login-screen h2 {
-      margin-bottom: 12px;
-      font-size: 16px;
+      margin-bottom: 8px;
+      font-size: 15px;
       color: #2ecc71;
     }
     .input-field {
       width: 85%;
-      padding: 8px;
-      margin-bottom: 10px;
+      padding: 7px;
+      margin-bottom: 8px;
       background: #000;
       border: 1px solid #444;
       color: #fff;
-      font-size: 13px;
+      font-size: 12px;
       border-radius: 4px;
       text-align: center;
     }
@@ -61,12 +61,20 @@
       outline: none;
       border-color: #2ecc71;
     }
+    .checkbox-container {
+      display: flex;
+      align-items: center;
+      font-size: 11px;
+      color: #ccc;
+      margin-bottom: 8px;
+      gap: 6px;
+    }
     .action-btn {
-      padding: 8px 18px;
+      padding: 7px 16px;
       background-color: #2ecc71;
       color: #fff;
       border: none;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: bold;
       border-radius: 4px;
       cursor: pointer;
@@ -77,11 +85,11 @@
     #error-msg {
       color: #e74c3c;
       font-size: 11px;
-      margin-top: 8px;
+      margin-top: 6px;
       text-align: center;
       height: 15px;
     }
-    #step-code {
+    #step-code, #step-password {
       display: none;
     }
     canvas {
@@ -94,18 +102,37 @@
 
   <div id="game-container">
     <div id="login-screen">
+      <!-- Trin 1: Brugernavn, E-mail, Fødselsdato og Regler -->
       <div id="step-info" style="display: flex; flex-direction: column; align-items: center; width: 100%;">
         <h2>Opret bruger</h2>
-        <input type="text" id="username-input" class="input-field" placeholder="Brugernavn..." maxlength="15" autocomplete="off" />
+        <input type="text" id="username-input" class="input-field" placeholder="Skriv ønsket brugernavn" maxlength="15" autocomplete="off" />
         <input type="email" id="email-input" class="input-field" placeholder="Din e-mailadresse..." autocomplete="off" />
+        
+        <div style="width: 85%; font-size: 11px; color: #aaa; margin-bottom: 3px; text-align: left;">Fødselsdato (kræver 13 år):</div>
+        <input type="date" id="birthdate-input" class="input-field" />
+
+        <div class="checkbox-container">
+          <input type="checkbox" id="rules-checkbox" />
+          <label for="rules-checkbox">Jeg har forstået og accepterer reglerne</label>
+        </div>
+
         <button id="send-code-btn" class="action-btn">Send verifikationskode</button>
       </div>
 
+      <!-- Trin 2: Verifikationskode -->
       <div id="step-code" style="display: flex; flex-direction: column; align-items: center; width: 100%;">
         <h2>Tjek din e-mail</h2>
         <p style="font-size: 11px; color: #aaa; margin-bottom: 10px; text-align: center;">Indtast den 6-cifrede kode sendt til din e-mail</p>
         <input type="text" id="code-input" class="input-field" placeholder="6-cifret kode..." maxlength="6" autocomplete="off" />
-        <button id="verify-btn" class="action-btn">Bekræft & Deltag</button>
+        <button id="verify-btn" class="action-btn">Bekræft kode</button>
+      </div>
+
+      <!-- Trin 3: Nyt trin i samme fane til kodeord -->
+      <div id="step-password" style="display: flex; flex-direction: column; align-items: center; width: 100%;">
+        <h2>Lav kodeord</h2>
+        <p style="font-size: 11px; color: #aaa; margin-bottom: 10px; text-align: center;">Vælg et sikkert kodeord til din konto</p>
+        <input type="password" id="password-input" class="input-field" placeholder="Skriv ønsket kodeord" autocomplete="off" />
+        <button id="save-password-btn" class="action-btn">Gem kodeord & Deltag</button>
       </div>
 
       <div id="error-msg"></div>
@@ -122,11 +149,20 @@
     const loginScreen = document.getElementById('login-screen');
     const stepInfo = document.getElementById('step-info');
     const stepCode = document.getElementById('step-code');
+    const stepPassword = document.getElementById('step-password');
+
     const usernameInput = document.getElementById('username-input');
     const emailInput = document.getElementById('email-input');
+    const birthdateInput = document.getElementById('birthdate-input');
+    const rulesCheckbox = document.getElementById('rules-checkbox');
     const sendCodeBtn = document.getElementById('send-code-btn');
+
     const codeInput = document.getElementById('code-input');
     const verifyBtn = document.getElementById('verify-btn');
+
+    const passwordInput = document.getElementById('password-input');
+    const savePasswordBtn = document.getElementById('save-password-btn');
+
     const errorMsg = document.getElementById('error-msg');
 
     let players = {};
@@ -139,8 +175,33 @@
     sendCodeBtn.addEventListener('click', () => {
       const username = usernameInput.value.trim();
       const email = emailInput.value.trim();
+      const birthdate = birthdateInput.value;
       errorMsg.textContent = '';
-      socket.emit('request-code', { username, email });
+
+      if (!username || !email || !birthdate) {
+        errorMsg.textContent = 'Udfyld venligst alle felter.';
+        return;
+      }
+
+      const dob = new Date(birthdate);
+      const today = new Date();
+      let age = today.getFullYear() - dob.getFullYear();
+      const m = today.getMonth() - dob.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) {
+        age--;
+      }
+
+      if (age < 13) {
+        errorMsg.textContent = 'Du skal være mindst 13 år for at være på dette projekt.';
+        return;
+      }
+
+      if (!rulesCheckbox.checked) {
+        errorMsg.textContent = 'Du skal acceptere reglerne for at fortsætte.';
+        return;
+      }
+
+      socket.emit('request-code', { username, email, birthdate });
     });
 
     verifyBtn.addEventListener('click', () => {
@@ -149,9 +210,22 @@
       socket.emit('verify-code', code);
     });
 
+    savePasswordBtn.addEventListener('click', () => {
+      const password = passwordInput.value.trim();
+      errorMsg.textContent = '';
+      socket.emit('set-password', password);
+    });
+
     socket.on('code-sent', (msg) => {
       stepInfo.style.display = 'none';
       stepCode.style.display = 'flex';
+      errorMsg.style.color = '#2ecc71';
+      errorMsg.textContent = msg;
+    });
+
+    socket.on('code-verified', (msg) => {
+      stepCode.style.display = 'none';
+      stepPassword.style.display = 'flex';
       errorMsg.style.color = '#2ecc71';
       errorMsg.textContent = msg;
     });
