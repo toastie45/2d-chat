@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>2D Chat Multiplayer</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background-color: #111;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      font-family: Arial, sans-serif;
+    }
+    #game-container {
+      position: relative;
+      width: 408px;
+      height: 374px;
+      box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+    }
+  </style>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+
+  <div id="game-container">
+    <canvas width="408" height="374" id="focuscanvas" tabindex="0" style="width: 408px; height: 374px; position: absolute; left: 0px; top: 0px;"></canvas>
+  </div>
+
+  <script>
+    const socket = io();
+    const canvas = document.getElementById('focuscanvas');
+    const ctx = canvas.getContext('2d');
+
+    let players = {};
+    let myId = null;
+    let typingBuffer = '';
+    let activeBubbleText = '';
+    let bubbleTimeout = null;
+
+    canvas.focus();
+
+    socket.on('connect', () => {
+      myId = socket.id;
+    });
+
+    socket.on('currentPlayers', (serverPlayers) => {
+      players = serverPlayers;
+    });
+
+    socket.on('newPlayer', (player) => {
+      players[player.id] = player;
+    });
+
+    socket.on('playerMoved', (data) => {
+      if (players[data.id]) {
+        players[data.id].x = data.x;
+        players[data.id].y = data.y;
+      }
+    });
+
+    socket.on('playerTyping', (data) => {
+      if (players[data.id]) {
+        players[data.id].typingText = data.typingText;
+        players[data.id].text = data.text;
+      }
+    });
+
+    socket.on('playerDisconnected', (id) => {
+      delete players[id];
+    });
+
+    // Klik for at flytte øjeblikkeligt
+    canvas.addEventListener('click', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const clickX = Math.round(e.clientX - rect.left);
+      const clickY = Math.round(e.clientY - rect.top);
+
+      if (myId && players[myId]) {
+        players[myId].x = clickX;
+        players[myId].y = clickY;
+        socket.emit('move', { x: clickX, y: clickY });
+      }
+    });
+
+    // Tastatur til direkte live-skrivning
+    window.addEventListener('keydown', (e) => {
+      if (!myId || !players[myId]) return;
+
+      if (e.key === 'Backspace') {
+        typingBuffer = typingBuffer.slice(0, -1);
+      } else if (e.key === 'Enter') {
+        if (typingBuffer.trim().length > 0) {
+          activeBubbleText = typingBuffer;
+          typingBuffer = '';
+
+          if (bubbleTimeout) clearTimeout(bubbleTimeout);
+          bubbleTimeout = setTimeout(() => {
+            activeBubbleText = '';
+            socket.emit('typing', { typingText: '', text: '' });
+          }, 4000);
+        }
+      } else if (e.key.length === 1 && typingBuffer.length < 35) {
+        typingBuffer += e.key;
+      }
+
+      socket.emit('typing', { 
+        typingText: typingBuffer, 
+        text: activeBubbleText 
+      });
+    });
+
+    // Blinken af cursor
+    let showCursor = true;
+    setInterval(() => { showCursor = !showCursor; }, 500);
+
+    // Tegne-loop
+    function draw() {
+      // Sort baggrund
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Tegn alle spillere
+      for (const id in players) {
+        const p = players[id];
+        const isMe = (id === myId);
+
+        // Tegn Avatar (Cirkel)
+        ctx.fillStyle = isMe ? '#4a90e2' : '#e74c3c';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 16, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Navnetag
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '10px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(p.name, p.x, p.y + 28);
+
+        // Taleboble (prioriterer aktiv besked fremfor live-skrivning)
+        const displayText = p.text || p.typingText;
+        const isTypingActive = p.typingText && !p.text;
+
+        if (displayText || (isMe && typingBuffer)) {
+          const txt = isMe ? (typingBuffer || activeBubbleText) : displayText;
+          if (txt || (isMe && typingBuffer !== '')) {
+            drawBubble(p.x, p.y - 22, txt + (isMe && isTypingActive && showCursor ? '|' : ''));
+          }
+        }
+      }
+
+      requestAnimationFrame(draw);
+    }
+
+    function drawBubble(x, y, text) {
+      ctx.font = '12px Arial';
+      const textWidth = ctx.measureText(text).width;
+      const padding = 8;
+      const bw = textWidth + padding * 2;
+      const bh = 22;
+      const bx = x - bw / 2;
+      const by = y - bh;
+
+      // Taleboble krop
+      ctx.fillStyle = '#e2e8f0';
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.rect(bx, by, bw, bh);
+      ctx.fill();
+      ctx.stroke();
+
+      // Taleboble pil/spids
+      ctx.beginPath();
+      ctx.moveTo(x - 5, by + bh);
+      ctx.lineTo(x, by + bh + 6);
+      ctx.lineTo(x + 5, by + bh);
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fill();
+      ctx.stroke();
+
+      // Tekst
+      ctx.fillStyle = '#000000';
+      ctx.textAlign = 'left';
+      ctx.fillText(text, bx + padding, by + 15);
+    }
+
+    draw();
+  </script>
+</body>
+</html>
