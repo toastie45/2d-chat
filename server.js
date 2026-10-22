@@ -11,7 +11,6 @@ const io = new Server(server, {
 
 app.use(express.static('public'));
 
-// Nodemailer opsætning med dine oplysninger
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
@@ -60,9 +59,22 @@ function getValidPosition(socketId, targetX, targetY) {
 io.on('connection', (socket) => {
   console.log('Ny forbindelse:', socket.id);
 
-  socket.on('request-code', async ({ username, email }) => {
-    if (!username || !email || !email.includes('@')) {
-      socket.emit('error-msg', 'Indtast venligst et gyldigt brugernavn og e-mail.');
+  socket.on('request-code', async ({ username, email, birthdate }) => {
+    if (!username || !email || !birthdate) {
+      socket.emit('error-msg', 'Udfyld venligst alle felter og fødselsdato.');
+      return;
+    }
+
+    const dob = new Date(birthdate);
+    const today = new Date();
+    let age = today.getFullYear() - dob.getFullYear();
+    const m = today.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) {
+      age--;
+    }
+
+    if (age < 13) {
+      socket.emit('error-msg', 'Du skal være mindst 13 år for at deltage i spillet.');
       return;
     }
 
@@ -76,7 +88,7 @@ io.on('connection', (socket) => {
       from: 'Tomutubee@gmail.com',
       to: cleanEmail,
       subject: 'Din verifikationskode til 2D Chat',
-      text: `Hej ${cleanName},\n\nDin verifikationskode til 2D Chat er: ${code}\n\nIndtast koden på skærmen for at logge ind.`
+      text: `Hej ${cleanName},\n\nDin verifikationskode til 2D Chat er: ${code}\n\nIndtast koden på skærmen for at fortsætte.`
     };
 
     try {
@@ -84,7 +96,7 @@ io.on('connection', (socket) => {
       socket.emit('code-sent', 'Verifikationskode er sendt til din e-mail!');
     } catch (err) {
       console.error('Fejl ved afsendelse af e-mail:', err);
-      socket.emit('error-msg', 'Kunne ikke sende e-mail. Tjek e-mailadresse eller opsætning.');
+      socket.emit('error-msg', 'Kunne ikke sende e-mail. Tjek e-mailadresse.');
     }
   });
 
@@ -96,26 +108,41 @@ io.on('connection', (socket) => {
     }
 
     if (record.code === submittedCode.trim()) {
-      delete verificationCodes[socket.id];
-
-      let startX = Math.floor(Math.random() * 300) + 50;
-      let startY = Math.floor(Math.random() * 200) + 100;
-      const validStart = getValidPosition(socket.id, startX, startY);
-
-      players[socket.id] = {
-        id: socket.id,
-        x: validStart.x,
-        y: validStart.y,
-        name: record.username,
-        text: '',
-        typingText: ''
-      };
-
-      socket.emit('login-success', players);
-      socket.broadcast.emit('newPlayer', players[socket.id]);
+      socket.emit('code-verified', 'Koden er godkendt! Opret nu dit kodeord.');
     } else {
       socket.emit('error-msg', 'Forkert verifikationskode. Prøv igen.');
     }
+  });
+
+  socket.on('set-password', (password) => {
+    const record = verificationCodes[socket.id];
+    if (!record) {
+      socket.emit('error-msg', 'Session udløbet. Start forfra.');
+      return;
+    }
+
+    if (!password || password.trim().length < 4) {
+      socket.emit('error-msg', 'Kodeordet skal være mindst 4 tegn.');
+      return;
+    }
+
+    delete verificationCodes[socket.id];
+
+    let startX = Math.floor(Math.random() * 300) + 50;
+    let startY = Math.floor(Math.random() * 200) + 100;
+    const validStart = getValidPosition(socket.id, startX, startY);
+
+    players[socket.id] = {
+      id: socket.id,
+      x: validStart.x,
+      y: validStart.y,
+      name: record.username,
+      text: '',
+      typingText: ''
+    };
+
+    socket.emit('login-success', players);
+    socket.broadcast.emit('newPlayer', players[socket.id]);
   });
 
   socket.on('move', (pos) => {
