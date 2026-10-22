@@ -95,10 +95,10 @@ io.on('connection', (socket) => {
       await transporter.sendMail(mailOptions);
       socket.emit('code-sent', 'Verifikationskode er sendt til din e-mail!');
     } catch (err) {
-      console.error('Gmail blokerede afsendelsen:', err.message);
-      // Fallback: Hvis Google blokerer mailen på Render, udskrives koden i loggene, og brugeren kommer videre
+      console.error('Gmail fejl:', err.message);
       console.log(`>>> [FALLBACK KODE TIL ${cleanEmail}]: ${code} <<<`);
-      socket.emit('code-sent', 'Kode genereret! (Se Render Logs hvis mail blokeres)');
+      // Sender alligevel signal, så du kommer videre og kan se koden i Render Logs
+      socket.emit('code-sent', 'Kode genereret! (Tjek Render Logs hvis mail blokeres)');
     }
   });
 
