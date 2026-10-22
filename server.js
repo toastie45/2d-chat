@@ -12,7 +12,9 @@ const io = new Server(server, {
 app.use(express.static('public'));
 
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true,
   auth: {
     user: 'Tomutubee@gmail.com',
     pass: 'aqygvpvdnmefiyag'
@@ -91,26 +93,28 @@ io.on('connection', (socket) => {
     verificationCodes[socket.id] = { code, username: cleanName, email: cleanEmail };
 
     const mailOptions = {
-      from: 'Tomutubee@gmail.com',
+      from: '"2D Chat" <Tomutubee@gmail.com>',
       to: cleanEmail,
       subject: 'Din verifikationskode til 2D Chat',
       text: `Hej ${cleanName},\n\nDin verifikationskode til 2D Chat er: ${code}\n\nIndtast koden på skærmen for at fortsætte.`
     };
 
     try {
-      // Vi laver en tidsgrænse på 5 sekunder, så serveren ikke hænger fast
+      console.log(`Forsøger at sende mail til ${cleanEmail}...`);
+      
       const sendPromise = transporter.sendMail(mailOptions);
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Gmail timeout (tog for lang tid)')), 5000)
+        setTimeout(() => reject(new Error('Gmail svarer ikke (Timeout efter 10 sekunder)')), 10000)
       );
 
       await Promise.race([sendPromise, timeoutPromise]);
-      socket.emit('code-sent', 'Verifikationskode er sendt til din e-mail!');
+      
+      console.log('Mail sendt succesfuldt!');
+      socket.emit('code-sent', 'Kode afsendt');
     } catch (err) {
-      console.error('Gmail afsendelsesfejl:', err.message);
+      console.error('FEJL FRA GOOGLE/NODEMAILER:', err.message);
       console.log(`>>> [FALLBACK KODE TIL ${cleanEmail}]: ${code} <<<`);
-      // Sender ALTID signal videre, så knappen aldrig fryser fast
-      socket.emit('code-sent', 'Kode genereret! (Tjek Render Logs hvis mailen udebliver)');
+      socket.emit('code-sent', 'Kode afsendt');
     }
   });
 
