@@ -82,6 +82,10 @@
     .action-btn:hover {
       background-color: #27ae60;
     }
+    .action-btn:disabled {
+      background-color: #555;
+      cursor: not-allowed;
+    }
     #error-msg {
       color: #e74c3c;
       font-size: 11px;
@@ -90,7 +94,6 @@
       height: 15px;
     }
     
-    /* Dynamiske trin: Skjult som standard, vises kun når klassen .active er på */
     .login-step {
       display: none;
       flex-direction: column;
@@ -112,7 +115,7 @@
   <div id="game-container">
     <div id="login-screen">
       
-      <!-- Trin 1: Brugernavn, E-mail, Fødselsdato og Regler -->
+      <!-- Trin 1 -->
       <div id="step-info" class="login-step active">
         <h2>Opret bruger</h2>
         <input type="text" id="username-input" class="input-field" placeholder="Skriv ønsket brugernavn" maxlength="15" autocomplete="off" />
@@ -129,15 +132,15 @@
         <button id="send-code-btn" class="action-btn">Send verifikationskode</button>
       </div>
 
-      <!-- Trin 2: Verifikationskode -->
+      <!-- Trin 2 -->
       <div id="step-code" class="login-step">
         <h2>Tjek din e-mail</h2>
-        <p style="font-size: 11px; color: #aaa; margin-bottom: 10px; text-align: center;">Indtast den 6-cifrede kode sendt til din e-mail</p>
+        <p style="font-size: 11px; color: #aaa; margin-bottom: 10px; text-align: center;">Indtast den 6-cifrede kode</p>
         <input type="text" id="code-input" class="input-field" placeholder="6-cifret kode..." maxlength="6" autocomplete="off" />
         <button id="verify-btn" class="action-btn">Bekræft kode</button>
       </div>
 
-      <!-- Trin 3: Kodeord -->
+      <!-- Trin 3 -->
       <div id="step-password" class="login-step">
         <h2>Lav kodeord</h2>
         <p style="font-size: 11px; color: #aaa; margin-bottom: 10px; text-align: center;">Vælg et sikkert kodeord til din konto</p>
@@ -188,18 +191,15 @@
       const birthdate = birthdateInput.value;
       errorMsg.textContent = '';
 
-      if (!username || !email || !birthdate) {
-        errorMsg.textContent = 'Udfyld venligst alle felter.';
-        return;
-      }
+      if (!username) { errorMsg.textContent = 'Skriv venligst et brugernavn!'; return; }
+      if (!email || !email.includes('@')) { errorMsg.textContent = 'Skriv venligst en gyldig e-mail!'; return; }
+      if (!birthdate) { errorMsg.textContent = 'Indtast venligst din fødselsdato!'; return; }
 
       const dob = new Date(birthdate);
       const today = new Date();
       let age = today.getFullYear() - dob.getFullYear();
       const m = today.getMonth() - dob.getMonth();
-      if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) {
-        age--;
-      }
+      if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) { age--; }
 
       if (age < 13) {
         errorMsg.textContent = 'Du skal være mindst 13 år for at være på dette projekt.';
@@ -211,22 +211,36 @@
         return;
       }
 
+      // Lås knappen midlertidigt for at undgå dobbeltklik
+      sendCodeBtn.disabled = true;
+      sendCodeBtn.textContent = 'Sender kode...';
+
       socket.emit('request-code', { username, email, birthdate });
     });
 
     verifyBtn.addEventListener('click', () => {
       const code = codeInput.value.trim();
       errorMsg.textContent = '';
+      if (!code) {
+        errorMsg.textContent = 'Indtast venligst den 6-cifrede kode!';
+        return;
+      }
+      verifyBtn.disabled = true;
+      verifyBtn.textContent = 'Verificerer...';
       socket.emit('verify-code', code);
     });
 
     savePasswordBtn.addEventListener('click', () => {
       const password = passwordInput.value.trim();
       errorMsg.textContent = '';
+      if (!password || password.length < 4) {
+        errorMsg.textContent = 'Kodeordet skal være mindst 4 tegn!';
+        return;
+      }
+      savePasswordBtn.disabled = true;
       socket.emit('set-password', password);
     });
 
-    // Dynamisk skift til trin 2 (Verifikation)
     socket.on('code-sent', (msg) => {
       stepInfo.classList.remove('active');
       stepCode.classList.add('active');
@@ -234,7 +248,6 @@
       errorMsg.textContent = msg;
     });
 
-    // Dynamisk skift til trin 3 (Kodeord)
     socket.on('code-verified', (msg) => {
       stepCode.classList.remove('active');
       stepPassword.classList.add('active');
@@ -251,6 +264,13 @@
     });
 
     socket.on('error-msg', (msg) => {
+      // Genaktiver knapperne hvis der opstod en fejl, så brugeren kan prøve igen
+      sendCodeBtn.disabled = false;
+      sendCodeBtn.textContent = 'Send verifikationskode';
+      verifyBtn.disabled = false;
+      verifyBtn.textContent = 'Bekræft kode';
+      savePasswordBtn.disabled = false;
+
       errorMsg.style.color = '#e74c3c';
       errorMsg.textContent = msg;
     });
