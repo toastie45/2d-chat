@@ -11,13 +11,13 @@ const io = new Server(server, {
 
 app.use(express.static('public'));
 
+// Brevo SMTP-opsætning med din e-mail og nøgle
 const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
+  host: 'smtp-relay.brevo.com',
+  port: 587,
   auth: {
-    user: 'Tomutubee@gmail.com',
-    pass: 'aqygvpvdnmefiyag'
+    user: 'tomutubee@gmail.com',
+    pass: 'bskE7X9E6cAhwTk'
   }
 });
 
@@ -93,26 +93,19 @@ io.on('connection', (socket) => {
     verificationCodes[socket.id] = { code, username: cleanName, email: cleanEmail };
 
     const mailOptions = {
-      from: '"2D Chat" <Tomutubee@gmail.com>',
+      from: '"2D Chat" <tomutubee@gmail.com>',
       to: cleanEmail,
       subject: 'Din verifikationskode til 2D Chat',
       text: `Hej ${cleanName},\n\nDin verifikationskode til 2D Chat er: ${code}\n\nIndtast koden på skærmen for at fortsætte.`
     };
 
     try {
-      console.log(`Forsøger at sende mail til ${cleanEmail}...`);
-      
-      const sendPromise = transporter.sendMail(mailOptions);
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Gmail svarer ikke (Timeout efter 10 sekunder)')), 10000)
-      );
-
-      await Promise.race([sendPromise, timeoutPromise]);
-      
-      console.log('Mail sendt succesfuldt!');
+      console.log(`Sender mail via Brevo til ${cleanEmail}...`);
+      await transporter.sendMail(mailOptions);
+      console.log('Mail sendt succesfuldt via Brevo!');
       socket.emit('code-sent', 'Kode afsendt');
     } catch (err) {
-      console.error('FEJL FRA GOOGLE/NODEMAILER:', err.message);
+      console.error('FEJL VED BREVO SENDING:', err.message);
       console.log(`>>> [FALLBACK KODE TIL ${cleanEmail}]: ${code} <<<`);
       socket.emit('code-sent', 'Kode afsendt');
     }
