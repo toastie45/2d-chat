@@ -10,39 +10,70 @@ const io = new Server(server, {
 
 app.use(express.static('public'));
 
-// Gemmer alle tilsluttede spillere: { socketId: { id, x, y, name, text, typingText, bubbleTimer } }
+const AVATAR_RADIUS = 16;
 const players = {};
+
+function getValidPosition(socketId, targetX, targetY) {
+  let x = targetX;
+  let y = targetY;
+
+  x = Math.max(AVATAR_RADIUS, Math.min(408 - AVATAR_RADIUS, x));
+  y = Math.max(AVATAR_RADIUS, Math.min(374 - AVATAR_RADIUS, y));
+
+  for (const id in players) {
+    if (id === socketId) continue;
+    const other = players[id];
+
+    const dx = x - other.x;
+    const dy = y - other.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const minDistance = AVATAR_RADIUS * 2;
+
+    if (distance < minDistance) {
+      if (distance === 0) {
+        x += minDistance;
+      } else {
+        const overlap = minDistance - distance;
+        x += (dx / distance) * overlap;
+        y += (dy / distance) * overlap;
+      }
+    }
+  }
+
+  x = Math.max(AVATAR_RADIUS, Math.min(408 - AVATAR_RADIUS, Math.round(x)));
+  y = Math.max(AVATAR_RADIUS, Math.min(374 - AVATAR_RADIUS, Math.round(y)));
+
+  return { x, y };
+}
 
 io.on('connection', (socket) => {
   console.log('Ny spiller tilsluttet:', socket.id);
 
-  // Opret ny spiller på tilfældig startposition
+  let startX = Math.floor(Math.random() * 300) + 50;
+  let startY = Math.floor(Math.random() * 200) + 100;
+  const validStart = getValidPosition(socket.id, startX, startY);
+
   players[socket.id] = {
     id: socket.id,
-    x: Math.floor(Math.random() * 300) + 50,
-    y: Math.floor(Math.random() * 200) + 100,
+    x: validStart.x,
+    y: validStart.y,
     name: 'Spiller ' + socket.id.slice(0, 4),
     text: '',
-    typingText: '',
-    bubbleTimer: null
+    typingText: ''
   };
 
-  // Send nuværende spillere til den nye spiller
   socket.emit('currentPlayers', players);
-
-  // Informer andre om den nye spiller
   socket.broadcast.emit('newPlayer', players[socket.id]);
 
-  // Håndter flytning (klik)
   socket.on('move', (pos) => {
     if (players[socket.id]) {
-      players[socket.id].x = pos.x;
-      players[socket.id].y = pos.y;
-      io.emit('playerMoved', { id: socket.id, x: pos.x, y: pos.y });
+      const validPos = getValidPosition(socket.id, pos.x, pos.y);
+      players[socket.id].x = validPos.x;
+      players[socket.id].y = validPos.y;
+      io.emit('playerMoved', { id: socket.id, x: validPos.x, y: validPos.y });
     }
   });
 
-  // Håndter live-skrivning i taleboblen
   socket.on('typing', (data) => {
     if (players[socket.id]) {
       players[socket.id].typingText = data.typingText;
@@ -55,7 +86,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Når en spiller lukker fanen
   socket.on('disconnect', () => {
     console.log('Spiller afbrudt:', socket.id);
     delete players[socket.id];
