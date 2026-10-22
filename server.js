@@ -21,7 +21,7 @@ const transporter = nodemailer.createTransport({
 
 const AVATAR_RADIUS = 16;
 const players = {};
-const verificationCodes = {}; // email -> { code, username }
+const verificationCodes = {};
 
 function getValidPosition(socketId, targetX, targetY) {
   let x = targetX;
