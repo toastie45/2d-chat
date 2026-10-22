@@ -86,6 +86,18 @@
       background-color: #555;
       cursor: not-allowed;
     }
+    .switch-link {
+      margin-top: 8px;
+      font-size: 11px;
+      color: #2ecc71;
+      cursor: pointer;
+      text-decoration: underline;
+      background: none;
+      border: none;
+    }
+    .switch-link:hover {
+      color: #27ae60;
+    }
     #error-msg {
       color: #e74c3c;
       font-size: 11px;
@@ -115,7 +127,7 @@
   <div id="game-container">
     <div id="login-screen">
       
-      <!-- Trin 1 -->
+      <!-- Trin 1: Opret bruger (Brugernavn, E-mail, Fødselsdato, Regler) -->
       <div id="step-info" class="login-step active">
         <h2>Opret bruger</h2>
         <input type="text" id="username-input" class="input-field" placeholder="Skriv ønsket brugernavn" maxlength="15" autocomplete="off" />
@@ -130,9 +142,10 @@
         </div>
 
         <button id="send-code-btn" class="action-btn">Send verifikationskode</button>
+        <button class="switch-link" id="to-login-btn">Har du allerede en konto? Log ind</button>
       </div>
 
-      <!-- Trin 2 -->
+      <!-- Trin 2: Verifikationskode -->
       <div id="step-code" class="login-step">
         <h2>Tjek din e-mail</h2>
         <p style="font-size: 11px; color: #aaa; margin-bottom: 10px; text-align: center;">Indtast den 6-cifrede kode</p>
@@ -140,12 +153,21 @@
         <button id="verify-btn" class="action-btn">Bekræft kode</button>
       </div>
 
-      <!-- Trin 3 -->
+      <!-- Trin 3: Opret kodeord -->
       <div id="step-password" class="login-step">
         <h2>Lav kodeord</h2>
         <p style="font-size: 11px; color: #aaa; margin-bottom: 10px; text-align: center;">Vælg et sikkert kodeord til din konto</p>
         <input type="password" id="password-input" class="input-field" placeholder="Skriv ønsket kodeord" autocomplete="off" />
         <button id="save-password-btn" class="action-btn">Gem kodeord & Deltag</button>
+      </div>
+
+      <!-- Login Vindue (Eksisterende brugere) -->
+      <div id="step-login" class="login-step">
+        <h2>Log ind</h2>
+        <input type="text" id="login-username" class="input-field" placeholder="Brugernavn..." maxlength="15" autocomplete="off" />
+        <input type="password" id="login-password" class="input-field" placeholder="Kodeord..." autocomplete="off" />
+        <button id="login-btn" class="action-btn">Log ind</button>
+        <button class="switch-link" id="to-register-btn">Har du ikke en konto? Opret bruger</button>
       </div>
 
       <div id="error-msg"></div>
@@ -163,6 +185,7 @@
     const stepInfo = document.getElementById('step-info');
     const stepCode = document.getElementById('step-code');
     const stepPassword = document.getElementById('step-password');
+    const stepLogin = document.getElementById('step-login');
 
     const usernameInput = document.getElementById('username-input');
     const emailInput = document.getElementById('email-input');
@@ -176,6 +199,12 @@
     const passwordInput = document.getElementById('password-input');
     const savePasswordBtn = document.getElementById('save-password-btn');
 
+    const loginUsername = document.getElementById('login-username');
+    const loginPassword = document.getElementById('login-password');
+    const loginBtn = document.getElementById('login-btn');
+
+    const toLoginBtn = document.getElementById('to-login-btn');
+    const toRegisterBtn = document.getElementById('to-register-btn');
     const errorMsg = document.getElementById('error-msg');
 
     let players = {};
@@ -185,6 +214,22 @@
     let bubbleTimeout = null;
     let gameStarted = false;
 
+    // Skift mellem oprettelse og login i samme fane
+    toLoginBtn.addEventListener('click', () => {
+      stepInfo.classList.remove('active');
+      stepCode.classList.remove('active');
+      stepPassword.classList.remove('active');
+      stepLogin.classList.add('active');
+      errorMsg.textContent = '';
+    });
+
+    toRegisterBtn.addEventListener('click', () => {
+      stepLogin.classList.remove('active');
+      stepInfo.classList.add('active');
+      errorMsg.textContent = '';
+    });
+
+    // Trin 1: Anmod om kode
     sendCodeBtn.addEventListener('click', () => {
       const username = usernameInput.value.trim();
       const email = emailInput.value.trim();
@@ -211,13 +256,12 @@
         return;
       }
 
-      // Lås knappen midlertidigt for at undgå dobbeltklik
       sendCodeBtn.disabled = true;
       sendCodeBtn.textContent = 'Sender kode...';
-
       socket.emit('request-code', { username, email, birthdate });
     });
 
+    // Trin 2: Bekræft kode
     verifyBtn.addEventListener('click', () => {
       const code = codeInput.value.trim();
       errorMsg.textContent = '';
@@ -230,6 +274,7 @@
       socket.emit('verify-code', code);
     });
 
+    // Trin 3: Gem kodeord
     savePasswordBtn.addEventListener('click', () => {
       const password = passwordInput.value.trim();
       errorMsg.textContent = '';
@@ -239,6 +284,22 @@
       }
       savePasswordBtn.disabled = true;
       socket.emit('set-password', password);
+    });
+
+    // Direkte Login Knap
+    loginBtn.addEventListener('click', () => {
+      const username = loginUsername.value.trim();
+      const password = loginPassword.value.trim();
+      errorMsg.textContent = '';
+
+      if (!username || !password) {
+        errorMsg.textContent = 'Udfyld venligst brugernavn og kodeord.';
+        return;
+      }
+
+      loginBtn.disabled = true;
+      loginBtn.textContent = 'Logger ind...';
+      socket.emit('login', { username, password });
     });
 
     socket.on('code-sent', (msg) => {
@@ -264,12 +325,14 @@
     });
 
     socket.on('error-msg', (msg) => {
-      // Genaktiver knapperne hvis der opstod en fejl, så brugeren kan prøve igen
       sendCodeBtn.disabled = false;
       sendCodeBtn.textContent = 'Send verifikationskode';
       verifyBtn.disabled = false;
       verifyBtn.textContent = 'Bekræft kode';
       savePasswordBtn.disabled = false;
+      savePasswordBtn.textContent = 'Gem kodeord & Deltag';
+      loginBtn.disabled = false;
+      loginBtn.textContent = 'Log ind';
 
       errorMsg.style.color = '#e74c3c';
       errorMsg.textContent = msg;
