@@ -1,7 +1,7 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const { Resend } = require('resend');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const server = http.createServer(app);
@@ -11,8 +11,13 @@ const io = new Server(server, {
 
 app.use(express.static('public'));
 
-// Resend API-nøgle indsat midlertidigt indtil lancering
-const resend = new Resend('re_A3qoaUGv_Gem6fxqNJPZr94YuRXcn2Wzz');
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: 'Tomutubee@gmail.com',
+    pass: 'aqygvpvdnmefiyag'
+  }
+});
 
 const AVATAR_RADIUS = 16;
 const players = {};
@@ -79,18 +84,21 @@ io.on('connection', (socket) => {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     verificationCodes[socket.id] = { code, username: cleanName, email: cleanEmail };
 
-    try {
-      await resend.emails.send({
-        from: '2D Chat <onboarding@resend.dev>',
-        to: [cleanEmail],
-        subject: 'Din verifikationskode til 2D Chat',
-        html: `<p>Hej <strong>${cleanName}</strong>,</p><p>Din verifikationskode er: <h2>${code}</h2></p>`
-      });
+    const mailOptions = {
+      from: 'Tomutubee@gmail.com',
+      to: cleanEmail,
+      subject: 'Din verifikationskode til 2D Chat',
+      text: `Hej ${cleanName},\n\nDin verifikationskode til 2D Chat er: ${code}\n\nIndtast koden på skærmen for at fortsætte.`
+    };
 
+    try {
+      await transporter.sendMail(mailOptions);
       socket.emit('code-sent', 'Verifikationskode er sendt til din e-mail!');
     } catch (err) {
-      console.error('Fejl ved Resend afsendelse:', err);
-      socket.emit('error-msg', 'Kunne ikke sende e-mail. Tjek e-mailadresse.');
+      console.error('Gmail blokerede afsendelsen:', err.message);
+      // Fallback: Hvis Google blokerer mailen på Render, udskrives koden i loggene, og brugeren kommer videre
+      console.log(`>>> [FALLBACK KODE TIL ${cleanEmail}]: ${code} <<<`);
+      socket.emit('code-sent', 'Kode genereret! (Se Render Logs hvis mail blokeres)');
     }
   });
 
