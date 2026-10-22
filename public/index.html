@@ -17,12 +17,75 @@
       align-items: center;
       min-height: 100vh;
       font-family: Arial, sans-serif;
+      color: #fff;
     }
     #game-container {
       position: relative;
       width: 408px;
       height: 374px;
       box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+      background-color: #000;
+      overflow: hidden;
+    }
+    #login-screen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #1a1a1a;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      z-index: 10;
+    }
+    #login-screen h2 {
+      margin-bottom: 12px;
+      font-size: 16px;
+      color: #2ecc71;
+    }
+    .input-field {
+      width: 85%;
+      padding: 8px;
+      margin-bottom: 10px;
+      background: #000;
+      border: 1px solid #444;
+      color: #fff;
+      font-size: 13px;
+      border-radius: 4px;
+      text-align: center;
+    }
+    .input-field:focus {
+      outline: none;
+      border-color: #2ecc71;
+    }
+    .action-btn {
+      padding: 8px 18px;
+      background-color: #2ecc71;
+      color: #fff;
+      border: none;
+      font-size: 13px;
+      font-weight: bold;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .action-btn:hover {
+      background-color: #27ae60;
+    }
+    #error-msg {
+      color: #e74c3c;
+      font-size: 11px;
+      margin-top: 8px;
+      text-align: center;
+      height: 15px;
+    }
+    #step-code {
+      display: none;
+    }
+    canvas {
+      display: none;
     }
   </style>
   <script src="/socket.io/socket.io.js"></script>
@@ -30,6 +93,24 @@
 <body>
 
   <div id="game-container">
+    <div id="login-screen">
+      <div id="step-info" style="display: flex; flex-direction: column; align-items: center; width: 100%;">
+        <h2>Opret bruger</h2>
+        <input type="text" id="username-input" class="input-field" placeholder="Brugernavn..." maxlength="15" autocomplete="off" />
+        <input type="email" id="email-input" class="input-field" placeholder="Din e-mailadresse..." autocomplete="off" />
+        <button id="send-code-btn" class="action-btn">Send verifikationskode</button>
+      </div>
+
+      <div id="step-code" style="display: flex; flex-direction: column; align-items: center; width: 100%;">
+        <h2>Tjek din e-mail</h2>
+        <p style="font-size: 11px; color: #aaa; margin-bottom: 10px; text-align: center;">Indtast den 6-cifrede kode sendt til din e-mail</p>
+        <input type="text" id="code-input" class="input-field" placeholder="6-cifret kode..." maxlength="6" autocomplete="off" />
+        <button id="verify-btn" class="action-btn">Bekræft & Deltag</button>
+      </div>
+
+      <div id="error-msg"></div>
+    </div>
+
     <canvas width="408" height="374" id="focuscanvas" tabindex="0" style="width: 408px; height: 374px; position: absolute; left: 0px; top: 0px;"></canvas>
   </div>
 
@@ -37,14 +118,56 @@
     const socket = io();
     const canvas = document.getElementById('focuscanvas');
     const ctx = canvas.getContext('2d');
+    
+    const loginScreen = document.getElementById('login-screen');
+    const stepInfo = document.getElementById('step-info');
+    const stepCode = document.getElementById('step-code');
+    const usernameInput = document.getElementById('username-input');
+    const emailInput = document.getElementById('email-input');
+    const sendCodeBtn = document.getElementById('send-code-btn');
+    const codeInput = document.getElementById('code-input');
+    const verifyBtn = document.getElementById('verify-btn');
+    const errorMsg = document.getElementById('error-msg');
 
     let players = {};
     let myId = null;
     let typingBuffer = '';
     let activeBubbleText = '';
     let bubbleTimeout = null;
+    let gameStarted = false;
 
-    canvas.focus();
+    sendCodeBtn.addEventListener('click', () => {
+      const username = usernameInput.value.trim();
+      const email = emailInput.value.trim();
+      errorMsg.textContent = '';
+      socket.emit('request-code', { username, email });
+    });
+
+    verifyBtn.addEventListener('click', () => {
+      const code = codeInput.value.trim();
+      errorMsg.textContent = '';
+      socket.emit('verify-code', code);
+    });
+
+    socket.on('code-sent', (msg) => {
+      stepInfo.style.display = 'none';
+      stepCode.style.display = 'flex';
+      errorMsg.style.color = '#2ecc71';
+      errorMsg.textContent = msg;
+    });
+
+    socket.on('login-success', (serverPlayers) => {
+      players = serverPlayers;
+      loginScreen.style.display = 'none';
+      canvas.style.display = 'block';
+      canvas.focus();
+      gameStarted = true;
+    });
+
+    socket.on('error-msg', (msg) => {
+      errorMsg.style.color = '#e74c3c';
+      errorMsg.textContent = msg;
+    });
 
     socket.on('connect', () => {
       myId = socket.id;
@@ -77,6 +200,7 @@
     });
 
     canvas.addEventListener('click', (e) => {
+      if (!gameStarted) return;
       const rect = canvas.getBoundingClientRect();
       const clickX = Math.round(e.clientX - rect.left);
       const clickY = Math.round(e.clientY - rect.top);
@@ -87,7 +211,7 @@
     });
 
     window.addEventListener('keydown', (e) => {
-      if (!myId || !players[myId]) return;
+      if (!gameStarted || !myId || !players[myId]) return;
 
       if (e.key === 'Backspace') {
         typingBuffer = typingBuffer.slice(0, -1);
@@ -119,31 +243,33 @@
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      for (const id in players) {
-        const p = players[id];
-        const isMe = (id === myId);
+      if (gameStarted) {
+        for (const id in players) {
+          const p = players[id];
+          const isMe = (id === myId);
 
-        ctx.fillStyle = '#2ecc71';
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 16, 0, Math.PI * 2);
-        ctx.fill();
+          ctx.fillStyle = '#2ecc71';
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 16, 0, Math.PI * 2);
+          ctx.fill();
 
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
-        ctx.stroke();
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 2;
+          ctx.stroke();
 
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '10px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(p.name, p.x, p.y + 28);
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '10px Arial';
+          ctx.textAlign = 'center';
+          ctx.fillText(p.name, p.x, p.y + 28);
 
-        const displayText = p.text || p.typingText;
-        const isTypingActive = p.typingText && !p.text;
+          const displayText = p.text || p.typingText;
+          const isTypingActive = p.typingText && !p.text;
 
-        if (displayText || (isMe && typingBuffer)) {
-          const txt = isMe ? (typingBuffer || activeBubbleText) : displayText;
-          if (txt || (isMe && typingBuffer !== '')) {
-            drawBubble(p.x, p.y - 22, txt + (isMe && isTypingActive && showCursor ? '|' : ''));
+          if (displayText || (isMe && typingBuffer)) {
+            const txt = isMe ? (typingBuffer || activeBubbleText) : displayText;
+            if (txt || (isMe && typingBuffer !== '')) {
+              drawBubble(p.x, p.y - 22, txt + (isMe && isTypingActive && showCursor ? '|' : ''));
+            }
           }
         }
       }
