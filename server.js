@@ -22,7 +22,7 @@ const transporter = nodemailer.createTransport({
 const AVATAR_RADIUS = 16;
 const players = {};
 const verificationCodes = {};
-const registeredUsers = {}; // Gemmer oprettede brugere: brugernavn -> { password, email }
+const registeredUsers = {};
 
 function getValidPosition(socketId, targetX, targetY) {
   let x = targetX;
@@ -60,7 +60,6 @@ function getValidPosition(socketId, targetX, targetY) {
 io.on('connection', (socket) => {
   console.log('Ny forbindelse:', socket.id);
 
-  // 1. Anmod om verifikationskode ved oprettelse
   socket.on('request-code', async ({ username, email, birthdate }) => {
     if (!username || !email || !birthdate) {
       socket.emit('error-msg', 'Udfyld venligst alle felter.');
@@ -69,7 +68,6 @@ io.on('connection', (socket) => {
 
     const cleanName = username.trim().slice(0, 15);
 
-    // Tjek om brugernavnet allerede findes
     if (registeredUsers[cleanName]) {
       socket.emit('error-msg', 'Brugernavnet er allerede optaget. Vælg et andet eller log ind.');
       return;
@@ -100,16 +98,22 @@ io.on('connection', (socket) => {
     };
 
     try {
-      await transporter.sendMail(mailOptions);
+      // Vi laver en tidsgrænse på 5 sekunder, så serveren ikke hænger fast
+      const sendPromise = transporter.sendMail(mailOptions);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Gmail timeout (tog for lang tid)')), 5000)
+      );
+
+      await Promise.race([sendPromise, timeoutPromise]);
       socket.emit('code-sent', 'Verifikationskode er sendt til din e-mail!');
     } catch (err) {
-      console.error('Gmail fejl:', err.message);
+      console.error('Gmail afsendelsesfejl:', err.message);
       console.log(`>>> [FALLBACK KODE TIL ${cleanEmail}]: ${code} <<<`);
-      socket.emit('code-sent', 'Kode genereret! (Tjek Render Logs hvis mail blokeres)');
+      // Sender ALTID signal videre, så knappen aldrig fryser fast
+      socket.emit('code-sent', 'Kode genereret! (Tjek Render Logs hvis mailen udebliver)');
     }
   });
 
-  // 2. Tjek koden
   socket.on('verify-code', (submittedCode) => {
     const record = verificationCodes[socket.id];
     if (!record) {
@@ -124,7 +128,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 3. Gem kodeord og opret bruger permanent i sessionen
   socket.on('set-password', (password) => {
     const record = verificationCodes[socket.id];
     if (!record) {
@@ -137,7 +140,6 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Gem brugeren i vores "database" (hukommelse)
     registeredUsers[record.username] = {
       password: password.trim(),
       email: record.email
@@ -162,7 +164,6 @@ io.on('connection', (socket) => {
     socket.broadcast.emit('newPlayer', players[socket.id]);
   });
 
-  // 4. Direkte Login for eksisterende brugere
   socket.on('login', ({ username, password }) => {
     const cleanName = username ? username.trim() : '';
     const cleanPass = password ? password.trim() : '';
