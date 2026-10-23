@@ -1,477 +1,130 @@
 <!DOCTYPE html>
 <html lang="da">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>2D Chat Multiplayer</title>
-  <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-    body {
-      background-color: #111;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-      font-family: Arial, sans-serif;
-      color: #fff;
-    }
-    #game-container {
-      position: relative;
-      width: 408px;
-      height: 374px;
-      box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
-      background-color: #000;
-      overflow: hidden;
-    }
-    #login-screen {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: #1a1a1a;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      padding: 15px;
-      z-index: 10;
-    }
-    #login-screen h2 {
-      margin-bottom: 8px;
-      font-size: 15px;
-      color: #2ecc71;
-    }
-    .input-field {
-      width: 85%;
-      padding: 7px;
-      margin-bottom: 8px;
-      background: #000;
-      border: 1px solid #444;
-      color: #fff;
-      font-size: 12px;
-      border-radius: 4px;
-      text-align: center;
-    }
-    .input-field:focus {
-      outline: none;
-      border-color: #2ecc71;
-    }
-    .checkbox-container {
-      display: flex;
-      align-items: center;
-      font-size: 11px;
-      color: #ccc;
-      margin-bottom: 8px;
-      gap: 6px;
-    }
-    .action-btn {
-      padding: 7px 16px;
-      background-color: #2ecc71;
-      color: #fff;
-      border: none;
-      font-size: 12px;
-      font-weight: bold;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    .action-btn:hover {
-      background-color: #27ae60;
-    }
-    .action-btn:disabled {
-      background-color: #555;
-      cursor: not-allowed;
-    }
-    .switch-link {
-      margin-top: 8px;
-      font-size: 11px;
-      color: #2ecc71;
-      cursor: pointer;
-      text-decoration: underline;
-      background: none;
-      border: none;
-    }
-    .switch-link:hover {
-      color: #27ae60;
-    }
-    #error-msg {
-      color: #e74c3c;
-      font-size: 11px;
-      margin-top: 6px;
-      text-align: center;
-      height: 15px;
-    }
-    
-    .login-step {
-      display: none;
-      flex-direction: column;
-      align-items: center;
-      width: 100%;
-    }
-    .login-step.active {
-      display: flex;
-    }
-
-    canvas {
-      display: none;
-    }
-  </style>
-  <script src="/socket.io/socket.io.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D Chat Oprettelse</title>
+    <style>
+        body {
+            background-color: #121212;
+            color: #ffffff;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background-color: #1e1e1e;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            width: 320px;
+            text-align: center;
+        }
+        input, button {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border: 1px solid #333;
+            background-color: #2a2a2a;
+            color: #fff;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #28a745;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover {
+            background-color: #218838;
+        }
+        .error {
+            color: #ff4d4d;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        .success {
+            color: #28a745;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        a {
+            color: #28a745;
+            text-decoration: none;
+        }
+    </style>
 </head>
 <body>
 
-  <div id="game-container">
-    <div id="login-screen">
-      
-      <!-- Trin 1: Opret bruger (Brugernavn, E-mail, Fødselsdato, Regler) -->
-      <div id="step-info" class="login-step">
+    <div class="container" id="register-container">
         <h2>Opret bruger</h2>
-        <input type="text" id="username-input" class="input-field" placeholder="Skriv ønsket brugernavn" maxlength="15" autocomplete="off" />
-        <input type="email" id="email-input" class="input-field" placeholder="Din e-mailadresse..." autocomplete="off" />
+        <input type="text" id="reg-username" placeholder="Brugernavn...">
+        <input type="email" id="reg-email" placeholder="E-mail...">
+        <div style="text-align: left; font-size: 12px; color: #aaa; margin-top: 5px;">Fødselsdato (kræver 13 år):</div>
+        <input type="date" id="reg-birthdate">
         
-        <div style="width: 85%; font-size: 11px; color: #aaa; margin-bottom: 3px; text-align: left;">Fødselsdato (kræver 13 år):</div>
-        <input type="date" id="birthdate-input" class="input-field" />
-
-        <div class="checkbox-container">
-          <input type="checkbox" id="rules-checkbox" />
-          <label for="rules-checkbox">Jeg har forstået og accepterer reglerne</label>
+        <div style="text-align: left; font-size: 12px; margin: 10px 0;">
+            <input type="checkbox" id="reg-terms" style="width: auto; margin-right: 5px;"> Jeg har forstået og accepterer reglerne
         </div>
 
-        <button id="send-code-btn" class="action-btn">Send verifikationskode</button>
-        <button class="switch-link" id="to-login-btn">Har du allerede en konto? Log ind</button>
-      </div>
-
-      <!-- Trin 2: Verifikationskode -->
-      <div id="step-code" class="login-step">
-        <h2>Tjek din e-mail</h2>
-        <p style="font-size: 11px; color: #aaa; margin-bottom: 10px; text-align: center;">Indtast den 6-cifrede kode</p>
-        <input type="text" id="code-input" class="input-field" placeholder="6-cifret kode..." maxlength="6" autocomplete="off" />
-        <button id="verify-btn" class="action-btn">Bekræft kode</button>
-      </div>
-
-      <!-- Trin 3: Opret kodeord -->
-      <div id="step-password" class="login-step">
-        <h2>Lav kodeord</h2>
-        <p style="font-size: 11px; color: #aaa; margin-bottom: 10px; text-align: center;">Vælg et sikkert kodeord til din konto</p>
-        <input type="password" id="password-input" class="input-field" placeholder="Skriv ønsket kodeord" autocomplete="off" />
-        <button id="save-password-btn" class="action-btn">Gem kodeord & Deltag</button>
-      </div>
-
-      <!-- Login Vindue (Standard start-skærm nu) -->
-      <div id="step-login" class="login-step active">
-        <h2>Log ind</h2>
-        <input type="text" id="login-username" class="input-field" placeholder="Brugernavn..." maxlength="15" autocomplete="off" />
-        <input type="password" id="login-password" class="input-field" placeholder="Kodeord..." autocomplete="off" />
-        <button id="login-btn" class="action-btn">Log ind</button>
-        <button class="switch-link" id="to-register-btn">Har du ikke en konto? Opret bruger</button>
-      </div>
-
-      <div id="error-msg"></div>
+        <button onclick="registerUser()">Send verifikationskode</button>
+        <div id="reg-msg"></div>
+        <div style="margin-top: 15px;">
+            <a href="#" onclick="showLogin()">Har du allerede en konto? Log ind</a>
+        </div>
     </div>
 
-    <canvas width="408" height="374" id="focuscanvas" tabindex="0" style="width: 408px; height: 374px; position: absolute; left: 0px; top: 0px;"></canvas>
-  </div>
+    <!-- Socket.io bibliotek -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
 
-  <script>
-    const socket = io();
-    const canvas = document.getElementById('focuscanvas');
-    const ctx = canvas.getContext('2d');
-    
-    const loginScreen = document.getElementById('login-screen');
-    const stepInfo = document.getElementById('step-info');
-    const stepCode = document.getElementById('step-code');
-    const stepPassword = document.getElementById('step-password');
-    const stepLogin = document.getElementById('step-login');
+        function registerUser() {
+            const username = document.getElementById('reg-username').value.trim();
+            const email = document.getElementById('reg-email').value.trim();
+            const birthdate = document.getElementById('reg-birthdate').value;
+            const terms = document.getElementById('reg-terms').checked;
+            const msgDiv = document.getElementById('reg-msg');
 
-    const usernameInput = document.getElementById('username-input');
-    const emailInput = document.getElementById('email-input');
-    const birthdateInput = document.getElementById('birthdate-input');
-    const rulesCheckbox = document.getElementById('rules-checkbox');
-    const sendCodeBtn = document.getElementById('send-code-btn');
+            msgDiv.className = '';
+            msgDiv.innerText = '';
 
-    const codeInput = document.getElementById('code-input');
-    const verifyBtn = document.getElementById('verify-btn');
-
-    const passwordInput = document.getElementById('password-input');
-    const savePasswordBtn = document.getElementById('save-password-btn');
-
-    const loginUsername = document.getElementById('login-username');
-    const loginPassword = document.getElementById('login-password');
-    const loginBtn = document.getElementById('login-btn');
-
-    const toLoginBtn = document.getElementById('to-login-btn');
-    const toRegisterBtn = document.getElementById('to-register-btn');
-    const errorMsg = document.getElementById('error-msg');
-
-    let players = {};
-    let myId = null;
-    let typingBuffer = '';
-    let activeBubbleText = '';
-    let bubbleTimeout = null;
-    let gameStarted = false;
-
-    toLoginBtn.addEventListener('click', () => {
-      stepInfo.classList.remove('active');
-      stepCode.classList.remove('active');
-      stepPassword.classList.remove('active');
-      stepLogin.classList.add('active');
-      errorMsg.textContent = '';
-    });
-
-    toRegisterBtn.addEventListener('click', () => {
-      stepLogin.classList.remove('active');
-      stepInfo.classList.add('active');
-      errorMsg.textContent = '';
-    });
-
-    sendCodeBtn.addEventListener('click', () => {
-      const username = usernameInput.value.trim();
-      const email = emailInput.value.trim();
-      const birthdate = birthdateInput.value;
-      errorMsg.textContent = '';
-
-      if (!username) { errorMsg.textContent = 'Skriv venligst et brugernavn!'; return; }
-      if (!email || !email.includes('@')) { errorMsg.textContent = 'Skriv venligst en gyldig e-mail!'; return; }
-      if (!birthdate) { errorMsg.textContent = 'Indtast venligst din fødselsdato!'; return; }
-
-      const dob = new Date(birthdate);
-      const today = new Date();
-      let age = today.getFullYear() - dob.getFullYear();
-      const m = today.getMonth() - dob.getMonth();
-      if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) { age--; }
-
-      if (age < 13) {
-        errorMsg.textContent = 'Du skal være mindst 13 år for at være på dette projekt.';
-        return;
-      }
-
-      if (!rulesCheckbox.checked) {
-        errorMsg.textContent = 'Du skal acceptere reglerne for at fortsætte.';
-        return;
-      }
-
-      sendCodeBtn.disabled = true;
-      sendCodeBtn.textContent = 'Sender kode...';
-      socket.emit('request-code', { username, email, birthdate });
-    });
-
-    verifyBtn.addEventListener('click', () => {
-      const code = codeInput.value.trim();
-      errorMsg.textContent = '';
-      if (!code) {
-        errorMsg.textContent = 'Indtast venligst den 6-cifrede kode!';
-        return;
-      }
-      verifyBtn.disabled = true;
-      verifyBtn.textContent = 'Verificerer...';
-      socket.emit('verify-code', code);
-    });
-
-    savePasswordBtn.addEventListener('click', () => {
-      const password = passwordInput.value.trim();
-      errorMsg.textContent = '';
-      if (!password || password.length < 4) {
-        errorMsg.textContent = 'Kodeordet skal være mindst 4 tegn!';
-        return;
-      }
-      savePasswordBtn.disabled = true;
-      socket.emit('set-password', password);
-    });
-
-    loginBtn.addEventListener('click', () => {
-      const username = loginUsername.value.trim();
-      const password = loginPassword.value.trim();
-      errorMsg.textContent = '';
-
-      if (!username || !password) {
-        errorMsg.textContent = 'Udfyld venligst brugernavn og kodeord.';
-        return;
-      }
-
-      loginBtn.disabled = true;
-      loginBtn.textContent = 'Logger ind...';
-      socket.emit('login', { username, password });
-    });
-
-    socket.on('code-sent', (msg) => {
-      stepInfo.classList.remove('active');
-      stepCode.classList.add('active');
-      errorMsg.style.color = '#2ecc71';
-      errorMsg.textContent = msg;
-    });
-
-    socket.on('code-verified', (msg) => {
-      stepCode.classList.remove('active');
-      stepPassword.classList.add('active');
-      errorMsg.style.color = '#2ecc71';
-      errorMsg.textContent = msg;
-    });
-
-    socket.on('login-success', (serverPlayers) => {
-      players = serverPlayers;
-      loginScreen.style.display = 'none';
-      canvas.style.display = 'block';
-      canvas.focus();
-      gameStarted = true;
-    });
-
-    socket.on('error-msg', (msg) => {
-      sendCodeBtn.disabled = false;
-      sendCodeBtn.textContent = 'Send verifikationskode';
-      verifyBtn.disabled = false;
-      verifyBtn.textContent = 'Bekræft kode';
-      savePasswordBtn.disabled = false;
-      savePasswordBtn.textContent = 'Gem kodeord & Deltag';
-      loginBtn.disabled = false;
-      loginBtn.textContent = 'Log ind';
-
-      errorMsg.style.color = '#e74c3c';
-      errorMsg.textContent = msg;
-    });
-
-    socket.on('connect', () => {
-      myId = socket.id;
-    });
-
-    socket.on('currentPlayers', (serverPlayers) => {
-      players = serverPlayers;
-    });
-
-    socket.on('newPlayer', (player) => {
-      players[player.id] = player;
-    });
-
-    socket.on('playerMoved', (data) => {
-      if (players[data.id]) {
-        players[data.id].x = data.x;
-        players[data.id].y = data.y;
-      }
-    });
-
-    socket.on('playerTyping', (data) => {
-      if (players[data.id]) {
-        players[data.id].typingText = data.typingText;
-        players[data.id].text = data.text;
-      }
-    });
-
-    socket.on('playerDisconnected', (id) => {
-      delete players[id];
-    });
-
-    canvas.addEventListener('click', (e) => {
-      if (!gameStarted) return;
-      const rect = canvas.getBoundingClientRect();
-      const clickX = Math.round(e.clientX - rect.left);
-      const clickY = Math.round(e.clientY - rect.top);
-
-      if (myId && players[myId]) {
-        socket.emit('move', { x: clickX, y: clickY });
-      }
-    });
-
-    window.addEventListener('keydown', (e) => {
-      if (!gameStarted || !myId || !players[myId]) return;
-
-      if (e.key === 'Backspace') {
-        typingBuffer = typingBuffer.slice(0, -1);
-      } else if (e.key === 'Enter') {
-        if (typingBuffer.trim().length > 0) {
-          activeBubbleText = typingBuffer;
-          typingBuffer = '';
-
-          if (bubbleTimeout) clearTimeout(bubbleTimeout);
-          bubbleTimeout = setTimeout(() => {
-            activeBubbleText = '';
-            socket.emit('typing', { typingText: '', text: '' });
-          }, 4000);
-        }
-      } else if (e.key.length === 1 && typingBuffer.length < 35) {
-        typingBuffer += e.key;
-      }
-
-      socket.emit('typing', { 
-        typingText: typingBuffer, 
-        text: activeBubbleText 
-      });
-    });
-
-    let showCursor = true;
-    setInterval(() => { showCursor = !showCursor; }, 500);
-
-    function draw() {
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      if (gameStarted) {
-        for (const id in players) {
-          const p = players[id];
-          const isMe = (id === myId);
-
-          ctx.fillStyle = '#2ecc71';
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, 16, 0, Math.PI * 2);
-          ctx.fill();
-
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 2;
-          ctx.stroke();
-
-          ctx.fillStyle = '#ffffff';
-          ctx.font = '10px Arial';
-          ctx.textAlign = 'center';
-          ctx.fillText(p.name, p.x, p.y + 28);
-
-          const displayText = p.text || p.typingText;
-          const isTypingActive = p.typingText && !p.text;
-
-          if (displayText || (isMe && typingBuffer)) {
-            const txt = isMe ? (typingBuffer || activeBubbleText) : displayText;
-            if (txt || (isMe && typingBuffer !== '')) {
-              drawBubble(p.x, p.y - 22, txt + (isMe && isTypingActive && showCursor ? '|' : ''));
+            if (!username || !email || !birthdate) {
+                msgDiv.className = 'error';
+                msgDiv.innerText = 'Udfyld venligst alle felter.';
+                return;
             }
-          }
+
+            if (!terms) {
+                msgDiv.className = 'error';
+                msgDiv.innerText = 'Du skal acceptere reglerne.';
+                return;
+            }
+
+            // Sender til serveren uden krav om kodeord i frontend
+            socket.emit('request-code', { username, email, birthdate });
         }
-      }
 
-      requestAnimationFrame(draw);
-    }
+        socket.on('error-msg', (msg) => {
+            const msgDiv = document.getElementById('reg-msg');
+            msgDiv.className = 'error';
+            msgDiv.innerText = msg;
+        });
 
-    function drawBubble(x, y, text) {
-      ctx.font = '12px Arial';
-      const textWidth = ctx.measureText(text).width;
-      const padding = 8;
-      const bw = textWidth + padding * 2;
-      const bh = 22;
-      const bx = x - bw / 2;
-      const by = y - bh;
+        socket.on('code-sent', (msg) => {
+            const msgDiv = document.getElementById('reg-msg');
+            msgDiv.className = 'success';
+            msgDiv.innerText = msg;
+        });
 
-      ctx.fillStyle = '#e2e8f0';
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.rect(bx, by, bw, bh);
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(x - 5, by + bh);
-      ctx.lineTo(x, by + bh + 6);
-      ctx.lineTo(x + 5, by + bh);
-      ctx.fillStyle = '#e2e8f0';
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.fillStyle = '#000000';
-      ctx.textAlign = 'left';
-      ctx.fillText(text, bx + padding, by + 15);
-    }
-
-    draw();
-  </script>
+        function showLogin() {
+            // Hvis du har et separat login-view, kan det styres herfra
+            alert('Skift til login-visning');
+        }
+    </script>
 </body>
 </html>
