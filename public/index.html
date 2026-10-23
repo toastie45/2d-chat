@@ -48,22 +48,6 @@
             font-size: 14px;
             margin-top: 10px;
         }
-        .success {
-            color: #28a745;
-            font-size: 14px;
-            margin-top: 10px;
-        }
-        a {
-            color: #28a745;
-            text-decoration: none;
-            cursor: pointer;
-        }
-        a:hover {
-            text-decoration: underline;
-        }
-        .hidden {
-            display: none;
-        }
         #game-container {
             display: none;
             position: relative;
@@ -79,37 +63,15 @@
 </head>
 <body>
 
-    <!-- LOGIN FORMULAR -->
+    <!-- START SKÆRM -->
     <div class="container" id="login-section">
-        <h2>Log ind</h2>
-        <input type="text" id="login-username" placeholder="Brugernavn...">
-        <button onclick="loginUser()">Log ind</button>
-        <div id="login-msg"></div>
-        <div style="margin-top: 15px;">
-            <a onclick="showRegister()">Har du ikke en konto? Opret bruger</a>
-        </div>
+        <h2>2D Chat</h2>
+        <input type="text" id="username-input" placeholder="Indtast dit brugernavn...">
+        <button onclick="joinGame()">Start Spil</button>
+        <div id="error-msg" class="error"></div>
     </div>
 
-    <!-- OPRET BRUGER FORMULAR -->
-    <div class="container hidden" id="register-section">
-        <h2>Opret bruger</h2>
-        <input type="text" id="reg-username" placeholder="Brugernavn...">
-        <input type="email" id="reg-email" placeholder="E-mail...">
-        <div style="text-align: left; font-size: 12px; color: #aaa; margin-top: 5px;">Fødselsdato (kræver 13 år):</div>
-        <input type="date" id="reg-birthdate">
-        
-        <div style="text-align: left; font-size: 12px; margin: 10px 0;">
-            <input type="checkbox" id="reg-terms" style="width: auto; margin-right: 5px;"> Jeg har forstået og accepterer reglerne
-        </div>
-
-        <button onclick="registerUser()">Send verifikationskode</button>
-        <div id="reg-msg"></div>
-        <div style="margin-top: 15px;">
-            <a onclick="showLogin()">Har du allerede en konto? Log ind</a>
-        </div>
-    </div>
-
-    <!-- SPILLET / CHATTEN -->
+    <!-- SPILLET -->
     <div id="game-container">
         <canvas id="gameCanvas" width="408" height="374"></canvas>
     </div>
@@ -118,76 +80,26 @@
     <script>
         const socket = io();
 
-        function showRegister() {
-            document.getElementById('login-section').classList.add('hidden');
-            document.getElementById('register-section').classList.remove('hidden');
-        }
-
-        function showLogin() {
-            document.getElementById('register-section').classList.add('hidden');
-            document.getElementById('login-section').classList.remove('hidden');
-        }
-
-        function registerUser() {
-            const username = document.getElementById('reg-username').value.trim();
-            const email = document.getElementById('reg-email').value.trim();
-            const birthdate = document.getElementById('reg-birthdate').value;
-            const terms = document.getElementById('reg-terms').checked;
-            const msgDiv = document.getElementById('reg-msg');
-
-            msgDiv.className = '';
-            msgDiv.innerText = '';
-
-            if (!username || !email || !birthdate) {
-                msgDiv.className = 'error';
-                msgDiv.innerText = 'Udfyld venligst alle felter.';
-                return;
-            }
-
-            if (!terms) {
-                msgDiv.className = 'error';
-                msgDiv.innerText = 'Du skal acceptere reglerne.';
-                return;
-            }
-
-            socket.emit('request-code', { username, email, birthdate });
-        }
-
-        function loginUser() {
-            const username = document.getElementById('login-username').value.trim();
-            const msgDiv = document.getElementById('login-msg');
-
-            msgDiv.className = '';
-            msgDiv.innerText = '';
+        function joinGame() {
+            const username = document.getElementById('username-input').value.trim();
+            const errorDiv = document.getElementById('error-msg');
+            errorDiv.innerText = '';
 
             if (!username) {
-                msgDiv.className = 'error';
-                msgDiv.innerText = 'Udfyld venligst brugernavn.';
+                errorDiv.innerText = 'Indtast venligst et brugernavn.';
                 return;
             }
 
-            socket.emit('login', { username });
+            socket.emit('join', username);
         }
 
         socket.on('error-msg', (msg) => {
-            // Find ud af hvilken sektion der er aktiv for at vise fejlen det rigtige sted
-            const regVisible = !document.getElementById('register-section').classList.contains('hidden');
-            const msgDiv = regVisible ? document.getElementById('reg-msg') : document.getElementById('login-msg');
-            msgDiv.className = 'error';
-            msgDiv.innerText = msg;
+            document.getElementById('error-msg').innerText = msg;
         });
 
-        socket.on('code-sent', (msg) => {
-            const msgDiv = document.getElementById('reg-msg');
-            msgDiv.className = 'success';
-            msgDiv.innerText = msg;
-        });
-
-        socket.on('login-success', (players) => {
+        socket.on('join-success', (players) => {
             document.getElementById('login-section').style.display = 'none';
-            document.getElementById('register-section').style.display = 'none';
             document.getElementById('game-container').style.display = 'block';
-            // Start spil-logik herfra hvis nødvendigt
         });
     </script>
 </body>
