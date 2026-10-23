@@ -18,6 +18,7 @@ const {
     sanitizeChatMessage
 } = require('./lib/chat-security');
 const { isAuthorizedTabSession, isValidTabId } = require('./lib/tab-session');
+const { hashRegistrationIp, MAX_ACCOUNTS_PER_IP } = require('./lib/account-ip-limit');
 
 const GRID_COUNT = 6;
 const MESSAGE_DURATION = 10_000;
@@ -284,9 +285,12 @@ async function startServer() {
             username VARCHAR(18) NOT NULL,
             username_normalized VARCHAR(18) NOT NULL UNIQUE,
             password_hash TEXT NOT NULL,
+            registration_ip_hash TEXT,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
     `);
+    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS registration_ip_hash TEXT');
+    await pool.query('CREATE INDEX IF NOT EXISTS chat_users_registration_ip_hash_idx ON chat_users (registration_ip_hash) WHERE registration_ip_hash IS NOT NULL');
     await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_messages (
             id BIGSERIAL PRIMARY KEY,
@@ -381,11 +385,39 @@ async function startServer() {
         }
 
         try {
-            const result = await pool.query(
-                'INSERT INTO chat_users (username, username_normalized, password_hash) VALUES ($1, $2, $3) RETURNING id, username',
-                [account.username, account.normalized, await bcrypt.hash(password, 12)]
+            const registrationIpHash = hashRegistrationIp(
+                request.ip || request.socket.remoteAddress,
+                SESSION_SECRET
             );
-            const user = { id: result.rows[0].id, username: result.rows[0].username };
+            const passwordHash = await bcrypt.hash(password, 12);
+            const client = await pool.connect();
+            let user;
+            let transactionStarted = false;
+            try {
+                await client.query('BEGIN');
+                transactionStarted = true;
+                await client.query('SELECT pg_advisory_xact_lock(hashtext($1)::bigint)', [registrationIpHash]);
+                const { rows: [accountCount] } = await client.query(
+                    'SELECT COUNT(*)::int AS count FROM chat_users WHERE registration_ip_hash = $1',
+                    [registrationIpHash]
+                );
+                if (accountCount.count >= MAX_ACCOUNTS_PER_IP) {
+                    await client.query('ROLLBACK');
+                    response.status(429).json({ error: 'Der kan højst oprettes 2 brugere fra samme IP-adresse.' });
+                    return;
+                }
+                const result = await client.query(
+                    'INSERT INTO chat_users (username, username_normalized, password_hash, registration_ip_hash) VALUES ($1, $2, $3, $4) RETURNING id, username',
+                    [account.username, account.normalized, passwordHash, registrationIpHash]
+                );
+                await client.query('COMMIT');
+                user = { id: result.rows[0].id, username: result.rows[0].username };
+            } catch (error) {
+                if (transactionStarted) await client.query('ROLLBACK');
+                throw error;
+            } finally {
+                client.release();
+            }
             await saveAuthenticatedSession(request, user, tabId);
             response.status(201).json({ user });
         } catch (error) {

@@ -30,7 +30,7 @@ npm install
 npm start
 ```
 
-The server creates its account, message-history, and session tables automatically. New accounts use unique, case-insensitive usernames and passwords of 8–72 UTF-8 bytes. Passwords are stored as bcrypt hashes. The shared chat history retains the 500 most recent messages. Live player presence and occupied grid cells are stored in Redis, which also distributes Socket.IO events between instances.
+The server creates its account, message-history, and session tables automatically. New accounts use unique, case-insensitive usernames and passwords of 8–72 UTF-8 bytes, with a maximum of two accounts created per IP address. The registration IP is stored only as a keyed hash using `SESSION_SECRET`; existing accounts can still sign in. Passwords are stored as bcrypt hashes. The shared chat history retains the 500 most recent messages. Live player presence and occupied grid cells are stored in Redis, which also distributes Socket.IO events between instances.
 
 Login is bound to the browser tab: refreshing the page keeps the session, but opening the chat in a new tab requires logging in again. The authentication cookie is a browser-session cookie, and a per-tab identifier in `sessionStorage` is checked by both HTTP and WebSocket requests.
 

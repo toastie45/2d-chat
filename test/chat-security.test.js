@@ -7,6 +7,7 @@ const {
     sanitizeChatMessage
 } = require('../lib/chat-security');
 const { isAuthorizedTabSession, isValidTabId } = require('../lib/tab-session');
+const { hashRegistrationIp, MAX_ACCOUNTS_PER_IP } = require('../lib/account-ip-limit');
 
 test('redacts Render and GitHub tokens before a message is stored', () => {
     const message = redactSecrets('Render rnd_exampleToken123456789 GitHub ghp_abcdefghijklmnopqrstuvwxyz');
@@ -67,4 +68,21 @@ test('rejects malformed browser tab identifiers', () => {
     assert.equal(isValidTabId(''), false);
     assert.equal(isValidTabId('not-a-uuid'), false);
     assert.equal(isValidTabId('9bba85cc-775a-4a64-9cbd-e399354ee53z'), false);
+});
+
+test('hashes registration IPs without storing their raw address', () => {
+    const address = '192.0.2.10';
+    const secret = 'test-session-secret';
+    const hash = hashRegistrationIp(address, secret);
+
+    assert.equal(hash, hashRegistrationIp(address, secret));
+    assert.notEqual(hash, hashRegistrationIp(address, 'different-secret'));
+    assert.notEqual(hash, hashRegistrationIp('192.0.2.11', secret));
+    assert.equal(hash.includes(address), false);
+    assert.equal(MAX_ACCOUNTS_PER_IP, 2);
+});
+
+test('requires a usable IP and secret to create an IP hash', () => {
+    assert.throws(() => hashRegistrationIp('', 'secret'), TypeError);
+    assert.throws(() => hashRegistrationIp('192.0.2.10', ''), TypeError);
 });
