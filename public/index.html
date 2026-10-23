@@ -348,13 +348,6 @@
             padding-right: 3px;
         }
 
-        .member-search {
-            width: 100%;
-            margin: 0 0 13px;
-            padding: 8px 10px;
-            font-size: 11px;
-        }
-
         .member-empty {
             margin: 0;
             color: var(--muted);
@@ -490,7 +483,7 @@
                 <div class="room-strip hidden" id="room-strip" aria-label="Rummets status">
                     <span class="room-strip-name">Fællesrum</span>
                     <span class="room-strip-divider" aria-hidden="true"></span>
-                    <span>Det åbne gulv</span>
+                    <span>Deus er en skat</span>
                     <span class="room-strip-spacer"></span>
                     <span class="room-strip-presence">
                         <span class="room-strip-count" id="room-strip-count">0 online</span>
@@ -520,7 +513,6 @@
                     <aside class="side-card">
                         <section class="side-panel" id="members-panel" aria-labelledby="members-title">
                             <h2 class="side-title" id="members-title">Her lige nu</h2>
-                            <input class="member-search" id="member-search" type="search" placeholder="Søg efter navn…" aria-label="Søg blandt brugere i rummet" autocomplete="off">
                             <div class="member-list" id="member-list" role="list" aria-live="polite"></div>
                             <p class="member-empty hidden" id="member-empty" role="status" aria-live="polite">Der er ingen brugere her endnu.</p>
                         </section>
@@ -572,7 +564,6 @@
             const membersNavButton = document.getElementById('members-nav-button');
             const chatNavButton = document.getElementById('chat-nav-button');
             const memberList = document.getElementById('member-list');
-            const memberSearch = document.getElementById('member-search');
             const memberEmpty = document.getElementById('member-empty');
             const membersPanel = document.getElementById('members-panel');
             const chatPanel = document.getElementById('chat-panel');
@@ -591,7 +582,6 @@
             let myId = null;
             let hoveredCell = null;
             let animationFrame = null;
-            let lastFrameTime = 0;
             let draftText = '';
             let authMode = 'login';
             let currentUser = null;
@@ -716,11 +706,9 @@
                 };
             }
 
-            function showPlayer(player, animate) {
+            function showPlayer(player) {
                 const target = positionFor(player);
-                if (!player.position || !animate) {
-                    player.position = { x: target.x, y: target.y };
-                }
+                player.position = { x: target.x, y: target.y };
                 player.target = target;
                 players[player.id] = player;
             }
@@ -730,17 +718,13 @@
                 const countLabel = `${onlinePlayers.length} ${onlinePlayers.length === 1 ? 'person' : 'personer'}`;
                 roomStripCount.textContent = `${countLabel} online`;
                 membersNavButton.setAttribute('aria-label', `Vis brugere, ${countLabel} online`);
-                const searchTerm = memberSearch.value.trim().toLocaleLowerCase('da');
-                const filteredPlayers = onlinePlayers
-                    .filter((player) => player.name.toLocaleLowerCase('da').includes(searchTerm))
+                const sortedPlayers = onlinePlayers
                     .sort((first, second) => first.name.localeCompare(second.name, 'da'));
                 memberList.replaceChildren();
-                memberEmpty.textContent = onlinePlayers.length
-                    ? 'Ingen brugere matcher søgningen.'
-                    : 'Der er ingen brugere her endnu.';
-                memberEmpty.classList.toggle('hidden', filteredPlayers.length > 0);
+                memberEmpty.textContent = 'Der er ingen brugere her endnu.';
+                memberEmpty.classList.toggle('hidden', sortedPlayers.length > 0);
 
-                filteredPlayers.forEach((player) => {
+                sortedPlayers.forEach((player) => {
                     const row = document.createElement('div');
                     row.className = 'member';
                     row.setAttribute('role', 'listitem');
@@ -815,6 +799,11 @@
 
             function moveToCell(col, row) {
                 if (!myId || !players[myId]) return;
+                const player = players[myId];
+                player.col = col;
+                player.row = row;
+                player.position = positionFor(player);
+                player.target = player.position;
                 socket.emit('move', { col, row });
             }
 
@@ -980,15 +969,7 @@
                 context.roundRect(x, y, width, height, radius);
             }
 
-            function gameLoop(timestamp) {
-                const delta = lastFrameTime ? Math.min(timestamp - lastFrameTime, 48) : 16;
-                lastFrameTime = timestamp;
-                const easing = 1 - Math.exp(-delta / 140);
-                for (const player of Object.values(players)) {
-                    if (!player.position || !player.target) continue;
-                    player.position.x += (player.target.x - player.position.x) * easing;
-                    player.position.y += (player.target.y - player.position.y) * easing;
-                }
+            function gameLoop() {
                 drawBoard();
                 animationFrame = requestAnimationFrame(gameLoop);
             }
@@ -1037,8 +1018,6 @@
             refreshNavButton.addEventListener('click', () => window.location.reload());
             membersNavButton.addEventListener('click', () => selectSidePanel('members'));
             chatNavButton.addEventListener('click', () => selectSidePanel('chat'));
-
-            memberSearch.addEventListener('input', updateOnlineList);
 
             logoutButton.addEventListener('click', async () => {
                 logoutButton.disabled = true;
@@ -1204,7 +1183,7 @@
                 for (const player of Object.values(serverPlayers)) {
                     player.text = '';
                     player.messageTime = 0;
-                    showPlayer(player, false);
+                    showPlayer(player);
                 }
                 clearChatLog();
                 addChatSystemEntry(`Du er kommet ind i chatten som ${currentUser.username}.`);
@@ -1216,14 +1195,13 @@
                 loginError.textContent = '';
                 setRoomNotice('');
                 if (animationFrame === null) {
-                    lastFrameTime = 0;
                     animationFrame = requestAnimationFrame(gameLoop);
                 }
                 canvas.focus();
             });
 
             socket.on('newPlayer', (player) => {
-                showPlayer(player, false);
+                showPlayer(player);
                 updateOnlineList();
                 addChatSystemEntry(`${player.name} er kommet ind i chatten.`);
             });
@@ -1232,7 +1210,8 @@
                 if (!players[player.id]) return;
                 players[player.id].col = player.col;
                 players[player.id].row = player.row;
-                players[player.id].target = positionFor(player);
+                players[player.id].position = positionFor(player);
+                players[player.id].target = players[player.id].position;
             });
 
             socket.on('playerChatMessage', (message) => {
