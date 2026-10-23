@@ -611,7 +611,7 @@
                             <h2 class="side-title" id="profile-view-title">Profil</h2>
                             <p class="profile-section-title" id="profile-view-name">Henter profil…</p>
                             <dl class="profile-facts-view">
-                                <div class="profile-fact"><dt>Rum</dt><dd id="view-profile-room"></dd></div>
+                                <div class="profile-fact"><dt>Level</dt><dd id="view-profile-room">1</dd></div>
                                 <div class="profile-fact"><dt>Rigtigt navn</dt><dd id="view-profile-real-name"></dd></div>
                                 <div class="profile-fact"><dt>Discord</dt><dd id="view-profile-discord"></dd></div>
                                 <div class="profile-fact"><dt>Interesser</dt><dd id="view-profile-interests"></dd></div>
@@ -880,7 +880,7 @@
                 viewingProfilePlayerId = playerId;
                 selectSidePanel('profile-view');
                 viewProfileName.textContent = 'Henter profil…';
-                viewProfileRoom.textContent = 'Fællesrum';
+                viewProfileRoom.textContent = '1';
                 viewProfileRealName.textContent = '';
                 viewProfileDiscord.textContent = '';
                 viewProfileCreatedAt.textContent = '';
@@ -1522,7 +1522,7 @@
             socket.on('profile-info', (profile) => {
                 if (profile.playerId !== viewingProfilePlayerId) return;
                 viewProfileName.textContent = profile.avatarName;
-                viewProfileRoom.textContent = profile.room;
+                viewProfileRoom.textContent = '1';
                 viewProfileRealName.textContent = profile.realName || 'Ikke angivet';
                 viewProfileDiscord.textContent = profile.discordName || 'Ikke angivet';
                 viewProfileCreatedAt.textContent = formatProfileDate(profile.createdAt);
