@@ -265,16 +265,6 @@
             line-height: 1.5;
         }
 
-        .chat-form { display: flex; gap: 7px; }
-
-        .chat-form input {
-            width: 100%;
-            padding: 10px;
-            font-size: 12px;
-        }
-
-        .chat-form .primary-button { padding: 0 12px; }
-
         .chat-log {
             max-height: 180px;
             overflow-y: auto;
@@ -350,10 +340,10 @@
                 </div>
                 <div class="room">
                     <section class="board-card" aria-label="Chatrum">
-                        <canvas id="game-canvas" width="600" height="600" tabindex="0" aria-label="Et grid med 6 gange 6 felter. Klik på et felt for at flytte din avatar.">
+                        <canvas id="game-canvas" width="600" height="600" tabindex="0" aria-label="Et grid med 6 gange 6 felter. Klik på et felt for at flytte din avatar. Skriv for at chatte, og tryk Enter for at sende.">
                             Dit browserprogram understøtter ikke canvas.
                         </canvas>
-                        <p class="board-hint">Klik på en flise for at flytte din avatar. Brug piletasterne, når gulvet er valgt.</p>
+                        <p class="board-hint">Klik på en flise for at flytte din avatar. Skriv direkte i rummet, og tryk Enter for at sende. Brug piletasterne til at bevæge dig.</p>
                     </section>
                     <aside class="side-card">
                         <section class="side-section">
@@ -362,11 +352,7 @@
                         </section>
                         <section class="side-section chat-section">
                             <h2 class="side-title">Sig noget</h2>
-                            <p class="chat-hint">Din taleboble bliver på gulvet i 10 sekunder.</p>
-                            <form class="chat-form" id="chat-form">
-                                <input id="chat-input" maxlength="140" autocomplete="off" placeholder="Skriv en besked…" aria-label="Skriv en besked">
-                                <button class="primary-button" id="send-button" type="submit">Send</button>
-                            </form>
+                            <p class="chat-hint">Skriv direkte på gulvet. Enter sender · Backspace retter · Talebobler vises i 10 sekunder.</p>
                             <div class="chat-log" id="chat-log" aria-live="polite">
                                 <p class="chat-empty" id="chat-empty">Samtalen begynder her.</p>
                             </div>
@@ -392,7 +378,6 @@
             const connectionStatus = document.getElementById('connection-status');
             const connectionLabel = document.getElementById('connection-label');
             const memberList = document.getElementById('member-list');
-            const chatInput = document.getElementById('chat-input');
             const chatLog = document.getElementById('chat-log');
             const chatEmpty = document.getElementById('chat-empty');
             const gridCount = 6;
@@ -666,21 +651,9 @@
                 socket.emit('join', usernameInput.value);
             });
 
-            document.getElementById('chat-form').addEventListener('submit', (event) => {
-                event.preventDefault();
-                const text = chatInput.value.trim();
-                if (!text || !myId) return;
-                socket.emit('chat-message', text);
-                chatInput.value = '';
-                draftText = '';
-            });
-
-            chatInput.addEventListener('input', () => {
-                draftText = chatInput.value;
-            });
-
             canvas.addEventListener('click', (event) => {
                 const cell = getCellFromPointer(event);
+                canvas.focus({ preventScroll: true });
                 moveToCell(cell.col, cell.row);
             });
 
@@ -701,13 +674,40 @@
                     ArrowRight: [1, 0]
                 };
                 const direction = directions[event.key];
-                if (!direction) return;
-                event.preventDefault();
-                const player = players[myId];
-                moveToCell(
-                    Math.max(0, Math.min(gridCount - 1, player.col + direction[0])),
-                    Math.max(0, Math.min(gridCount - 1, player.row + direction[1]))
-                );
+                if (direction) {
+                    event.preventDefault();
+                    const player = players[myId];
+                    moveToCell(
+                        Math.max(0, Math.min(gridCount - 1, player.col + direction[0])),
+                        Math.max(0, Math.min(gridCount - 1, player.row + direction[1]))
+                    );
+                    return;
+                }
+
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    const text = draftText.trim();
+                    if (text) socket.emit('chat-message', text);
+                    draftText = '';
+                    return;
+                }
+
+                if (event.key === 'Backspace') {
+                    event.preventDefault();
+                    draftText = draftText.slice(0, -1);
+                    return;
+                }
+
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    draftText = '';
+                    return;
+                }
+
+                if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+                    event.preventDefault();
+                    if (draftText.length < 140) draftText += event.key;
+                }
             });
 
             socket.on('connect', () => {
