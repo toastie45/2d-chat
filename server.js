@@ -22,8 +22,11 @@ function snapToDiagonalGrid(x, y) {
     let angle = -Math.PI / 4;
     let rx = dx * Math.cos(angle) - dy * Math.sin(angle);
     let ry = dx * Math.sin(angle) + dy * Math.cos(angle);
+    
+    // Serveren snapper nu også til midten af det diagonale felt (+ GRID_SIZE / 2)
     let snappedRx = Math.floor(rx / GRID_SIZE) * GRID_SIZE + GRID_SIZE / 2;
     let snappedRy = Math.floor(ry / GRID_SIZE) * GRID_SIZE + GRID_SIZE / 2;
+    
     let finalDx = snappedRx * Math.cos(-angle) - snappedRy * Math.sin(-angle);
     let finalDy = snappedRx * Math.sin(-angle) + snappedRy * Math.cos(-angle);
     return {
@@ -95,7 +98,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Kun når der trykkes Enter sendes besked til alle
     socket.on('chat-message', (text) => {
         if (players[socket.id] && typeof text === 'string' && text.trim().length > 0) {
             let cleanText = text.trim().slice(0, 100);
