@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const express = require('express');
+const fs = require('fs');
 const http = require('http');
 const path = require('path');
 const session = require('express-session');
@@ -205,9 +206,17 @@ async function startServer() {
         throw new Error('Set SESSION_SECRET to a random value of at least 32 bytes.');
     }
 
+    const poolSsl = process.env.PGSSLMODE === 'require'
+        ? {
+            rejectUnauthorized: true,
+            ...(process.env.PGSSLROOTCERT
+                ? { ca: fs.readFileSync(process.env.PGSSLROOTCERT, 'utf8') }
+                : {})
+        }
+        : undefined;
     const pool = new Pool({
         connectionString: DATABASE_URL,
-        ssl: process.env.PGSSLMODE === 'require' ? { rejectUnauthorized: true } : undefined,
+        ssl: poolSsl,
         max: 10
     });
     pool.on('error', (error) => {
