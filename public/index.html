@@ -38,55 +38,11 @@
             flex-direction: column;
         }
 
-        .page.has-session .topbar { display: none; }
+
         .page.has-session main {
             place-items: start center;
             padding: 0 0 28px;
         }
-
-        .topbar {
-            min-height: 52px;
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            gap: 20px;
-            border-bottom: 1px solid var(--line);
-        }
-
-        .topbar-actions {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .topbar-button {
-            min-height: 38px;
-            padding: 0 14px;
-            border: 1px solid transparent;
-            border-radius: 9px;
-            background: transparent;
-            color: #c9cbc2;
-            font-size: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background .2s ease, border-color .2s ease, color .2s ease, transform .2s ease;
-        }
-
-        .topbar-button:hover { border-color: #383a33; background: #1a1c18; color: #fff; }
-        .topbar-button:active { transform: translateY(1px); }
-        .topbar-button:disabled { cursor: not-allowed; opacity: .5; }
-        .topbar-button:focus-visible {
-            outline: 2px solid var(--accent);
-            outline-offset: 2px;
-        }
-        .topbar-button.primary {
-            border-color: var(--accent);
-            background: var(--accent);
-            color: #17200e;
-        }
-
-        .topbar-button.primary:hover { border-color: #d2ff96; background: #d2ff96; }
-        .topbar-button.logout { border-color: #363831; background: #171815; }
 
         .room-strip {
             display: flex;
@@ -174,6 +130,24 @@
             font-size: 14px;
             line-height: 1.6;
         }
+
+        .auth-switch {
+            margin: 18px 0 0;
+            color: var(--muted);
+            text-align: center;
+            font-size: 12px;
+        }
+        .auth-switch-button {
+            padding: 0;
+            border: 0;
+            background: none;
+            color: var(--accent);
+            font: inherit;
+            font-weight: 650;
+            cursor: pointer;
+        }
+        .auth-switch-button:hover { color: #d2ff96; text-decoration: underline; }
+        .auth-switch-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
         .login-form { display: grid; gap: 10px; }
 
@@ -516,7 +490,6 @@
             .chat-section { min-height: 170px; }
             .chat-log { max-height: 110px; }
             .member-list { max-height: 130px; }
-            .topbar { min-height: 48px; }
             .room-strip { min-height: 40px; padding: 0 11px; }
             .room-strip-user { max-width: 90px; }
             .bottom-toolbar {
@@ -531,8 +504,6 @@
             .login-card { padding: 25px 20px; }
             .board-card { padding: 9px; }
             .board-hint { margin: 9px 2px 1px; }
-            .topbar-actions { gap: 3px; }
-            .topbar-button { min-height: 35px; padding: 0 9px; font-size: 11px; }
         }
 
         @media (prefers-reduced-motion: reduce) {
@@ -542,13 +513,6 @@
 </head>
 <body>
     <div class="page">
-        <header class="topbar">
-            <nav class="topbar-actions" id="guest-actions" aria-label="Konto">
-                <button class="topbar-button primary" id="login-nav-button" type="button" aria-pressed="true">Log ind</button>
-                <button class="topbar-button" id="register-nav-button" type="button" aria-pressed="false">Opret konto</button>
-            </nav>
-        </header>
-
         <main>
             <section class="login-card" id="login-section">
                 <h1 id="auth-title">Log ind og find din plads.</h1>
@@ -558,6 +522,10 @@
                     <input id="password-input" type="password" maxlength="72" minlength="8" autocomplete="current-password" placeholder="Adgangskode (mindst 8 tegn)" aria-label="Adgangskode" required>
                     <button class="primary-button" id="join-button" type="submit">Log ind</button>
                 </form>
+                <p class="auth-switch" id="auth-switch">
+                    Har du ikke en bruger?
+                    <button class="auth-switch-button" id="auth-switch-button" type="button">Opret konto</button>
+                </p>
                 <p class="error-message" id="login-error" aria-live="polite"></p>
             </section>
 
@@ -687,9 +655,8 @@
             const loginError = document.getElementById('login-error');
             const authTitle = document.getElementById('auth-title');
             const authDescription = document.getElementById('auth-description');
-            const guestActions = document.getElementById('guest-actions');
-            const loginNavButton = document.getElementById('login-nav-button');
-            const registerNavButton = document.getElementById('register-nav-button');
+            const authSwitch = document.getElementById('auth-switch');
+            const authSwitchButton = document.getElementById('auth-switch-button');
             const pageWrapper = document.querySelector('.page');
             const roomStrip = document.getElementById('room-strip');
             const roomStripCount = document.getElementById('room-strip-count');
@@ -838,15 +805,14 @@
                     : 'Log ind for at møde andre på gulvet og fortsætte, hvor du slap.';
                 joinButton.textContent = isRegistering ? 'Opret konto' : 'Log ind';
                 passwordInput.autocomplete = isRegistering ? 'new-password' : 'current-password';
-                loginNavButton.setAttribute('aria-pressed', String(!isRegistering));
-                registerNavButton.setAttribute('aria-pressed', String(isRegistering));
-                loginNavButton.classList.toggle('primary', !isRegistering);
-                registerNavButton.classList.toggle('primary', isRegistering);
+                authSwitch.hidden = Boolean(currentUser);
+                authSwitchButton.textContent = isRegistering ? 'Log ind' : 'Opret konto';
+                authSwitch.firstChild.textContent = isRegistering ? 'Har du allerede en bruger? ' : 'Har du ikke en bruger? ';
             }
 
             function updateAccountActions() {
                 const isAuthenticated = Boolean(currentUser);
-                guestActions.classList.toggle('hidden', isAuthenticated);
+                authSwitch.hidden = isAuthenticated;
                 logoutButton.classList.toggle('hidden', !isAuthenticated);
                 roomStrip.classList.toggle('hidden', !isAuthenticated);
                 bottomToolbar.classList.toggle('hidden', !isAuthenticated);
@@ -1295,8 +1261,7 @@
                 }
             });
 
-            loginNavButton.addEventListener('click', () => selectAuthMode('login'));
-            registerNavButton.addEventListener('click', () => selectAuthMode('register'));
+            authSwitchButton.addEventListener('click', () => selectAuthMode(authMode === 'register' ? 'login' : 'register'));
             refreshNavButton.addEventListener('click', () => window.location.reload());
             membersNavButton.addEventListener('click', () => selectSidePanel('members'));
             chatNavButton.addEventListener('click', () => selectSidePanel('chat'));
