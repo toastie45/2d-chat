@@ -487,7 +487,7 @@
                 </div>
                 <div class="room">
                     <section class="board-card" aria-label="Chatrum">
-                        <canvas id="game-canvas" width="600" height="600" tabindex="0" aria-label="Et grid med 6 gange 6 diamantformede felter. Klik på et ledigt felt for at flytte din avatar. Brug piletasterne til at bevæge dig, og Q, E, Z eller C til at bevæge dig diagonalt. Skriv for at chatte, og tryk Enter for at sende.">
+                        <canvas id="game-canvas" width="600" height="600" tabindex="0" aria-label="Et grid med 6 gange 6 diamantformede felter. Klik et sted på grid'et for at flytte din avatar. Skriv for at chatte, og tryk Enter for at sende.">
                             Dit browserprogram understøtter ikke canvas.
                         </canvas>
                         <p class="room-notice" id="room-notice" aria-live="polite"></p>
@@ -783,9 +783,20 @@
                 const bounds = canvas.getBoundingClientRect();
                 const x = (event.clientX - bounds.left) * canvas.width / bounds.width;
                 const y = (event.clientY - bounds.top) * canvas.height / bounds.height;
-                const col = Math.max(0, Math.min(gridCount - 1, Math.floor(x / cellSize)));
-                const row = Math.max(0, Math.min(gridCount - 1, Math.floor(y / cellSize)));
-                return { col, row };
+                let nearestCell = null;
+                let nearestDistance = Infinity;
+                for (let row = 0; row < gridCount; row++) {
+                    for (let col = 0; col < gridCount; col++) {
+                        const centerX = (col + 0.5) * cellSize;
+                        const centerY = (row + 0.5) * cellSize;
+                        const distance = Math.abs(x - centerX) + Math.abs(y - centerY);
+                        if (distance < nearestDistance) {
+                            nearestDistance = distance;
+                            nearestCell = { col, row };
+                        }
+                    }
+                }
+                return nearestCell;
             }
 
             function moveToCell(col, row) {
@@ -1044,27 +1055,6 @@
 
             canvas.addEventListener('keydown', (event) => {
                 if (!myId || !players[myId]) return;
-                const directions = {
-                    ArrowUp: [0, -1],
-                    ArrowDown: [0, 1],
-                    ArrowLeft: [-1, 0],
-                    ArrowRight: [1, 0],
-                    q: [-1, -1],
-                    e: [1, -1],
-                    z: [-1, 1],
-                    c: [1, 1]
-                };
-                const direction = directions[event.key] || directions[event.key.toLowerCase()];
-                if (direction) {
-                    event.preventDefault();
-                    const player = players[myId];
-                    moveToCell(
-                        Math.max(0, Math.min(gridCount - 1, player.col + direction[0])),
-                        Math.max(0, Math.min(gridCount - 1, player.row + direction[1]))
-                    );
-                    return;
-                }
-
                 if (event.key === 'Enter') {
                     event.preventDefault();
                     const text = draftText.trim();
