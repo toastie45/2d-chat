@@ -12,9 +12,8 @@ const io = new Server(server, {
 app.use(express.static('public'));
 
 // --- SUPABASE OPSÆTNING ---
-// Indsæt din Project URL og din Secret Key herunder:
-const SUPABASE_URL = 'https://pgkitxhtgbmqxzgpgqqs.supabase.co';
-const SUPABASE_SERVICE_KEY = 'INDSET_DIN_SECRET_KEY_HER'; 
+const SUPABASE_URL = 'https://pgkitxhtgbmqxzgpgqqs.supabase.co'; //[cite: 3]
+const SUPABASE_SERVICE_KEY = 'INDSET_DIN_HEMMELIGE_NOEGLE_HER'; // Kopier den fulde secret key fra Supabase her
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
   auth: { persistSession: false }
@@ -81,11 +80,10 @@ io.on('connection', (socket) => {
     }
 
     try {
-      // Opret bruger i Supabase Auth. Supabase sender automatisk en bekræftelses-mail til modtageren!
       const { data, error } = await supabase.auth.admin.createUser({
         email: cleanEmail,
         password: password.trim(),
-        email_confirm: false, // Kræver at brugeren klikker på linket i mailen
+        email_confirm: false,
         user_metadata: { username: cleanName }
       });
 
@@ -112,7 +110,6 @@ io.on('connection', (socket) => {
     }
 
     try {
-      // Find brugerens e-mail via deres brugernavn i Supabase metadata
       const { data: { users }, error: listError } = await supabase.auth.admin.listUsers();
       if (listError) {
         socket.emit('error-msg', 'Fejl ved login. Prøv igen.');
@@ -125,13 +122,11 @@ io.on('connection', (socket) => {
         return;
       }
 
-      // Tjek om e-mailen er blevet bekræftet via linket
       if (!foundUser.email_confirmed_at) {
         socket.emit('error-msg', 'Du skal bekræfte din e-mail via linket i din indbakke, før du kan logge ind.');
         return;
       }
 
-      // Valider kodeordet ved at logge ind i Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: foundUser.email,
         password: cleanPass
@@ -142,7 +137,6 @@ io.on('connection', (socket) => {
         return;
       }
 
-      // Startspiller-position
       let startX = Math.floor(Math.random() * 300) + 50;
       let startY = Math.floor(Math.random() * 200) + 100;
       const validStart = getValidPosition(socket.id, startX, startY);
