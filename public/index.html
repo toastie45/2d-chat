@@ -798,12 +798,6 @@
                 membersPanel.hidden = !showMembers;
                 chatPanel.hidden = showMembers;
                 updateToolbarState();
-                if (window.matchMedia('(max-width: 700px)').matches) {
-                    sideCard.scrollIntoView({
-                        block: 'start',
-                        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
-                    });
-                }
             }
 
             function resetPendingAuthentication() {
