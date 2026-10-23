@@ -1,13 +1,12 @@
 {
   "name": "2d-chat",
   "version": "1.0.0",
-  "description": "2D Chat med Supabase",
+  "description": "2D Chat",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.39.0",
     "express": "^4.18.2",
     "socket.io": "^4.7.2"
   }
