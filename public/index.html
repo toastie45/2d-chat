@@ -352,7 +352,7 @@
                         </section>
                         <section class="side-section chat-section">
                             <h2 class="side-title">Sig noget</h2>
-                            <p class="chat-hint">Skriv direkte på gulvet. Maks. 100 tegn · Enter sender · Backspace retter · Talebobler vises i 10 sekunder.</p>
+                            <p class="chat-hint">Skriv direkte på gulvet. Maks. 100 tegn · Render-nøgler skjules automatisk · Talebobler vises i 10 sekunder.</p>
                             <p class="chat-hint" id="message-counter" aria-live="off">0/100 tegn</p>
                             <div class="chat-log" id="chat-log" aria-live="polite">
                                 <p class="chat-empty" id="chat-empty">Samtalen begynder her.</p>
@@ -399,6 +399,10 @@
             function updateDraftText(text) {
                 draftText = text.slice(0, maxMessageLength);
                 messageCounter.textContent = `${draftText.length}/${maxMessageLength} tegn`;
+            }
+
+            function hideRenderKeys(text) {
+                return text.replace(/rnd_[A-Za-z0-9_-]*/gi, '[skjult Render-nøgle]');
             }
 
             function colorForPlayer(id) {
@@ -521,7 +525,7 @@
                     if (!position) continue;
                     const color = colorForPlayer(player.id);
                     const isTyping = player.id === myId && draftText.trim().length > 0;
-                    const bubbleText = isTyping ? draftText.trim().slice(0, 140) : player.text;
+                    const bubbleText = isTyping ? hideRenderKeys(draftText.trim()) : player.text;
                     const expiresAt = player.messageTime ? player.messageTime + messageDuration : 0;
                     const remaining = expiresAt - now;
 
@@ -705,7 +709,7 @@
                 if (event.key === 'Enter') {
                     event.preventDefault();
                     const text = draftText.trim();
-                    if (text) socket.emit('chat-message', text);
+                    if (text) socket.emit('chat-message', hideRenderKeys(text));
                     updateDraftText('');
                     return;
                 }

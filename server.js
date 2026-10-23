@@ -14,6 +14,10 @@ const MESSAGE_DURATION = 10_000;
 const MAX_MESSAGE_LENGTH = 100;
 const players = {};
 
+function hideRenderKeys(text) {
+    return text.replace(/rnd_[A-Za-z0-9_-]*/gi, '[skjult Render-nøgle]');
+}
+
 function getOpenCell() {
     const cells = [];
     for (let row = 0; row < GRID_COUNT; row++) {
@@ -89,7 +93,7 @@ io.on('connection', (socket) => {
         const player = players[socket.id];
         if (!player || typeof text !== 'string') return;
 
-        const cleanText = text.trim().slice(0, MAX_MESSAGE_LENGTH);
+        const cleanText = hideRenderKeys(text.trim()).slice(0, MAX_MESSAGE_LENGTH);
         if (!cleanText) return;
 
         const messageTime = Math.max(Date.now(), (player.messageTime || 0) + 1);
