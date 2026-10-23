@@ -155,7 +155,6 @@
         <div id="online-indicator">Online: 1</div>
 
         <div id="main-workspace">
-            <!-- 6x6 Lærred (288x288 px) -->
             <canvas id="gameCanvas" width="288" height="288"></canvas>
             
             <div id="right-panel">
@@ -306,6 +305,7 @@
             let rx = dx * cos - dy * sin;
             let ry = dx * sin + dy * cos;
 
+            // Snapper præcist til midten af feltet vha. + gridSize / 2
             let snappedRx = Math.floor(rx / gridSize) * gridSize + gridSize / 2;
             let snappedRy = Math.floor(ry / gridSize) * gridSize + gridSize / 2;
 
