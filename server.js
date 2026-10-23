@@ -19,7 +19,6 @@ function getValidPosition(socketId, targetX, targetY) {
   x = Math.max(AVATAR_RADIUS, Math.min(408 - AVATAR_RADIUS, x));
   y = Math.max(AVATAR_RADIUS, Math.min(374 - AVATAR_RADIUS, y));
 
-  // Kollisionslogik: Gør at man ikke kan gå ind i hinanden / stå oven på hinanden
   for (const id in players) {
     if (id === socketId) continue;
     const other = players[id];
