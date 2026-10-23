@@ -119,14 +119,14 @@
             letter-spacing: -.055em;
         }
 
-        .login-card > p:not(.eyebrow) {
+        .login-card > p#auth-description {
             margin-bottom: 26px;
             color: var(--muted);
             font-size: 14px;
             line-height: 1.6;
         }
 
-        .login-form { display: flex; gap: 9px; }
+        .login-form { display: grid; gap: 10px; }
 
         input {
             min-width: 0;
@@ -144,7 +144,7 @@
         }
 
         .login-form input {
-            flex: 1;
+            width: 100%;
             padding: 12px 13px;
             font-size: 14px;
         }
@@ -163,7 +163,20 @@
         .primary-button:hover { filter: brightness(1.07); }
         .primary-button:active { transform: scale(.98); }
         .primary-button:disabled { cursor: not-allowed; opacity: .55; }
-        .login-form .primary-button { padding: 0 17px; white-space: nowrap; }
+        .login-form .primary-button { padding: 12px 17px; white-space: nowrap; }
+
+        .auth-toggle {
+            display: block;
+            margin: 16px auto 0;
+            padding: 4px;
+            border: 0;
+            background: transparent;
+            color: var(--muted);
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .auth-toggle:hover { color: var(--accent); }
 
         .error-message {
             min-height: 18px;
@@ -185,6 +198,23 @@
         .game-heading .eyebrow { margin-bottom: 7px; }
         .game-heading h1 { margin-bottom: 0; font-size: 22px; letter-spacing: -.04em; }
         .online-count { color: var(--muted); font-size: 12px; white-space: nowrap; }
+        .heading-actions { display: flex; align-items: center; gap: 13px; }
+        .logout-button {
+            padding: 7px 10px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #171815;
+            color: var(--muted);
+            font-size: 11px;
+            cursor: pointer;
+        }
+        .logout-button:hover { border-color: #55584e; color: #f2f0e9; }
+        .room-notice {
+            min-height: 16px;
+            margin: 9px 2px 0;
+            color: #ff9d8b;
+            font-size: 11px;
+        }
 
         .room {
             display: grid;
@@ -314,19 +344,21 @@
             <div class="brand"><span class="brand-mark" aria-hidden="true">↗</span> Rundt om bordet</div>
             <div class="connection" id="connection-status" aria-live="polite">
                 <span class="connection-dot" aria-hidden="true"></span>
-                <span id="connection-label">Forbinder…</span>
+                <span id="connection-label">Log ind for at forbinde</span>
             </div>
         </header>
 
         <main>
             <section class="login-card" id="login-section">
                 <p class="eyebrow">Et lille sted på nettet</p>
-                <h1>Find en plads.</h1>
-                <p>Vælg et navn, træd ind på gulvet, og sig hej til dem, der allerede er her.</p>
+                <h1 id="auth-title">Log ind og find din plads.</h1>
+                <p id="auth-description">Log ind for at møde andre på gulvet og fortsætte, hvor du slap.</p>
                 <form class="login-form" id="login-form">
-                    <input id="username-input" maxlength="18" autocomplete="nickname" placeholder="Dit navn" aria-label="Dit navn" required>
-                    <button class="primary-button" id="join-button" type="submit" disabled>Træd ind</button>
+                    <input id="username-input" maxlength="18" minlength="3" autocomplete="username" placeholder="Brugernavn" aria-label="Brugernavn" required>
+                    <input id="password-input" type="password" maxlength="72" minlength="8" autocomplete="current-password" placeholder="Adgangskode (mindst 8 tegn)" aria-label="Adgangskode" required>
+                    <button class="primary-button" id="join-button" type="submit">Log ind</button>
                 </form>
+                <button class="auth-toggle" id="auth-toggle" type="button">Ny her? Opret en konto</button>
                 <p class="error-message" id="login-error" aria-live="polite"></p>
             </section>
 
@@ -336,13 +368,17 @@
                         <p class="eyebrow">Fællesrum</p>
                         <h1>Vælg en flise. Find din plads.</h1>
                     </div>
-                    <span class="online-count" id="online-count" aria-live="polite">0 online</span>
+                    <div class="heading-actions">
+                        <span class="online-count" id="online-count" aria-live="polite">0 online</span>
+                        <button class="logout-button" id="logout-button" type="button">Log ud</button>
+                    </div>
                 </div>
                 <div class="room">
                     <section class="board-card" aria-label="Chatrum">
                         <canvas id="game-canvas" width="600" height="600" tabindex="0" aria-label="Et grid med 6 gange 6 felter. Klik på et felt for at flytte din avatar. Skriv for at chatte, og tryk Enter for at sende.">
                             Dit browserprogram understøtter ikke canvas.
                         </canvas>
+                        <p class="room-notice" id="room-notice" aria-live="polite"></p>
                         <p class="board-hint">Klik på en flise for at flytte din avatar. Skriv direkte i rummet, og tryk Enter for at sende. Brug piletasterne til at bevæge dig.</p>
                     </section>
                     <aside class="side-card">
@@ -368,18 +404,24 @@
     <script src="/socket.io/socket.io.js"></script>
     <script>
         (() => {
-            const socket = io();
+            const socket = io({ autoConnect: false, transports: ['websocket'] });
             const canvas = document.getElementById('game-canvas');
             const ctx = canvas.getContext('2d');
             const loginSection = document.getElementById('login-section');
             const gameSection = document.getElementById('game-section');
             const usernameInput = document.getElementById('username-input');
+            const passwordInput = document.getElementById('password-input');
             const joinButton = document.getElementById('join-button');
             const loginError = document.getElementById('login-error');
+            const authTitle = document.getElementById('auth-title');
+            const authDescription = document.getElementById('auth-description');
+            const authToggle = document.getElementById('auth-toggle');
             const connectionStatus = document.getElementById('connection-status');
             const connectionLabel = document.getElementById('connection-label');
             const memberList = document.getElementById('member-list');
             const messageCounter = document.getElementById('message-counter');
+            const roomNotice = document.getElementById('room-notice');
+            const logoutButton = document.getElementById('logout-button');
             const chatLog = document.getElementById('chat-log');
             const chatEmpty = document.getElementById('chat-empty');
             const gridCount = 6;
@@ -395,14 +437,65 @@
             let animationFrame = null;
             let lastFrameTime = 0;
             let draftText = '';
+            let authMode = 'login';
+            let currentUser = null;
+            let roomNoticeTimer = null;
 
             function updateDraftText(text) {
                 draftText = text.slice(0, maxMessageLength);
                 messageCounter.textContent = `${draftText.length}/${maxMessageLength} tegn`;
             }
 
-            function hideRenderKeys(text) {
-                return text.replace(/rnd_[A-Za-z0-9_-]*/gi, '[skjult Render-nøgle]');
+            function hideSensitiveData(text) {
+                return text
+                    .replace(/\brnd_[A-Za-z0-9_-]+/gi, '[skjult hemmelighed]')
+                    .replace(/\bgithub_pat_[A-Za-z0-9_]{12,}\b/gi, '[skjult hemmelighed]')
+                    .replace(/\bgh[pousr]_[A-Za-z0-9_]{12,}\b/gi, '[skjult hemmelighed]')
+                    .replace(/\bsk-(?:live-)?[A-Za-z0-9_-]{16,}\b/gi, '[skjult hemmelighed]')
+                    .replace(/\bsk_(?:live|test)_[A-Za-z0-9_-]{12,}\b/gi, '[skjult hemmelighed]')
+                    .replace(/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/gi, '[skjult hemmelighed]')
+                    .replace(/\bAKIA[A-Z0-9]{16}\b/g, '[skjult hemmelighed]')
+                    .replace(/\bAIza[0-9A-Za-z_-]{30,}\b/g, '[skjult hemmelighed]')
+                    .replace(/\bnpm_[A-Za-z0-9]{30,}\b/g, '[skjult hemmelighed]')
+                    .replace(/\bya29\.[A-Za-z0-9_-]{20,}\b/g, '[skjult hemmelighed]')
+                    .replace(/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, '[skjult hemmelighed]')
+                    .replace(/\bBearer\s+[A-Za-z0-9._~+/-]{12,}=?/gi, '[skjult hemmelighed]')
+                    .replace(/\b(?:postgres(?:ql)?|redis):\/\/[^:\s/@]+:[^@\s]+@[^\s]+/gi, '[skjult hemmelighed]')
+                    .replace(/\b(password|passwd|passcode|secret|api[_-]?key|access[_-]?token|refresh[_-]?token)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, '[skjult hemmelighed]');
+            }
+
+            function showAuthMode() {
+                const isRegistering = authMode === 'register';
+                authTitle.textContent = isRegistering ? 'Opret din konto.' : 'Log ind og find din plads.';
+                authDescription.textContent = isRegistering
+                    ? 'Vælg et brugernavn og en adgangskode for at komme ind på gulvet.'
+                    : 'Log ind for at møde andre på gulvet og fortsætte, hvor du slap.';
+                joinButton.textContent = isRegistering ? 'Opret konto' : 'Log ind';
+                authToggle.textContent = isRegistering ? 'Har du allerede en konto? Log ind' : 'Ny her? Opret en konto';
+                passwordInput.autocomplete = isRegistering ? 'new-password' : 'current-password';
+            }
+
+            function setRoomNotice(message) {
+                roomNotice.textContent = message;
+                clearTimeout(roomNoticeTimer);
+                if (message) {
+                    roomNoticeTimer = setTimeout(() => {
+                        roomNotice.textContent = '';
+                    }, 4000);
+                }
+            }
+
+            function showHistory(messages) {
+                chatLog.replaceChildren();
+                if (!messages.length) {
+                    chatEmpty.classList.remove('hidden');
+                    chatLog.append(chatEmpty);
+                    return;
+                }
+                chatEmpty.classList.add('hidden');
+                for (const message of messages) {
+                    addChatEntry({ name: message.name }, message.text);
+                }
             }
 
             function colorForPlayer(id) {
@@ -464,10 +557,10 @@
                 entry.className = 'chat-entry';
                 const sender = document.createElement('strong');
                 sender.textContent = `${player.name}: `;
-                entry.append(sender, document.createTextNode(text));
+                entry.append(sender, document.createTextNode(hideSensitiveData(text)));
                 chatLog.append(entry);
-                while (chatLog.children.length > 41) {
-                    chatLog.removeChild(chatLog.children[1]);
+                while (chatLog.children.length > 500) {
+                    chatLog.removeChild(chatLog.firstElementChild);
                 }
                 chatLog.scrollTop = chatLog.scrollHeight;
             }
@@ -525,7 +618,7 @@
                     if (!position) continue;
                     const color = colorForPlayer(player.id);
                     const isTyping = player.id === myId && draftText.trim().length > 0;
-                    const bubbleText = isTyping ? hideRenderKeys(draftText.trim()) : player.text;
+                    const bubbleText = isTyping ? hideSensitiveData(draftText.trim()) : player.text;
                     const expiresAt = player.messageTime ? player.messageTime + messageDuration : 0;
                     const remaining = expiresAt - now;
 
@@ -662,15 +755,66 @@
                 animationFrame = requestAnimationFrame(gameLoop);
             }
 
-            document.getElementById('login-form').addEventListener('submit', (event) => {
+            document.getElementById('login-form').addEventListener('submit', async (event) => {
                 event.preventDefault();
                 loginError.textContent = '';
-                if (!socket.connected) {
-                    loginError.textContent = 'Forbindelsen er afbrudt. Prøv igen om et øjeblik.';
-                    return;
-                }
                 joinButton.disabled = true;
-                socket.emit('join', usernameInput.value);
+                try {
+                    const response = await fetch(`/api/auth/${authMode === 'register' ? 'register' : 'login'}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({
+                            username: usernameInput.value,
+                            password: passwordInput.value
+                        })
+                    });
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.error || 'Kunne ikke logge ind.');
+                    currentUser = result.user;
+                    usernameInput.value = result.user.username;
+                    passwordInput.value = '';
+                    socket.connect();
+                } catch (error) {
+                    loginError.textContent = error.message || 'Kunne ikke forbinde. Prøv igen.';
+                } finally {
+                    if (!currentUser) joinButton.disabled = false;
+                }
+            });
+
+            authToggle.addEventListener('click', () => {
+                authMode = authMode === 'login' ? 'register' : 'login';
+                loginError.textContent = '';
+                passwordInput.value = '';
+                showAuthMode();
+            });
+
+            logoutButton.addEventListener('click', async () => {
+                logoutButton.disabled = true;
+                try {
+                    const response = await fetch('/api/auth/logout', {
+                        method: 'POST',
+                        credentials: 'same-origin'
+                    });
+                    if (!response.ok) throw new Error('Kunne ikke logge ud. Prøv igen.');
+                    currentUser = null;
+                    myId = null;
+                    players = {};
+                    socket.disconnect();
+                    updateOnlineList();
+                    loginSection.classList.remove('hidden');
+                    gameSection.classList.add('hidden');
+                    loginError.textContent = '';
+                    passwordInput.value = '';
+                    setRoomNotice('');
+                    connectionStatus.classList.remove('online');
+                    connectionLabel.textContent = 'Log ind for at forbinde';
+                    updateDraftText('');
+                } catch (error) {
+                    setRoomNotice(error.message || 'Kunne ikke logge ud. Prøv igen.');
+                } finally {
+                    logoutButton.disabled = false;
+                }
             });
 
             canvas.addEventListener('click', (event) => {
@@ -709,7 +853,7 @@
                 if (event.key === 'Enter') {
                     event.preventDefault();
                     const text = draftText.trim();
-                    if (text) socket.emit('chat-message', hideRenderKeys(text));
+                    if (text) socket.emit('chat-message', hideSensitiveData(text));
                     updateDraftText('');
                     return;
                 }
@@ -735,43 +879,76 @@
             socket.on('connect', () => {
                 connectionStatus.classList.add('online');
                 connectionLabel.textContent = 'Forbundet';
-                joinButton.disabled = false;
+                if (currentUser) socket.emit('join');
             });
 
-            socket.on('disconnect', () => {
+            socket.on('disconnect', (reason) => {
                 connectionStatus.classList.remove('online');
-                connectionLabel.textContent = 'Forbindelsen blev afbrudt';
-                if (myId) {
-                    myId = null;
-                    players = {};
-                    updateOnlineList();
-                    gameSection.classList.add('hidden');
-                    loginSection.classList.remove('hidden');
-                    loginError.textContent = 'Forbindelsen blev afbrudt. Log ind igen, når du er forbundet.';
-                    joinButton.disabled = true;
+                connectionLabel.textContent = currentUser ? 'Forbindelsen afbrudt · prøver igen…' : 'Log ind for at forbinde';
+                if (currentUser && reason === 'io server disconnect') {
+                    fetch('/api/auth/me', { credentials: 'same-origin' })
+                        .then(async (response) => {
+                            if (response.status === 401) {
+                                currentUser = null;
+                                gameSection.classList.add('hidden');
+                                loginSection.classList.remove('hidden');
+                                loginError.textContent = 'Din session er udløbet. Log ind igen.';
+                                connectionLabel.textContent = 'Log ind for at forbinde';
+                                return;
+                            }
+                            if (!response.ok) throw new Error('Kunne ikke kontrollere din session.');
+                            socket.connect();
+                        })
+                        .catch((error) => {
+                            setRoomNotice(error.message || 'Kunne ikke kontrollere din session.');
+                        });
                 }
             });
 
-            socket.on('connect_error', () => {
+            socket.on('error', () => {
+                setRoomNotice('Kunne ikke bekræfte login. Kontrollér forbindelsen, og prøv igen.');
+            });
+
+            socket.on('connect_error', async () => {
                 connectionStatus.classList.remove('online');
                 connectionLabel.textContent = 'Forbinder igen…';
+                if (!currentUser) return;
+                try {
+                    const response = await fetch('/api/auth/me', { credentials: 'same-origin' });
+                    if (response.status !== 401) return;
+                    currentUser = null;
+                    socket.disconnect();
+                    joinButton.disabled = false;
+                    gameSection.classList.add('hidden');
+                    loginSection.classList.remove('hidden');
+                    loginError.textContent = 'Din session er udløbet. Log ind igen.';
+                    connectionLabel.textContent = 'Log ind for at forbinde';
+                } catch {
+                    loginError.textContent = 'Forbindelsen blev afbrudt. Prøv igen om et øjeblik.';
+                }
             });
 
-            socket.on('error-msg', (message) => {
-                loginError.textContent = message;
-                joinButton.disabled = false;
+            socket.on('room-error', ({ message } = {}) => {
+                setRoomNotice(message || 'Der opstod en fejl. Prøv igen.');
             });
 
-            socket.on('join-success', (serverPlayers) => {
+            socket.on('move-rejected', ({ message } = {}) => {
+                setRoomNotice(message || 'Den flise er allerede optaget.');
+            });
+
+            socket.on('join-success', ({ players: serverPlayers, history }) => {
                 players = {};
                 myId = socket.id;
+                joinButton.disabled = false;
                 for (const player of Object.values(serverPlayers)) {
                     showPlayer(player, false);
                 }
+                showHistory(history || []);
                 updateOnlineList();
                 loginSection.classList.add('hidden');
                 gameSection.classList.remove('hidden');
                 loginError.textContent = '';
+                setRoomNotice('');
                 if (animationFrame === null) {
                     lastFrameTime = 0;
                     animationFrame = requestAnimationFrame(gameLoop);
@@ -794,9 +971,9 @@
             socket.on('playerChatMessage', (message) => {
                 const player = players[message.id];
                 if (!player) return;
-                player.text = message.text;
+                player.text = hideSensitiveData(message.text);
                 player.messageTime = message.messageTime;
-                addChatEntry(player, message.text);
+                addChatEntry(player, player.text);
             });
 
             socket.on('playerChatExpired', (message) => {
@@ -811,6 +988,19 @@
                 delete players[id];
                 updateOnlineList();
             });
+
+            fetch('/api/auth/me', { credentials: 'same-origin' })
+                .then(async (response) => {
+                    if (response.status === 401) return;
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.error || 'Kunne ikke hente din session.');
+                    currentUser = result.user;
+                    usernameInput.value = result.user.username;
+                    socket.connect();
+                })
+                .catch((error) => {
+                    loginError.textContent = error.message || 'Kunne ikke forbinde. Prøv igen.';
+                });
         })();
     </script>
 </body>
