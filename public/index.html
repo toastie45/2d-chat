@@ -390,6 +390,7 @@
 
         .toolbar-button:hover { color: #f2f0e9; background: #20211d; }
         .toolbar-button:active { transform: translateY(1px); }
+        .toolbar-button[aria-current="page"],
         .toolbar-button[aria-pressed="true"] {
             border-color: #393d30;
             background: #292c23;
@@ -622,9 +623,9 @@
         <footer>Et roligt hjørne at hænge ud i.</footer>
     </div>
     <nav class="bottom-toolbar hidden" id="bottom-toolbar" aria-label="Navigation i chatrummet">
-        <button class="toolbar-button" id="floor-nav-button" type="button" aria-pressed="true" aria-label="Gå til gulvet">
+        <button class="toolbar-button" id="floor-nav-button" type="button" aria-current="page" aria-label="Gå til chatrummet">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5 12 3l8 2.5v13L12 21l-8-2.5z"/><path d="m4 5.5 8 2.7 8-2.7M12 8.2V21"/></svg>
-            <span>Gulv</span>
+            <span>Chatrum</span>
         </button>
         <button class="toolbar-button" id="members-nav-button" type="button" aria-pressed="false" aria-label="Vis brugere">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19v-1.3A4.7 4.7 0 0 1 8.2 13h1.6a4.7 4.7 0 0 1 4.7 4.7V19z"/><path d="M16 5.3a3 3 0 0 1 0 5.8M17 13.3a4.7 4.7 0 0 1 3.5 4.5V19"/></svg>
@@ -763,9 +764,14 @@
                 roomStripUser.textContent = isAuthenticated ? currentUser.username : '';
             }
 
-            function setToolbarActive(activeButton) {
-                for (const button of [floorNavButton, membersNavButton, chatNavButton]) {
-                    button.setAttribute('aria-pressed', String(button === activeButton));
+            function updateToolbarState() {
+                floorNavButton.setAttribute('aria-current', 'page');
+                for (const button of [membersNavButton, chatNavButton]) {
+                    button.setAttribute('aria-pressed', String(
+                        button === membersNavButton
+                            ? membersTab.getAttribute('aria-selected') === 'true'
+                            : chatTab.getAttribute('aria-selected') === 'true'
+                    ));
                 }
             }
 
@@ -785,7 +791,7 @@
                 chatTab.setAttribute('aria-selected', String(!showMembers));
                 membersPanel.hidden = !showMembers;
                 chatPanel.hidden = showMembers;
-                setToolbarActive(showMembers ? membersNavButton : chatNavButton);
+                updateToolbarState();
                 if (window.matchMedia('(max-width: 700px)').matches) {
                     sideCard.scrollIntoView({
                         block: 'start',
@@ -1162,7 +1168,6 @@
             membersTab.addEventListener('click', () => selectSideTab('members'));
             chatTab.addEventListener('click', () => selectSideTab('chat'));
             floorNavButton.addEventListener('click', () => {
-                setToolbarActive(floorNavButton);
                 boardCard.scrollIntoView({
                     block: 'start',
                     behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
@@ -1350,7 +1355,7 @@
                 clearChatLog();
                 addChatSystemEntry(`Du er kommet ind i chatten som ${currentUser.username}.`);
                 updateOnlineList();
-                setToolbarActive(floorNavButton);
+                updateToolbarState();
                 loginSection.classList.add('hidden');
                 gameSection.classList.remove('hidden');
                 updateAccountActions();
