@@ -3,17 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>2D Chat Oprettelse</title>
+    <title>2D Chat Multiplayer</title>
     <style>
         body {
             background-color: #121212;
             color: #ffffff;
             font-family: Arial, sans-serif;
+            margin: 0;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
-            margin: 0;
+            overflow: hidden;
         }
         .container {
             background-color: #1e1e1e;
@@ -55,12 +56,42 @@
         a {
             color: #28a745;
             text-decoration: none;
+            cursor: pointer;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .hidden {
+            display: none;
+        }
+        #game-container {
+            display: none;
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        canvas {
+            background: #222;
+            display: block;
+            margin: auto;
         }
     </style>
 </head>
 <body>
 
-    <div class="container" id="register-container">
+    <!-- LOGIN FORMULAR -->
+    <div class="container" id="login-section">
+        <h2>Log ind</h2>
+        <input type="text" id="login-username" placeholder="Brugernavn...">
+        <button onclick="loginUser()">Log ind</button>
+        <div id="login-msg"></div>
+        <div style="margin-top: 15px;">
+            <a onclick="showRegister()">Har du ikke en konto? Opret bruger</a>
+        </div>
+    </div>
+
+    <!-- OPRET BRUGER FORMULAR -->
+    <div class="container hidden" id="register-section">
         <h2>Opret bruger</h2>
         <input type="text" id="reg-username" placeholder="Brugernavn...">
         <input type="email" id="reg-email" placeholder="E-mail...">
@@ -74,14 +105,28 @@
         <button onclick="registerUser()">Send verifikationskode</button>
         <div id="reg-msg"></div>
         <div style="margin-top: 15px;">
-            <a href="#" onclick="showLogin()">Har du allerede en konto? Log ind</a>
+            <a onclick="showLogin()">Har du allerede en konto? Log ind</a>
         </div>
     </div>
 
-    <!-- Socket.io bibliotek -->
+    <!-- SPILLET / CHATTEN -->
+    <div id="game-container">
+        <canvas id="gameCanvas" width="408" height="374"></canvas>
+    </div>
+
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
+
+        function showRegister() {
+            document.getElementById('login-section').classList.add('hidden');
+            document.getElementById('register-section').classList.remove('hidden');
+        }
+
+        function showLogin() {
+            document.getElementById('register-section').classList.add('hidden');
+            document.getElementById('login-section').classList.remove('hidden');
+        }
 
         function registerUser() {
             const username = document.getElementById('reg-username').value.trim();
@@ -105,12 +150,29 @@
                 return;
             }
 
-            // Sender til serveren uden krav om kodeord i frontend
             socket.emit('request-code', { username, email, birthdate });
         }
 
+        function loginUser() {
+            const username = document.getElementById('login-username').value.trim();
+            const msgDiv = document.getElementById('login-msg');
+
+            msgDiv.className = '';
+            msgDiv.innerText = '';
+
+            if (!username) {
+                msgDiv.className = 'error';
+                msgDiv.innerText = 'Udfyld venligst brugernavn.';
+                return;
+            }
+
+            socket.emit('login', { username });
+        }
+
         socket.on('error-msg', (msg) => {
-            const msgDiv = document.getElementById('reg-msg');
+            // Find ud af hvilken sektion der er aktiv for at vise fejlen det rigtige sted
+            const regVisible = !document.getElementById('register-section').classList.contains('hidden');
+            const msgDiv = regVisible ? document.getElementById('reg-msg') : document.getElementById('login-msg');
             msgDiv.className = 'error';
             msgDiv.innerText = msg;
         });
@@ -121,10 +183,12 @@
             msgDiv.innerText = msg;
         });
 
-        function showLogin() {
-            // Hvis du har et separat login-view, kan det styres herfra
-            alert('Skift til login-visning');
-        }
+        socket.on('login-success', (players) => {
+            document.getElementById('login-section').style.display = 'none';
+            document.getElementById('register-section').style.display = 'none';
+            document.getElementById('game-container').style.display = 'block';
+            // Start spil-logik herfra hvis nødvendigt
+        });
     </script>
 </body>
 </html>
