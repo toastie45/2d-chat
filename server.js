@@ -292,6 +292,8 @@ async function startServer() {
     `);
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS real_name VARCHAR(80)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS profile_text VARCHAR(500)');
+    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS discord_name VARCHAR(64)');
+    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS interests VARCHAR(160)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS registration_ip_hash TEXT');
     await pool.query('CREATE INDEX IF NOT EXISTS chat_users_registration_ip_hash_idx ON chat_users (registration_ip_hash) WHERE registration_ip_hash IS NOT NULL');
     await pool.query(`
@@ -372,7 +374,7 @@ async function startServer() {
         }
         try {
             const { rows: [profile] } = await pool.query(
-                'SELECT real_name, profile_text FROM chat_users WHERE id = $1',
+                'SELECT real_name, profile_text, discord_name, interests FROM chat_users WHERE id = $1',
                 [request.session.user.id]
             );
             if (!profile) {
@@ -381,7 +383,9 @@ async function startServer() {
             }
             response.json({
                 realName: profile.real_name || '',
-                profileText: profile.profile_text || ''
+                profileText: profile.profile_text || '',
+                discordName: profile.discord_name || '',
+                interests: profile.interests || ''
             });
         } catch (error) {
             next(error);
@@ -400,8 +404,14 @@ async function startServer() {
         }
         try {
             const result = await pool.query(
-                'UPDATE chat_users SET real_name = $1, profile_text = $2 WHERE id = $3 RETURNING real_name, profile_text',
-                [profile.realName || null, profile.profileText || null, request.session.user.id]
+                'UPDATE chat_users SET real_name = $1, profile_text = $2, discord_name = $3, interests = $4 WHERE id = $5 RETURNING real_name, profile_text, discord_name, interests',
+                [
+                    profile.realName || null,
+                    profile.profileText || null,
+                    profile.discordName || null,
+                    profile.interests || null,
+                    request.session.user.id
+                ]
             );
             if (!result.rowCount) {
                 response.status(404).json({ error: 'Profilen blev ikke fundet.' });
@@ -409,7 +419,9 @@ async function startServer() {
             }
             response.json({
                 realName: result.rows[0].real_name || '',
-                profileText: result.rows[0].profile_text || ''
+                profileText: result.rows[0].profile_text || '',
+                discordName: result.rows[0].discord_name || '',
+                interests: result.rows[0].interests || ''
             });
         } catch (error) {
             next(error);
@@ -623,7 +635,7 @@ async function startServer() {
                     return;
                 }
                 const { rows: [profile] } = await pool.query(
-                    'SELECT real_name, profile_text FROM chat_users WHERE username_normalized = $1',
+                    'SELECT real_name, profile_text, discord_name, interests FROM chat_users WHERE username_normalized = $1',
                     [account.normalized]
                 );
                 if (!profile) {
@@ -635,7 +647,9 @@ async function startServer() {
                     avatarName: player.name,
                     room: 'Fællesrum',
                     realName: profile.real_name || '',
-                    profileText: profile.profile_text || ''
+                    profileText: profile.profile_text || '',
+                    discordName: profile.discord_name || '',
+                    interests: profile.interests || ''
                 });
             } catch (error) {
                 console.error('Could not load public profile:', getSafeErrorCode(error));

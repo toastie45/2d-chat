@@ -32,7 +32,7 @@ npm start
 
 The server creates its account, message-history, and session tables automatically. New accounts use unique, case-insensitive usernames and passwords of 8–72 UTF-8 bytes, with a maximum of two accounts created per IP address. The registration IP is stored only as a keyed hash using `SESSION_SECRET`; existing accounts can still sign in. Passwords are stored as bcrypt hashes. The server retains the 500 most recent messages, but does not replay earlier messages or speech bubbles to users when they join; the visible chat log starts fresh on each room entry. Live player presence and occupied grid cells are stored in Redis, which also distributes Socket.IO events between instances.
 
-Users can optionally add a real name and a profile text (up to 500 characters); both are public to other users in the room. Right-click an avatar to view that player's profile in the side panel.
+Users can optionally add a real name, Discord name (up to 64 characters), interests (up to 160 characters), and profile text (up to 500 characters); filled profile fields are public to other users in the room. Right-click an avatar to view that player's profile in the side panel.
 
 Login is bound to the browser tab: refreshing the page keeps the session, but opening the chat in a new tab requires logging in again. The authentication cookie is a browser-session cookie, and a per-tab identifier in `sessionStorage` is checked by both HTTP and WebSocket requests.
 

@@ -581,6 +581,14 @@
                                     Rigtigt navn <span class="profile-hint">Valgfrit — synligt for andre</span>
                                     <input id="profile-real-name" name="realName" maxlength="80" autocomplete="name">
                                 </label>
+                                <label class="profile-field" for="profile-discord-name">
+                                    Discord-navn <span class="profile-hint">Valgfrit — højst 64 tegn</span>
+                                    <input id="profile-discord-name" name="discordName" maxlength="64" autocomplete="off">
+                                </label>
+                                <label class="profile-field" for="profile-interests">
+                                    Interesser <span class="profile-hint">Valgfrit — højst 160 tegn</span>
+                                    <input id="profile-interests" name="interests" maxlength="160" autocomplete="off">
+                                </label>
                                 <label class="profile-field" for="profile-text">
                                     Profiltekst <span class="profile-hint">Valgfrit — højst 500 tegn</span>
                                     <textarea id="profile-text" name="profileText" maxlength="500"></textarea>
@@ -597,6 +605,10 @@
                             <p class="profile-value" id="view-profile-room"></p>
                             <p class="profile-hint">Rigtigt navn</p>
                             <p class="profile-value" id="view-profile-real-name"></p>
+                            <p class="profile-hint">Discord</p>
+                            <p class="profile-value" id="view-profile-discord"></p>
+                            <p class="profile-hint">Interesser</p>
+                            <p class="profile-value" id="view-profile-interests"></p>
                             <p class="profile-hint">Profiltekst</p>
                             <p class="profile-value" id="view-profile-text"></p>
                         </section>
@@ -655,12 +667,16 @@
             const profileForm = document.getElementById('profile-form');
             const profileAvatarName = document.getElementById('profile-avatar-name');
             const profileRealName = document.getElementById('profile-real-name');
+            const profileDiscordName = document.getElementById('profile-discord-name');
+            const profileInterests = document.getElementById('profile-interests');
             const profileText = document.getElementById('profile-text');
             const profileSaveButton = document.getElementById('profile-save-button');
             const profileStatus = document.getElementById('profile-status');
             const viewProfileAvatar = document.getElementById('view-profile-avatar');
             const viewProfileRoom = document.getElementById('view-profile-room');
             const viewProfileRealName = document.getElementById('view-profile-real-name');
+            const viewProfileDiscord = document.getElementById('view-profile-discord');
+            const viewProfileInterests = document.getElementById('view-profile-interests');
             const viewProfileText = document.getElementById('view-profile-text');
             const avatarContextMenu = document.getElementById('avatar-context-menu');
             const avatarContextName = document.getElementById('avatar-context-name');
@@ -786,8 +802,10 @@
                     const result = await response.json();
                     if (!response.ok) throw new Error(result.error || 'Profilen kunne ikke hentes.');
                     profileRealName.value = result.realName;
+                    profileDiscordName.value = result.discordName;
+                    profileInterests.value = result.interests;
                     profileText.value = result.profileText;
-                    profileStatus.textContent = 'Rigtigt navn og profiltekst vises offentligt, når de er udfyldt.';
+                    profileStatus.textContent = 'Udfyldte profilfelter vises offentligt.';
                     profileLoaded = true;
                 } catch (error) {
                     profileStatus.textContent = error.message || 'Profilen kunne ikke hentes. Prøv igen.';
@@ -802,6 +820,8 @@
                 viewProfileAvatar.textContent = 'Henter…';
                 viewProfileRoom.textContent = 'Fællesrum';
                 viewProfileRealName.textContent = '';
+                viewProfileDiscord.textContent = '';
+                viewProfileInterests.textContent = '';
                 viewProfileText.textContent = '';
                 closeAvatarContextMenu();
                 socket.emit('profile-request', { playerId });
@@ -1169,12 +1189,16 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             realName: profileRealName.value,
-                            profileText: profileText.value
+                            profileText: profileText.value,
+                            discordName: profileDiscordName.value,
+                            interests: profileInterests.value
                         })
                     });
                     const result = await response.json();
                     if (!response.ok) throw new Error(result.error || 'Profilen kunne ikke gemmes.');
                     profileRealName.value = result.realName;
+                    profileDiscordName.value = result.discordName;
+                    profileInterests.value = result.interests;
                     profileText.value = result.profileText;
                     profileStatus.textContent = 'Profilen er gemt.';
                 } catch (error) {
@@ -1397,6 +1421,8 @@
                 viewProfileAvatar.textContent = profile.avatarName;
                 viewProfileRoom.textContent = profile.room;
                 viewProfileRealName.textContent = profile.realName || 'Ikke angivet';
+                viewProfileDiscord.textContent = profile.discordName || 'Ikke angivet';
+                viewProfileInterests.textContent = profile.interests || 'Ikke angivet';
                 viewProfileText.textContent = profile.profileText || 'Ingen profiltekst endnu.';
             });
 

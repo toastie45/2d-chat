@@ -52,18 +52,36 @@ test('validates and normalizes account usernames', () => {
 test('normalizes optional public profile fields and enforces safe limits', () => {
     assert.deepEqual(normalizePublicProfile({
         realName: '  Ada Lovelace ',
-        profileText: '  Hej\nmed dig  '
+        profileText: '  Hej\nmed dig  ',
+        discordName: '  ada#1234 ',
+        interests: '  programmering, bøger  '
     }), {
         realName: 'Ada Lovelace',
-        profileText: 'Hej\nmed dig'
+        profileText: 'Hej\nmed dig',
+        discordName: 'ada#1234',
+        interests: 'programmering, bøger'
     });
-    assert.deepEqual(normalizePublicProfile({ realName: '', profileText: '' }), {
+    assert.deepEqual(normalizePublicProfile({ realName: '', profileText: '', discordName: '', interests: '' }), {
         realName: '',
-        profileText: ''
+        profileText: '',
+        discordName: '',
+        interests: ''
     });
-    assert.equal(normalizePublicProfile({ realName: 'A'.repeat(81), profileText: '' }), null);
-    assert.equal(normalizePublicProfile({ realName: '', profileText: 'A'.repeat(501) }), null);
-    assert.equal(normalizePublicProfile({ realName: 'Ada\u0000', profileText: '' }), null);
+    assert.equal(normalizePublicProfile({
+        realName: 'A'.repeat(81), profileText: '', discordName: '', interests: ''
+    }), null);
+    assert.equal(normalizePublicProfile({
+        realName: '', profileText: 'A'.repeat(501), discordName: '', interests: ''
+    }), null);
+    assert.equal(normalizePublicProfile({
+        realName: '', profileText: '', discordName: 'd'.repeat(65), interests: ''
+    }), null);
+    assert.equal(normalizePublicProfile({
+        realName: '', profileText: '', discordName: '', interests: 'i'.repeat(161)
+    }), null);
+    assert.equal(normalizePublicProfile({
+        realName: 'Ada\u0000', profileText: '', discordName: '', interests: ''
+    }), null);
 });
 
 test('accepts passwords only from 8 to 72 UTF-8 bytes', () => {
