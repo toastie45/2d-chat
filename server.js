@@ -20,6 +20,7 @@ const {
 const { isAuthorizedTabSession, isValidTabId } = require('./lib/tab-session');
 const { hashRegistrationIp, MAX_ACCOUNTS_PER_IP } = require('./lib/account-ip-limit');
 const { normalizePublicProfile } = require('./lib/public-profile');
+const { registerChatMessage } = require('./lib/chat-rate-limit');
 
 const GRID_COUNT = 6;
 const MESSAGE_DURATION = 10_000;
@@ -27,6 +28,8 @@ const HISTORY_LIMIT = 500;
 const PRESENCE_HEARTBEAT_INTERVAL = 10_000;
 const PRESENCE_EXPIRY = 45_000;
 const PRESENCE_CLEANUP_INTERVAL = 15_000;
+const PLAYER_IDLE_TIMEOUT = 20 * 60 * 1000;
+const PLAYER_IDLE_CHECK_INTERVAL = 60_000;
 const LOGIN_ATTEMPT_LIMIT = 10;
 const LOGIN_ATTEMPT_WINDOW_SECONDS = 15 * 60;
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
@@ -49,6 +52,8 @@ local existing = redis.call('HGET', KEYS[1], ARGV[1])
 if existing then
     local player = cjson.decode(existing)
     player.lastSeen = tonumber(ARGV[3])
+    player.joinedAt = tonumber(player.joinedAt or ARGV[3])
+    player.lastActivityAt = tonumber(player.lastActivityAt or ARGV[3])
     redis.call('HSET', KEYS[1], ARGV[1], cjson.encode(player))
     return cjson.encode(player)
 end
@@ -64,7 +69,9 @@ for index = 4, #ARGV do
             row = tonumber(row),
             text = '',
             messageTime = 0,
-            lastSeen = tonumber(ARGV[3])
+            lastSeen = tonumber(ARGV[3]),
+            joinedAt = tonumber(ARGV[3]),
+            lastActivityAt = tonumber(ARGV[3])
         }
         redis.call('HSET', KEYS[1], ARGV[1], cjson.encode(player))
         redis.call('HSET', KEYS[2], cell, ARGV[1])
@@ -91,6 +98,7 @@ end
 player.col = tonumber(ARGV[2])
 player.row = tonumber(ARGV[3])
 player.lastSeen = tonumber(ARGV[4])
+player.lastActivityAt = tonumber(ARGV[4])
 redis.call('HSET', KEYS[1], ARGV[1], cjson.encode(player))
 redis.call('HSET', KEYS[2], nextCell, ARGV[1])
 return cjson.encode(player)
@@ -104,8 +112,29 @@ local player = cjson.decode(encoded)
 player.text = ARGV[2]
 player.messageTime = tonumber(ARGV[3])
 player.lastSeen = tonumber(ARGV[4])
+player.lastActivityAt = tonumber(ARGV[4])
 redis.call('HSET', KEYS[1], ARGV[1], cjson.encode(player))
 return cjson.encode(player)
+`;
+
+const KICK_IDLE_PLAYERS_SCRIPT = `
+local removed = {}
+local entries = redis.call('HGETALL', KEYS[1])
+local cutoff = tonumber(ARGV[1])
+for index = 1, #entries, 2 do
+    local id = entries[index]
+    local player = cjson.decode(entries[index + 1])
+    local lastActivityAt = tonumber(player.lastActivityAt or player.joinedAt or player.lastSeen or 0)
+    if lastActivityAt < cutoff then
+        local cell = player.col .. ':' .. player.row
+        if redis.call('HGET', KEYS[2], cell) == id then
+            redis.call('HDEL', KEYS[2], cell)
+        end
+        redis.call('HDEL', KEYS[1], id)
+        table.insert(removed, id)
+    end
+end
+return removed
 `;
 
 const EXPIRE_PLAYER_MESSAGE_SCRIPT = `
@@ -339,6 +368,20 @@ async function startServer() {
 
     const getRequestTabId = (request) => request.get('x-chat-tab-id');
 
+    async function getOnlineSince(username) {
+        const normalizedUsername = normalizeUsername(username);
+        if (!normalizedUsername) return null;
+        const redisPlayers = await redis.hGetAll(playersKey);
+        for (const encoded of Object.values(redisPlayers)) {
+            const player = JSON.parse(encoded);
+            const playerUsername = normalizeUsername(player.name);
+            if (playerUsername && playerUsername.normalized === normalizedUsername.normalized) {
+                return Number(player.joinedAt || 0) || null;
+            }
+        }
+        return null;
+    }
+
     const requireTabId = (request, response) => {
         const tabId = getRequestTabId(request);
         if (!isValidTabId(tabId)) {
@@ -374,7 +417,7 @@ async function startServer() {
         }
         try {
             const { rows: [profile] } = await pool.query(
-                'SELECT real_name, profile_text, discord_name, interests FROM chat_users WHERE id = $1',
+                'SELECT real_name, profile_text, discord_name, interests, created_at FROM chat_users WHERE id = $1',
                 [request.session.user.id]
             );
             if (!profile) {
@@ -385,7 +428,9 @@ async function startServer() {
                 realName: profile.real_name || '',
                 profileText: profile.profile_text || '',
                 discordName: profile.discord_name || '',
-                interests: profile.interests || ''
+                interests: profile.interests || '',
+                createdAt: profile.created_at,
+                onlineSince: await getOnlineSince(request.session.user.username)
             });
         } catch (error) {
             next(error);
@@ -605,6 +650,34 @@ async function startServer() {
         }
     }
 
+    async function kickIdlePlayers() {
+        const removedIds = await redis.eval(KICK_IDLE_PLAYERS_SCRIPT, {
+            keys: [playersKey, cellsKey],
+            arguments: [String(Date.now() - PLAYER_IDLE_TIMEOUT)]
+        });
+        for (const id of removedIds) {
+            activeSocketIds.delete(id);
+            io.to(id).emit('session-kicked', { message: 'Du blev fjernet fra rummet efter 20 minutters inaktivitet.' });
+            io.emit('playerDisconnected', id);
+            setTimeout(() => io.in(id).disconnectSockets(true), 100);
+        }
+    }
+
+    async function kickPlayer(socketId, message) {
+        activeSocketIds.delete(socketId);
+        try {
+            const removed = await redis.eval(REMOVE_PLAYER_SCRIPT, {
+                keys: [playersKey, cellsKey],
+                arguments: [socketId]
+            });
+            if (removed) io.emit('playerDisconnected', socketId);
+        } catch (error) {
+            console.error('Could not remove kicked chat participant:', getSafeErrorCode(error));
+        }
+        io.to(socketId).emit('session-kicked', { message });
+        setTimeout(() => io.in(socketId).disconnectSockets(true), 100);
+    }
+
     async function getPlayers() {
         await cleanupStalePlayers();
         return getPublicPlayers(await redis.hGetAll(playersKey));
@@ -635,7 +708,7 @@ async function startServer() {
                     return;
                 }
                 const { rows: [profile] } = await pool.query(
-                    'SELECT real_name, profile_text, discord_name, interests FROM chat_users WHERE username_normalized = $1',
+                    'SELECT real_name, profile_text, discord_name, interests, created_at FROM chat_users WHERE username_normalized = $1',
                     [account.normalized]
                 );
                 if (!profile) {
@@ -649,7 +722,9 @@ async function startServer() {
                     realName: profile.real_name || '',
                     profileText: profile.profile_text || '',
                     discordName: profile.discord_name || '',
-                    interests: profile.interests || ''
+                    interests: profile.interests || '',
+                    createdAt: profile.created_at,
+                    onlineSince: Number(player.joinedAt || 0) || null
                 });
             } catch (error) {
                 console.error('Could not load public profile:', getSafeErrorCode(error));
@@ -729,6 +804,13 @@ async function startServer() {
             if (!activeSocketIds.has(socket.id) || typeof text !== 'string') return;
             const cleanText = sanitizeChatMessage(text);
             if (!cleanText) return;
+
+            const burst = registerChatMessage(socket.data.chatMessageTimestamps, Date.now());
+            socket.data.chatMessageTimestamps = burst.timestamps;
+            if (!burst.allowed) {
+                await kickPlayer(socket.id, 'Du blev fjernet fra chatten for at sende for mange beskeder på kort tid.');
+                return;
+            }
 
             try {
                 const currentPlayerJson = await redis.hGet(playersKey, socket.id);
@@ -823,6 +905,11 @@ async function startServer() {
             console.error('Could not clean up expired chat presence:', getSafeErrorCode(error));
         });
     }, PRESENCE_CLEANUP_INTERVAL);
+    const idleKickTimer = setInterval(() => {
+        kickIdlePlayers().catch((error) => {
+            console.error('Could not remove inactive chat participants:', getSafeErrorCode(error));
+        });
+    }, PLAYER_IDLE_CHECK_INTERVAL);
 
     await new Promise((resolve, reject) => {
         server.once('error', reject);
@@ -836,6 +923,7 @@ async function startServer() {
     const shutdown = async () => {
         clearInterval(heartbeatTimer);
         clearInterval(cleanupTimer);
+        clearInterval(idleKickTimer);
         await new Promise((resolve) => io.close(resolve));
         if (redisSubscriber.isOpen) await redisSubscriber.quit();
         if (redisPublisher.isOpen) await redisPublisher.quit();

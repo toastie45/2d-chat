@@ -426,6 +426,9 @@
         .profile-fact dt { margin-bottom: 4px; color: #aeb2ba; font-size: 10px; font-weight: 650; }
         .profile-fact dd { margin: 0; color: #f0f1f3; font-size: 11px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
         .profile-fact-wide { grid-column: 1 / -1; border-right: 0 !important; }
+        .profile-meta { color: #d9d8d1; font-size: 10px; }
+        .profile-meta dt { margin-bottom: 5px; font-size: 10px; font-weight: 650; }
+        .profile-meta dd { min-height: 34px; margin: 0; padding: 8px 9px; border: 1px solid #3a3d44; border-radius: 5px; background: #202228; color: #f0f1f3; font-size: 11px; font-weight: 400; }
         .profile-status { min-height: 16px; margin: 0; color: var(--muted); font-size: 11px; }
         .profile-save {
             min-height: 36px;
@@ -489,6 +492,7 @@
 
         .chat-entry { margin: 0 0 8px; overflow-wrap: anywhere; }
         .chat-entry strong { color: #f2f0e9; font-weight: 600; }
+        .chat-mention { padding: 1px 3px; border-radius: 3px; background: #4a5534; color: #d5f59c; font-weight: 650; }
         .chat-time {
             margin-left: 6px;
             color: #777970;
@@ -609,6 +613,10 @@
                             <p class="profile-section-title">Profiloplysninger · <span id="profile-avatar-name"></span></p>
                             <p class="profile-hint">Udfyld de felter, du har lyst til. De udfyldte oplysninger er synlige for andre.</p>
                             <form class="profile-form" id="profile-form">
+                                <dl class="profile-facts profile-meta">
+                                    <div><dt>Oprettet</dt><dd id="profile-created-at">Henter…</dd></div>
+                                    <div><dt>Online i denne session</dt><dd id="profile-online-duration">Ikke online</dd></div>
+                                </dl>
                                 <div class="profile-facts">
                                     <label class="profile-field" for="profile-real-name">
                                         Rigtigt navn
@@ -639,6 +647,8 @@
                                 <div class="profile-fact"><dt>Rum</dt><dd id="view-profile-room"></dd></div>
                                 <div class="profile-fact"><dt>Rigtigt navn</dt><dd id="view-profile-real-name"></dd></div>
                                 <div class="profile-fact"><dt>Discord</dt><dd id="view-profile-discord"></dd></div>
+                                <div class="profile-fact"><dt>Oprettet</dt><dd id="view-profile-created-at"></dd></div>
+                                <div class="profile-fact"><dt>Online i denne session</dt><dd id="view-profile-online-duration"></dd></div>
                                 <div class="profile-fact profile-fact-wide"><dt>Interesser</dt><dd id="view-profile-interests"></dd></div>
                                 <div class="profile-fact profile-fact-wide"><dt>Profiltekst</dt><dd id="view-profile-text"></dd></div>
                             </dl>
@@ -703,10 +713,14 @@
             const profileText = document.getElementById('profile-text');
             const profileSaveButton = document.getElementById('profile-save-button');
             const profileStatus = document.getElementById('profile-status');
+            const profileCreatedAt = document.getElementById('profile-created-at');
+            const profileOnlineDuration = document.getElementById('profile-online-duration');
             const viewProfileAvatar = document.getElementById('view-profile-avatar');
             const viewProfileRoom = document.getElementById('view-profile-room');
             const viewProfileRealName = document.getElementById('view-profile-real-name');
             const viewProfileDiscord = document.getElementById('view-profile-discord');
+            const viewProfileCreatedAt = document.getElementById('view-profile-created-at');
+            const viewProfileOnlineDuration = document.getElementById('view-profile-online-duration');
             const viewProfileInterests = document.getElementById('view-profile-interests');
             const viewProfileText = document.getElementById('view-profile-text');
             const avatarContextMenu = document.getElementById('avatar-context-menu');
@@ -733,6 +747,7 @@
             let roomNoticeTimer = null;
             let contextPlayerId = null;
             let viewingProfilePlayerId = null;
+            let sessionKickMessage = '';
 
             function authFetch(url, options = {}) {
                 return fetch(url, {
@@ -748,6 +763,36 @@
             function updateDraftText(text) {
                 draftText = text.slice(0, maxMessageLength);
             }
+
+            function formatProfileDate(value) {
+                const date = new Date(value);
+                if (Number.isNaN(date.getTime())) return 'Ikke angivet';
+                return new Intl.DateTimeFormat('da-DK', {
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric'
+                }).format(date);
+            }
+
+            function formatOnlineDuration(value) {
+                const timestamp = Number(value);
+                if (!Number.isFinite(timestamp) || timestamp <= 0) return 'Ikke online';
+                const minutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60_000));
+                if (minutes < 1) return 'Mindre end et minut';
+                if (minutes < 60) return `${minutes} ${minutes === 1 ? 'minut' : 'minutter'}`;
+                const hours = Math.floor(minutes / 60);
+                if (hours < 24) return `${hours} ${hours === 1 ? 'time' : 'timer'}`;
+                const days = Math.floor(hours / 24);
+                return `${days} ${days === 1 ? 'dag' : 'dage'}`;
+            }
+
+            function updateOnlineDurations() {
+                document.querySelectorAll('[data-online-since]').forEach((element) => {
+                    element.textContent = formatOnlineDuration(element.dataset.onlineSince);
+                });
+            }
+
+            setInterval(updateOnlineDurations, 60_000);
 
             function hideSensitiveData(text) {
                 return text
@@ -836,6 +881,9 @@
                     profileDiscordName.value = result.discordName;
                     profileInterests.value = result.interests;
                     profileText.value = result.profileText;
+                    profileCreatedAt.textContent = formatProfileDate(result.createdAt);
+                    profileOnlineDuration.dataset.onlineSince = result.onlineSince || '';
+                    updateOnlineDurations();
                     profileStatus.textContent = 'Udfyldte profilfelter vises offentligt.';
                     profileLoaded = true;
                 } catch (error) {
@@ -852,6 +900,9 @@
                 viewProfileRoom.textContent = 'Fællesrum';
                 viewProfileRealName.textContent = '';
                 viewProfileDiscord.textContent = '';
+                viewProfileCreatedAt.textContent = '';
+                viewProfileOnlineDuration.textContent = '';
+                delete viewProfileOnlineDuration.dataset.onlineSince;
                 viewProfileInterests.textContent = '';
                 viewProfileText.textContent = '';
                 closeAvatarContextMenu();
@@ -957,13 +1008,41 @@
                 entry.className = 'chat-entry';
                 const sender = document.createElement('strong');
                 sender.textContent = `${player.name}: `;
-                entry.append(sender, document.createTextNode(hideSensitiveData(text)));
+                entry.append(sender);
+                appendTextWithMentions(entry, hideSensitiveData(text));
                 addChatTime(entry, createdAt);
                 chatLog.append(entry);
                 while (chatLog.children.length > 500) {
                     chatLog.removeChild(chatLog.firstElementChild);
                 }
                 chatLog.scrollTop = chatLog.scrollHeight;
+            }
+
+            function appendTextWithMentions(parent, text) {
+                const names = [...new Set(Object.values(players).map((player) => player.name))]
+                    .filter(Boolean)
+                    .sort((first, second) => second.length - first.length);
+                if (!names.length) {
+                    parent.append(document.createTextNode(text));
+                    return;
+                }
+
+                const escapedNames = names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+                const mentionPattern = new RegExp(
+                    `(^|[^\\p{L}\\p{N}_.-])(${escapedNames.join('|')})(?=$|[^\\p{L}\\p{N}_.-])`,
+                    'giu'
+                );
+                let lastIndex = 0;
+                for (const match of text.matchAll(mentionPattern)) {
+                    const mentionIndex = match.index + match[1].length;
+                    parent.append(document.createTextNode(text.slice(lastIndex, mentionIndex)));
+                    const mention = document.createElement('mark');
+                    mention.className = 'chat-mention';
+                    mention.textContent = match[2];
+                    parent.append(mention);
+                    lastIndex = mentionIndex + match[2].length;
+                }
+                parent.append(document.createTextNode(text.slice(lastIndex)));
             }
 
             function addChatSystemEntry(text) {
@@ -1166,6 +1245,12 @@
                 loginError.textContent = '';
                 joinButton.disabled = true;
                 if (currentUser) {
+                    if (sessionKickMessage) {
+                        sessionKickMessage = '';
+                        joinButton.textContent = 'Forbinder…';
+                        socket.connect();
+                        return;
+                    }
                     if (socket.connected) {
                         socket.emit('join');
                     } else {
@@ -1345,6 +1430,7 @@
             });
 
             socket.on('disconnect', (reason) => {
+                if (sessionKickMessage) return;
                 if (currentUser && reason === 'io server disconnect') {
                     authFetch('/api/auth/me')
                         .then(async (response) => {
@@ -1405,9 +1491,23 @@
                 }
             });
 
+            socket.on('session-kicked', ({ message } = {}) => {
+                sessionKickMessage = message || 'Du blev fjernet fra chatten.';
+                players = {};
+                myId = null;
+                updateOnlineList();
+                gameSection.classList.add('hidden');
+                loginSection.classList.remove('hidden');
+                loginError.textContent = `${sessionKickMessage} Du kan gå ind i rummet igen, når du er klar.`;
+                joinButton.disabled = false;
+                joinButton.textContent = 'Gå ind i rummet';
+                socket.disconnect();
+            });
+
             socket.on('join-success', ({ players: serverPlayers }) => {
                 players = {};
                 myId = socket.id;
+                sessionKickMessage = '';
                 joinButton.disabled = false;
                 for (const player of Object.values(serverPlayers)) {
                     player.text = '';
@@ -1453,6 +1553,9 @@
                 viewProfileRoom.textContent = profile.room;
                 viewProfileRealName.textContent = profile.realName || 'Ikke angivet';
                 viewProfileDiscord.textContent = profile.discordName || 'Ikke angivet';
+                viewProfileCreatedAt.textContent = formatProfileDate(profile.createdAt);
+                viewProfileOnlineDuration.dataset.onlineSince = profile.onlineSince || '';
+                updateOnlineDurations();
                 viewProfileInterests.textContent = profile.interests || 'Ikke angivet';
                 viewProfileText.textContent = profile.profileText || 'Ingen profiltekst endnu.';
             });

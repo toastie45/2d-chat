@@ -9,6 +9,7 @@ const {
 const { isAuthorizedTabSession, isValidTabId } = require('../lib/tab-session');
 const { hashRegistrationIp, MAX_ACCOUNTS_PER_IP } = require('../lib/account-ip-limit');
 const { normalizePublicProfile } = require('../lib/public-profile');
+const { CHAT_BURST_LIMIT, CHAT_BURST_WINDOW_MS, registerChatMessage } = require('../lib/chat-rate-limit');
 
 test('redacts Render and GitHub tokens before a message is stored', () => {
     const message = redactSecrets('Render rnd_exampleToken123456789 GitHub ghp_abcdefghijklmnopqrstuvwxyz');
@@ -82,6 +83,18 @@ test('normalizes optional public profile fields and enforces safe limits', () =>
     assert.equal(normalizePublicProfile({
         realName: 'Ada\u0000', profileText: '', discordName: '', interests: ''
     }), null);
+});
+
+test('allows eight rapid chat messages and blocks the ninth within ten seconds', () => {
+    let timestamps = [];
+    for (let index = 0; index < CHAT_BURST_LIMIT; index++) {
+        const result = registerChatMessage(timestamps, 1000 + index);
+        assert.equal(result.allowed, true);
+        timestamps = result.timestamps;
+    }
+
+    assert.equal(registerChatMessage(timestamps, 1008).allowed, false);
+    assert.equal(registerChatMessage(timestamps, 1000 + CHAT_BURST_WINDOW_MS).allowed, true);
 });
 
 test('accepts passwords only from 8 to 72 UTF-8 bytes', () => {
