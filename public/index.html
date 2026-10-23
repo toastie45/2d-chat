@@ -55,7 +55,7 @@
             width: 700px;
             text-align: center;
         }
-        /* Online-tæller placeret i venstre hjørne */
+        /* Online-tæller i venstre hjørne */
         #online-indicator {
             position: absolute;
             top: -25px;
@@ -294,18 +294,29 @@
             updateOnlineCount();
         });
 
+        // Præcis centrering i felterne (sikrer at cirklen lander midt i cellen)
         function snapToDiagonalGrid(x, y) {
             let cx = canvas.width / 2;
             let cy = canvas.height / 2;
             let dx = x - cx;
             let dy = y - cy;
+
             let angle = -Math.PI / 4;
-            let rx = dx * Math.cos(angle) - dy * Math.sin(angle);
-            let ry = dx * Math.sin(angle) + dy * Math.cos(angle);
-            let snappedRx = Math.floor(rx / gridSize) * gridSize + gridSize / 2;
-            let snappedRy = Math.floor(ry / gridSize) * gridSize + gridSize / 2;
-            let finalDx = snappedRx * Math.cos(-angle) - snappedRy * Math.sin(-angle);
-            let finalDy = snappedRx * Math.sin(-angle) + snappedRy * Math.cos(-angle);
+            let cos = Math.cos(angle);
+            let sin = Math.sin(angle);
+            let rx = dx * cos - dy * sin;
+            let ry = dx * sin + dy * cos;
+
+            // Brug Math.round for at ramme midt i cellen
+            let snappedRx = Math.round(rx / gridSize) * gridSize;
+            let snappedRy = Math.round(ry / gridSize) * gridSize;
+
+            let backAngle = Math.PI / 4;
+            let bCos = Math.cos(backAngle);
+            let bSin = Math.sin(backAngle);
+            let finalDx = snappedRx * bCos - snappedRy * bSin;
+            let finalDy = snappedRx * bSin + snappedRy * bCos;
+
             return {
                 x: Math.round(cx + finalDx),
                 y: Math.round(cy + finalDy)
@@ -382,19 +393,20 @@
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+            // Tegn diagonalt gitter, hvor cellerne er centreret omkring origo
             ctx.save();
             ctx.translate(canvas.width / 2, canvas.height / 2);
             ctx.rotate(Math.PI / 4);
             ctx.strokeStyle = '#252525';
             ctx.lineWidth = 1;
             let range = 500;
-            for (let x = -range; x <= range; x += gridSize) {
+            for (let x = -range + gridSize / 2; x <= range; x += gridSize) {
                 ctx.beginPath();
                 ctx.moveTo(x, -range);
                 ctx.lineTo(x, range);
                 ctx.stroke();
             }
-            for (let y = -range; y <= range; y += gridSize) {
+            for (let y = -range + gridSize / 2; y <= range; y += gridSize) {
                 ctx.beginPath();
                 ctx.moveTo(-range, y);
                 ctx.lineTo(range, y);
@@ -461,11 +473,9 @@
                     let bubbleX = p.x - bubbleWidth / 2;
                     let bubbleY = p.y - radius - bubbleHeight - 12;
 
-                    // Kantsikring for venstre/højre
                     if (bubbleX < 5) bubbleX = 5;
                     else if (bubbleX + bubbleWidth > canvas.width - 5) bubbleX = canvas.width - bubbleWidth - 5;
 
-                    // Sikrer at taleboblen ALTID forbliver oven over avataren (klemmer den bare til toppen hvis nødvendigt)
                     if (bubbleY < 5) {
                         bubbleY = 5;
                     }
@@ -482,7 +492,6 @@
                     ctx.fill();
                     ctx.stroke();
 
-                    // Taleboble hale peger altid nedad mod avataren
                     ctx.beginPath();
                     let tailTipX = Math.max(bubbleX + 10, Math.min(p.x, bubbleX + bubbleWidth - 10));
                     ctx.moveTo(tailTipX - 6, bubbleY + bubbleHeight);
