@@ -12,8 +12,8 @@ const io = new Server(server, {
 app.use(express.static('public'));
 
 // --- SUPABASE OPSÆTNING ---
-const SUPABASE_URL = 'https://pgkitxhtgbmqxzgpgqqs.supabase.co'; //[cite: 3]
-const SUPABASE_SERVICE_KEY = 'INDSET_DIN_HEMMELIGE_NOEGLE_HER'; // Kopier den fulde secret key fra Supabase her
+const SUPABASE_URL = 'https://pgkitxhtgbmqxzgpgqqs.supabase.co';
+const SUPABASE_SERVICE_KEY = 'sb_secret_kvnpwn0D3dpBAaa_kqWMaw_XTnitF7d';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
   auth: { persistSession: false }
