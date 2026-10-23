@@ -785,12 +785,6 @@
                 const y = (event.clientY - bounds.top) * canvas.height / bounds.height;
                 const col = Math.max(0, Math.min(gridCount - 1, Math.floor(x / cellSize)));
                 const row = Math.max(0, Math.min(gridCount - 1, Math.floor(y / cellSize)));
-                const centerX = (col + 0.5) * cellSize;
-                const centerY = (row + 0.5) * cellSize;
-                const halfDiagonal = cellSize * 0.48;
-                if (Math.abs(x - centerX) / halfDiagonal + Math.abs(y - centerY) / halfDiagonal > 1) {
-                    return null;
-                }
                 return { col, row };
             }
 
@@ -1037,7 +1031,6 @@
             canvas.addEventListener('click', (event) => {
                 const cell = getCellFromPointer(event);
                 canvas.focus({ preventScroll: true });
-                if (!cell) return;
                 moveToCell(cell.col, cell.row);
             });
 
