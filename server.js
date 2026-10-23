@@ -60,7 +60,8 @@ io.on('connection', (socket) => {
       y: validStart.y,
       name: cleanName,
       text: '',
-      typingText: ''
+      typingText: '',
+      messageTime: null
     };
 
     socket.emit('join-success', players);
@@ -80,10 +81,19 @@ io.on('connection', (socket) => {
     if (players[socket.id]) {
       players[socket.id].typingText = data.typingText;
       players[socket.id].text = data.text;
+      
+      // Sæt tidsstempel hvis der sendes en rigtig besked
+      if (data.text) {
+        players[socket.id].messageTime = Date.now();
+      } else if (!data.typingText) {
+        players[socket.id].messageTime = null;
+      }
+
       io.emit('playerTyping', { 
         id: socket.id, 
         typingText: data.typingText, 
-        text: data.text 
+        text: data.text,
+        messageTime: players[socket.id].messageTime
       });
     }
   });
