@@ -17,7 +17,12 @@ const {
     redactSecrets,
     sanitizeChatMessage
 } = require('./lib/chat-security');
-const { isAuthorizedTabSession, isValidTabId } = require('./lib/tab-session');
+const {
+    isAuthorizedTabSession,
+    isValidTabId,
+    mapTabSessionCookie,
+    renameSessionSetCookie
+} = require('./lib/tab-session');
 const { hashRegistrationIp, MAX_ACCOUNTS_PER_IP } = require('./lib/account-ip-limit');
 const { normalizePublicProfile } = require('./lib/public-profile');
 const { registerChatMessage } = require('./lib/chat-rate-limit');
@@ -306,6 +311,24 @@ async function startServer() {
             sameSite: 'lax'
         }
     });
+    const useTabSession = (getTabId) => (request, response, next) => {
+        const tabId = getTabId(request);
+        if (!isValidTabId(tabId)) {
+            next();
+            return;
+        }
+        request.headers.cookie = mapTabSessionCookie(request.headers.cookie, tabId);
+        const originalSetHeader = response.setHeader;
+        response.setHeader = function (name, value, ...args) {
+            const mappedValue = String(name).toLowerCase() === 'set-cookie'
+                ? renameSessionSetCookie(value, tabId)
+                : value;
+            return originalSetHeader.call(this, name, mappedValue, ...args);
+        };
+        sessionMiddleware(request, response, next);
+    };
+    const getHttpTabId = (request) => request.get('x-chat-tab-id');
+    const getSocketTabId = (request) => request._query && request._query.tabId;
     const activeSocketIds = new Set();
     const playersKey = 'chat:players';
     const cellsKey = 'chat:cells';
@@ -352,8 +375,8 @@ async function startServer() {
     app.set('trust proxy', 1);
     app.use(express.static(path.join(__dirname, 'public')));
     app.use(express.json({ limit: '8kb' }));
-    app.use(sessionMiddleware);
-    io.engine.use(sessionMiddleware);
+    app.use(useTabSession(getHttpTabId));
+    io.engine.use(useTabSession(getSocketTabId));
 
     const getRateLimitKey = (request) => {
         const address = request.ip || request.socket.remoteAddress || 'unknown';

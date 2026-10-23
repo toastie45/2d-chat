@@ -6,7 +6,13 @@ const {
     redactSecrets,
     sanitizeChatMessage
 } = require('../lib/chat-security');
-const { isAuthorizedTabSession, isValidTabId } = require('../lib/tab-session');
+const {
+    getTabSessionCookieName,
+    isAuthorizedTabSession,
+    isValidTabId,
+    mapTabSessionCookie,
+    renameSessionSetCookie
+} = require('../lib/tab-session');
 const { hashRegistrationIp, MAX_ACCOUNTS_PER_IP } = require('../lib/account-ip-limit');
 const { normalizePublicProfile } = require('../lib/public-profile');
 const { CHAT_BURST_LIMIT, CHAT_BURST_WINDOW_MS, registerChatMessage } = require('../lib/chat-rate-limit');
@@ -118,6 +124,23 @@ test('rejects malformed browser tab identifiers', () => {
     assert.equal(isValidTabId(''), false);
     assert.equal(isValidTabId('not-a-uuid'), false);
     assert.equal(isValidTabId('9bba85cc-775a-4a64-9cbd-e399354ee53z'), false);
+});
+
+test('isolates authentication cookies per browser tab', () => {
+    const firstTabId = '9bba85cc-775a-4a64-9cbd-e399354ee53f';
+    const secondTabId = '83a4fd62-6a39-4ec0-9845-1a0ecad19e52';
+    const firstCookieName = getTabSessionCookieName(firstTabId);
+    const secondCookieName = getTabSessionCookieName(secondTabId);
+    const cookies = `${firstCookieName}=first-session; ${secondCookieName}=second-session; chat.sid=stale-shared-session`;
+
+    assert.notEqual(firstCookieName, secondCookieName);
+    assert.equal(mapTabSessionCookie(cookies, firstTabId), 'chat.sid=first-session');
+    assert.equal(mapTabSessionCookie(cookies, secondTabId), 'chat.sid=second-session');
+    assert.equal(mapTabSessionCookie('chat.sid=stale-shared-session', firstTabId), '');
+    assert.equal(
+        renameSessionSetCookie('chat.sid=new-session; Path=/; HttpOnly', firstTabId),
+        `${firstCookieName}=new-session; Path=/; HttpOnly`
+    );
 });
 
 test('hashes registration IPs without storing their raw address', () => {

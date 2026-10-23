@@ -36,7 +36,7 @@ Users can optionally add a real name, Discord name (up to 64 characters), intere
 
 Chat messages are highlighted when they contain an online user's name as a whole word. To limit rapid repeated messages, sending more than eight messages within ten seconds removes the user from the room; they can choose to re-enter. Users are also removed after 20 minutes without an accepted move or sent message. Heartbeats only keep the connection's presence alive; they are not user activity and do not reset the inactivity timer. Re-entering starts a new 20-minute inactivity period, so a user who stays idle again is kicked again.
 
-Login is bound to the browser tab: refreshing the page keeps the session, but opening the chat in a new tab requires logging in again. The authentication cookie is a browser-session cookie, and a per-tab identifier in `sessionStorage` is checked by both HTTP and WebSocket requests.
+Login is bound to the browser tab: refreshing the page keeps the session, but opening the chat in a new tab requires logging in again. Each tab uses a separate browser-session cookie, selected using its per-tab identifier from `sessionStorage`, for both HTTP and WebSocket requests. This lets separate tabs use different accounts without overwriting each other's login.
 
 ## Deploy to Render
 

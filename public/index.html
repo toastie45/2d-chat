@@ -675,6 +675,7 @@
             const socket = io({
                 autoConnect: false,
                 transports: ['websocket'],
+                query: { tabId },
                 auth: { tabId }
             });
             const canvas = document.getElementById('game-canvas');
