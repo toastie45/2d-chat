@@ -52,7 +52,7 @@ end
 
 for index = 4, #ARGV do
     local cell = ARGV[index]
-    if not redis.call('HEXISTS', KEYS[2], cell) then
+    if redis.call('HEXISTS', KEYS[2], cell) == 0 then
         local col, row = string.match(cell, '^(%d+):(%d+)$')
         local player = {
             id = ARGV[1],
@@ -68,12 +68,7 @@ for index = 4, #ARGV do
         return cjson.encode(player)
     end
 end
-return cjson.encode({
-    error = 'full',
-    argumentCount = #ARGV,
-    playerCount = redis.call('HLEN', KEYS[1]),
-    occupiedCellCount = redis.call('HLEN', KEYS[2])
-})
+return false
 `;
 
 const PLAYER_MOVE_SCRIPT = `
@@ -540,22 +535,24 @@ async function startServer() {
                     String(Date.now()),
                     ...GRID_CELLS.map((cell) => `${cell.col}:${cell.row}`)
                 ];
-                const joinedResultJson = await redis.eval(PLAYER_JOIN_SCRIPT, {
+                const joinedPlayerJson = await redis.eval(PLAYER_JOIN_SCRIPT, {
                     keys: [playersKey, cellsKey],
                     arguments: joinArguments
                 });
-                const joinedResult = joinedResultJson ? JSON.parse(joinedResultJson) : null;
-                if (!joinedResult || joinedResult.error) {
-                    console.warn('Chat room join did not allocate a grid cell:', joinedResult || {
-                        argumentCount: joinArguments.length,
-                        candidateCellCount: GRID_CELLS.length,
-                        resultType: typeof joinedResultJson
+                if (!joinedPlayerJson) {
+                    const [playerCount, occupiedCellCount] = await Promise.all([
+                        redis.hLen(playersKey),
+                        redis.hLen(cellsKey)
+                    ]);
+                    console.warn('Chat room has no available grid cells:', {
+                        players: playerCount,
+                        occupiedCells: occupiedCellCount
                     });
                     socket.emit('room-error', { message: 'Rummet er fyldt. Prøv igen senere.' });
                     return;
                 }
 
-                const player = publicPlayer(joinedResult);
+                const player = publicPlayer(JSON.parse(joinedPlayerJson));
                 activeSocketIds.add(socket.id);
                 const [currentPlayers, history] = await Promise.all([
                     getPlayers(),
