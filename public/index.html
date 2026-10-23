@@ -59,10 +59,7 @@
             margin: 0 auto;
             border: 2px solid #444;
             border-radius: 5px;
-        }
-        #chat-input {
-            margin-top: 10px;
-            width: 408px;
+            cursor: pointer;
         }
     </style>
 </head>
@@ -79,7 +76,6 @@
     <!-- SPILLET -->
     <div id="game-container">
         <canvas id="gameCanvas" width="408" height="374"></canvas>
-        <input type="text" id="chat-input" placeholder="Skriv en besked (tryk Enter)..." autocomplete="off">
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
@@ -92,13 +88,12 @@
         const errorMsg = document.getElementById('error-msg');
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-        const chatInput = document.getElementById('chat-input');
 
         let players = {};
         let myId = null;
         const radius = 16;
-        const speed = 3;
-        const keys = {};
+        let currentTyping = '';
+        let currentMessage = '';
 
         function joinGame() {
             const username = usernameInput.value.trim();
@@ -146,58 +141,37 @@
             delete players[id];
         });
 
+        // Klik med musen for at flytte cirklen
+        canvas.addEventListener('click', (e) => {
+            if (!myId || !players[myId]) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            socket.emit('move', { x: Math.round(x), y: Math.round(y) });
+        });
+
+        // Skriv direkte via tastaturet uden tekstbar
         window.addEventListener('keydown', (e) => {
-            if (document.activeElement === chatInput) return;
-            keys[e.key] = true;
-        });
-
-        window.addEventListener('keyup', (e) => {
-            keys[e.key] = false;
-        });
-
-        chatInput.addEventListener('input', () => {
-            if (players[myId]) {
-                players[myId].typingText = chatInput.value;
-                socket.emit('typing', { typingText: chatInput.value, text: '' });
-            }
-        });
-
-        chatInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                const text = chatInput.value.trim();
-                if (players[myId]) {
-                    players[myId].text = text;
-                    players[myId].typingText = '';
-                    socket.emit('typing', { typingText: '', text: text });
-                }
-                chatInput.value = '';
-            }
-        });
-
-        function update() {
             if (!myId || !players[myId]) return;
 
-            let p = players[myId];
-            let moved = false;
-            let newX = p.x;
-            let newY = p.y;
-
-            if (keys['ArrowUp'] || keys['w'] || keys['W']) { newY -= speed; moved = true; }
-            if (keys['ArrowDown'] || keys['s'] || keys['S']) { newY += speed; moved = true; }
-            if (keys['ArrowLeft'] || keys['a'] || keys['A']) { newX -= speed; moved = true; }
-            if (keys['ArrowRight'] || keys['d'] || keys['D']) { newX += speed; moved = true; }
-
-            if (moved) {
-                newX = Math.max(radius, Math.min(canvas.width - radius, newX));
-                newY = Math.max(radius, Math.min(canvas.height - radius, newY));
-
-                if (newX !== p.x || newY !== p.y) {
-                    p.x = newX;
-                    p.y = newY;
-                    socket.emit('move', { x: p.x, y: p.y });
-                }
+            // Ignorer piltaster eller specielle taster, hvis det er relevant, ellers fang bogstaver
+            if (e.key === 'Enter') {
+                currentMessage = currentTyping;
+                currentTyping = '';
+                players[myId].text = currentMessage;
+                players[myId].typingText = '';
+                socket.emit('typing', { typingText: '', text: currentMessage });
+            } else if (e.key === 'Backspace') {
+                currentTyping = currentTyping.slice(0, -1);
+                players[myId].typingText = currentTyping;
+                socket.emit('typing', { typingText: currentTyping, text: currentMessage });
+            } else if (e.key.length === 1) {
+                currentTyping += e.key;
+                players[myId].typingText = currentTyping;
+                socket.emit('typing', { typingText: currentTyping, text: currentMessage });
             }
-        }
+        });
 
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -205,7 +179,7 @@
             for (let id in players) {
                 let p = players[id];
 
-                // 1. KUN GRØNNE CIRKLER FOR ALLE SPILLERE
+                // Grøn cirkel for alle
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
                 ctx.fillStyle = '#28a745';
@@ -215,13 +189,13 @@
                 ctx.stroke();
                 ctx.closePath();
 
-                // 2. Brugernavn ovenpå cirklen
+                // Brugernavn
                 ctx.fillStyle = '#fff';
                 ctx.font = '12px Arial';
                 ctx.textAlign = 'center';
                 ctx.fillText(p.name, p.x, p.y - radius - 6);
 
-                // 3. Tekstboble til chat / live-skrivning
+                // Tekstboble
                 let displayText = p.typingText || p.text;
                 if (displayText) {
                     ctx.font = '12px Arial';
@@ -231,7 +205,6 @@
                     let bubbleX = p.x - bubbleWidth / 2;
                     let bubbleY = p.y - radius - 35;
 
-                    // Tegn selve tekstboblen (baggrund og kant)
                     ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
                     ctx.strokeStyle = '#28a745';
                     ctx.lineWidth = 1.5;
@@ -244,7 +217,6 @@
                     ctx.fill();
                     ctx.stroke();
 
-                    // Tekst inde i boblen
                     ctx.fillStyle = '#fff';
                     ctx.textAlign = 'center';
                     ctx.fillText(displayText, p.x, bubbleY + 15);
@@ -253,7 +225,6 @@
         }
 
         function gameLoop() {
-            update();
             draw();
             requestAnimationFrame(gameLoop);
         }
