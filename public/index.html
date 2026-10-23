@@ -571,9 +571,7 @@
                             <p class="member-empty hidden" id="member-empty" role="status" aria-live="polite">Der er ingen brugere her endnu.</p>
                         </section>
                         <section class="side-panel chat-section" id="chat-panel" aria-labelledby="chat-title" hidden>
-                            <h2 class="side-title" id="chat-title">Samtalen i rummet</h2>
-                            <p class="chat-hint">Talebobler bliver vist i 10 sekunder.</p>
-                            <p class="chat-hint" id="message-counter" aria-live="off">0/100 tegn</p>
+                            <h2 class="side-title" id="chat-title">Velkommen i Fællesrum</h2>
                             <div class="chat-log" id="chat-log" role="log" aria-live="polite" aria-relevant="additions">
                                 <p class="chat-empty" id="chat-empty">Samtalen begynder her.</p>
                             </div>
@@ -638,7 +636,6 @@
             const memberEmpty = document.getElementById('member-empty');
             const membersPanel = document.getElementById('members-panel');
             const chatPanel = document.getElementById('chat-panel');
-            const messageCounter = document.getElementById('message-counter');
             const roomNotice = document.getElementById('room-notice');
             const logoutButton = document.getElementById('logout-button');
             const chatLog = document.getElementById('chat-log');
@@ -673,7 +670,6 @@
 
             function updateDraftText(text) {
                 draftText = text.slice(0, maxMessageLength);
-                messageCounter.textContent = `${draftText.length}/${maxMessageLength} tegn`;
             }
 
             function hideSensitiveData(text) {
