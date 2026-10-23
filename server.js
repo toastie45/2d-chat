@@ -26,6 +26,7 @@ const {
 const { hashRegistrationIp, MAX_ACCOUNTS_PER_IP } = require('./lib/account-ip-limit');
 const { normalizePublicProfile } = require('./lib/public-profile');
 const { registerChatMessage } = require('./lib/chat-rate-limit');
+const { GUESTBOOK_MESSAGE_MAX_LENGTH, normalizeGuestbookMessage } = require('./lib/guestbook');
 
 const GRID_COUNT = 6;
 const MESSAGE_DURATION = 10_000;
@@ -358,6 +359,26 @@ async function startServer() {
         )
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS chat_online_sessions_user_id_idx ON chat_online_sessions (user_id)');
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS chat_profile_relationships (
+            user_id BIGINT NOT NULL REFERENCES chat_users(id) ON DELETE CASCADE,
+            target_user_id BIGINT NOT NULL REFERENCES chat_users(id) ON DELETE CASCADE,
+            relationship VARCHAR(8) NOT NULL CHECK (relationship IN ('friend', 'enemy')),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (user_id, target_user_id),
+            CHECK (user_id <> target_user_id)
+        )
+    `);
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS chat_guestbook_entries (
+            id BIGSERIAL PRIMARY KEY,
+            profile_user_id BIGINT NOT NULL REFERENCES chat_users(id) ON DELETE CASCADE,
+            author_user_id BIGINT NOT NULL REFERENCES chat_users(id) ON DELETE CASCADE,
+            message VARCHAR(${GUESTBOOK_MESSAGE_MAX_LENGTH}) NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS chat_guestbook_profile_recent_idx ON chat_guestbook_entries (profile_user_id, id DESC)');
     await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_messages (
             id BIGSERIAL PRIMARY KEY,
@@ -821,6 +842,20 @@ async function startServer() {
         return getPublicPlayers(await redis.hGetAll(playersKey));
     }
 
+    async function getProfileTarget(playerId) {
+        if (typeof playerId !== 'string' || playerId.length > 128) return null;
+        const playerJson = await redis.hGet(playersKey, playerId);
+        if (!playerJson) return null;
+        const player = JSON.parse(playerJson);
+        const account = normalizeUsername(player.name);
+        if (!account) return null;
+        const { rows: [profile] } = await pool.query(
+            'SELECT id, username, real_name, profile_text, discord_name, interests, created_at FROM chat_users WHERE username_normalized = $1',
+            [account.normalized]
+        );
+        return profile ? { player, profile } : null;
+    }
+
     io.on('connection', (socket) => {
         socket.join(`session:${socket.request.sessionID}`);
         socket.on('profile-request', async (payload) => {
@@ -834,25 +869,16 @@ async function startServer() {
             socket.data.lastProfileRequestAt = now;
             try {
                 await cleanupStalePlayers();
-                const playerJson = await redis.hGet(playersKey, playerId);
-                if (!playerJson) {
+                const target = await getProfileTarget(playerId);
+                if (!target) {
                     socket.emit('profile-error', { playerId, message: 'Brugeren er ikke længere i rummet.' });
                     return;
                 }
-                const player = JSON.parse(playerJson);
-                const account = normalizeUsername(player.name);
-                if (!account) {
-                    socket.emit('profile-error', { playerId, message: 'Profilen kunne ikke indlæses.' });
-                    return;
-                }
-                const { rows: [profile] } = await pool.query(
-                    'SELECT id, real_name, profile_text, discord_name, interests, created_at FROM chat_users WHERE username_normalized = $1',
-                    [account.normalized]
+                const { player, profile } = target;
+                const { rows: [relationship] } = await pool.query(
+                    'SELECT relationship FROM chat_profile_relationships WHERE user_id = $1 AND target_user_id = $2',
+                    [socket.data.user.id, profile.id]
                 );
-                if (!profile) {
-                    socket.emit('profile-error', { playerId, message: 'Profilen blev ikke fundet.' });
-                    return;
-                }
                 socket.emit('profile-info', {
                     playerId,
                     avatarName: player.name,
@@ -862,11 +888,178 @@ async function startServer() {
                     discordName: profile.discord_name || '',
                     interests: profile.interests || '',
                     createdAt: profile.created_at,
-                    totalOnlineMs: await getTotalOnlineMs(profile.id)
+                    totalOnlineMs: await getTotalOnlineMs(profile.id),
+                    relationship: relationship ? relationship.relationship : null,
+                    isOwnProfile: String(profile.id) === String(socket.data.user.id)
                 });
             } catch (error) {
                 console.error('Could not load public profile:', getSafeErrorCode(error));
                 socket.emit('profile-error', { playerId, message: 'Profilen kunne ikke indlæses. Prøv igen.' });
+            }
+        });
+
+        socket.on('profile-relationship-toggle', async (payload) => {
+            const playerId = payload && payload.playerId;
+            const relationship = payload && payload.relationship;
+            if (
+                !activeSocketIds.has(socket.id) ||
+                typeof playerId !== 'string' ||
+                playerId.length > 128 ||
+                !['friend', 'enemy'].includes(relationship)
+            ) return;
+
+            try {
+                const target = await getProfileTarget(playerId);
+                if (!target) {
+                    socket.emit('profile-relationship-result', {
+                        playerId,
+                        error: 'Brugeren er ikke længere i rummet.'
+                    });
+                    return;
+                }
+                if (String(target.profile.id) === String(socket.data.user.id)) {
+                    socket.emit('profile-relationship-result', {
+                        playerId,
+                        error: 'Du kan ikke føje dig selv til en liste.'
+                    });
+                    return;
+                }
+
+                const client = await pool.connect();
+                let nextRelationship = null;
+                try {
+                    await client.query('BEGIN');
+                    await client.query(
+                        'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+                        [`profile-relationship:${socket.data.user.id}:${target.profile.id}`]
+                    );
+                    const { rows: [existing] } = await client.query(
+                        'SELECT relationship FROM chat_profile_relationships WHERE user_id = $1 AND target_user_id = $2 FOR UPDATE',
+                        [socket.data.user.id, target.profile.id]
+                    );
+                    if (existing && existing.relationship === relationship) {
+                        await client.query(
+                            'DELETE FROM chat_profile_relationships WHERE user_id = $1 AND target_user_id = $2',
+                            [socket.data.user.id, target.profile.id]
+                        );
+                    } else {
+                        await client.query(`
+                            INSERT INTO chat_profile_relationships (user_id, target_user_id, relationship)
+                            VALUES ($1, $2, $3)
+                            ON CONFLICT (user_id, target_user_id)
+                            DO UPDATE SET relationship = EXCLUDED.relationship, created_at = NOW()
+                        `, [socket.data.user.id, target.profile.id, relationship]);
+                        nextRelationship = relationship;
+                    }
+                    await client.query('COMMIT');
+                } catch (error) {
+                    await client.query('ROLLBACK');
+                    throw error;
+                } finally {
+                    client.release();
+                }
+                socket.emit('profile-relationship-result', { playerId, relationship: nextRelationship });
+            } catch (error) {
+                console.error('Could not update profile relationship:', getSafeErrorCode(error));
+                socket.emit('profile-relationship-result', {
+                    playerId,
+                    error: 'Listen kunne ikke opdateres. Prøv igen.'
+                });
+            }
+        });
+
+        socket.on('guestbook-request', async (payload) => {
+            const playerId = payload && payload.playerId;
+            if (!activeSocketIds.has(socket.id) || typeof playerId !== 'string' || playerId.length > 128) return;
+            try {
+                await cleanupStalePlayers();
+                const target = await getProfileTarget(playerId);
+                if (!target) {
+                    socket.emit('guestbook-error', { playerId, message: 'Brugeren er ikke længere i rummet.' });
+                    return;
+                }
+                const { rows: entries } = await pool.query(`
+                    SELECT entry.id, author.username AS author_name, entry.message, entry.created_at
+                    FROM chat_guestbook_entries entry
+                    JOIN chat_users author ON author.id = entry.author_user_id
+                    WHERE entry.profile_user_id = $1
+                    ORDER BY entry.id DESC
+                    LIMIT 50
+                `, [target.profile.id]);
+                socket.emit('guestbook-info', {
+                    playerId,
+                    ownerUserId: String(target.profile.id),
+                    entries: entries.reverse()
+                });
+            } catch (error) {
+                console.error('Could not load guestbook:', getSafeErrorCode(error));
+                socket.emit('guestbook-error', { playerId, message: 'Gæstebogen kunne ikke indlæses.' });
+            }
+        });
+
+        socket.on('guestbook-add', async (payload) => {
+            const playerId = payload && payload.playerId;
+            const message = normalizeGuestbookMessage(payload && payload.message);
+            if (!activeSocketIds.has(socket.id) || typeof playerId !== 'string' || playerId.length > 128) return;
+            if (!message) {
+                socket.emit('guestbook-error', {
+                    playerId,
+                    message: `Skriv en hilsen på 1-${GUESTBOOK_MESSAGE_MAX_LENGTH} tegn.`
+                });
+                return;
+            }
+
+            try {
+                const target = await getProfileTarget(playerId);
+                if (!target) {
+                    socket.emit('guestbook-error', { playerId, message: 'Brugeren er ikke længere i rummet.' });
+                    return;
+                }
+                if (String(target.profile.id) === String(socket.data.user.id)) {
+                    socket.emit('guestbook-error', { playerId, message: 'Du kan ikke skrive i din egen gæstebog.' });
+                    return;
+                }
+                const cooldownKey = `chat:guestbook-cooldown:${socket.data.user.id}`;
+                const cooldown = await redis.set(cooldownKey, '1', { EX: 10, NX: true });
+                if (!cooldown) {
+                    socket.emit('guestbook-error', { playerId, message: 'Vent lidt, før du skriver en hilsen mere.' });
+                    return;
+                }
+                await pool.query(
+                    'INSERT INTO chat_guestbook_entries (profile_user_id, author_user_id, message) VALUES ($1, $2, $3)',
+                    [target.profile.id, socket.data.user.id, message]
+                );
+                socket.emit('guestbook-added', { playerId });
+            } catch (error) {
+                console.error('Could not save guestbook entry:', getSafeErrorCode(error));
+                socket.emit('guestbook-error', { playerId, message: 'Hilsnen kunne ikke gemmes. Prøv igen.' });
+            }
+        });
+
+        socket.on('guestbook-delete', async (payload) => {
+            const playerId = payload && payload.playerId;
+            const entryId = payload && payload.entryId;
+            if (
+                !activeSocketIds.has(socket.id) ||
+                typeof playerId !== 'string' ||
+                playerId.length > 128 ||
+                !/^[1-9]\d{0,18}$/.test(String(entryId || ''))
+            ) return;
+
+            try {
+                const target = await getProfileTarget(playerId);
+                if (!target || String(target.profile.id) !== String(socket.data.user.id)) {
+                    socket.emit('guestbook-error', { playerId, message: 'Kun gæstebogens ejer kan slette hilsner.' });
+                    return;
+                }
+                await pool.query(
+                    'DELETE FROM chat_guestbook_entries WHERE id = $1 AND profile_user_id = $2',
+                    [entryId, target.profile.id]
+                );
+                socket.emit('guestbook-deleted', { playerId, entryId: String(entryId) });
+            } catch (error) {
+                console.error('Could not delete guestbook entry:', getSafeErrorCode(error));
+                socket.emit('guestbook-error', { playerId, message: 'Hilsnen kunne ikke slettes. Prøv igen.' });
             }
         });
 

@@ -353,6 +353,16 @@
         }
 
         .you-tag { margin-left: auto; color: var(--muted); font-size: 10px; }
+        .visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
 
         .profile-panel { overflow-y: auto; }
         .profile-section-title {
@@ -401,6 +411,87 @@
         .profile-fact dt { margin-bottom: 4px; color: #aeb2ba; font-size: 10px; font-weight: 650; }
         .profile-fact dd { margin: 0; color: #f0f1f3; font-size: 11px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
         .profile-fact-wide { grid-column: 1 / -1; border-right: 0 !important; }
+        .profile-actions { display: flex; gap: 7px; margin: -5px 0 12px; }
+        .profile-action {
+            display: grid;
+            width: 34px;
+            height: 32px;
+            place-items: center;
+            padding: 0;
+            border: 1px solid #3a3d44;
+            border-radius: 5px;
+            background: #202228;
+            color: #f0f1f3;
+            font-size: 17px;
+            cursor: pointer;
+        }
+        .profile-action:hover, .profile-action[aria-pressed="true"] { border-color: #829e52; background: #303729; }
+        .profile-action:disabled { cursor: not-allowed; opacity: .45; }
+        .profile-action:focus-visible, .profile-page-select:focus-visible, .guestbook-form textarea:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+        .profile-page-select {
+            width: 100%;
+            min-height: 34px;
+            margin: 0 0 12px;
+            padding: 6px 9px;
+            border: 1px solid #3a3d44;
+            border-radius: 5px;
+            background: #202228;
+            color: #f0f1f3;
+            font: inherit;
+            font-size: 11px;
+        }
+        .guestbook-page[hidden], .profile-info-page[hidden] { display: none; }
+        .guestbook-list { display: grid; gap: 9px; margin-bottom: 12px; }
+        .guestbook-entry {
+            padding: 10px;
+            border: 1px solid #363941;
+            border-radius: 6px;
+            background: #22242a;
+        }
+        .guestbook-entry-header { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+        .guestbook-author { min-width: 0; color: #f0f1f3; font-size: 10px; font-weight: 650; overflow-wrap: anywhere; }
+        .guestbook-date { margin-left: auto; color: #aeb2ba; font-size: 9px; white-space: nowrap; }
+        .guestbook-message { margin: 0; color: #d9d8d1; font-size: 11px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .guestbook-delete {
+            margin-left: 4px;
+            padding: 2px 5px;
+            border: 1px solid #454850;
+            border-radius: 4px;
+            background: #2a2c32;
+            color: #d9d8d1;
+            font-size: 9px;
+            cursor: pointer;
+        }
+        .guestbook-empty, .guestbook-status { margin: 0 0 10px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+        .guestbook-form { display: grid; gap: 8px; }
+        .guestbook-form textarea {
+            width: 100%;
+            min-height: 76px;
+            padding: 8px 9px;
+            border: 1px solid #3a3d44;
+            border-radius: 5px;
+            background: #202228;
+            color: #f2f0e9;
+            font: inherit;
+            font-size: 11px;
+            resize: vertical;
+        }
+        .guestbook-form button {
+            justify-self: start;
+            min-height: 32px;
+            padding: 0 11px;
+            border: 1px solid var(--accent);
+            border-radius: 5px;
+            background: var(--accent);
+            color: #17200e;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .guestbook-form button:disabled { cursor: wait; opacity: .6; }
         .profile-meta { color: #d9d8d1; font-size: 10px; }
         .profile-meta dt { margin-bottom: 5px; font-size: 10px; font-weight: 650; }
         .profile-meta dd { min-height: 34px; margin: 0; padding: 8px 9px; border: 1px solid #3a3d44; border-radius: 5px; background: #202228; color: #f0f1f3; font-size: 11px; font-weight: 400; }
@@ -610,15 +701,39 @@
                         <section class="side-panel profile-panel" id="profile-view-panel" aria-labelledby="profile-view-title" hidden>
                             <h2 class="side-title" id="profile-view-title">Profil</h2>
                             <p class="profile-section-title" id="profile-view-name">Henter profil…</p>
-                            <dl class="profile-facts-view">
-                                <div class="profile-fact"><dt>Level</dt><dd id="view-profile-room">1</dd></div>
-                                <div class="profile-fact"><dt>Rigtigt navn</dt><dd id="view-profile-real-name"></dd></div>
-                                <div class="profile-fact"><dt>Discord</dt><dd id="view-profile-discord"></dd></div>
-                                <div class="profile-fact"><dt>Interesser</dt><dd id="view-profile-interests"></dd></div>
-                                <div class="profile-fact"><dt>Oprettet</dt><dd id="view-profile-created-at"></dd></div>
-                                <div class="profile-fact"><dt>Samlet online</dt><dd id="view-profile-online-duration"></dd></div>
-                                <div class="profile-fact profile-fact-wide"><dt>Profiltekst</dt><dd id="view-profile-text"></dd></div>
-                            </dl>
+                            <div class="profile-actions" aria-label="Profilhandlinger">
+                                <button class="profile-action" id="profile-friend-button" type="button" aria-label="Tilføj til venneliste" title="Tilføj til venneliste" aria-pressed="false">🫂</button>
+                                <button class="profile-action" id="profile-enemy-button" type="button" aria-label="Tilføj til fjendeliste" title="Tilføj til fjendeliste" aria-pressed="false">⚔️</button>
+                                <button class="profile-action" id="profile-guestbook-button" type="button" aria-label="Åbn gæstebog" title="Åbn gæstebog">📖</button>
+                            </div>
+                            <label class="visually-hidden" for="profile-page-select">Vælg infoside</label>
+                            <select class="profile-page-select" id="profile-page-select">
+                                <option value="">Vælg infoside:</option>
+                                <option value="info">Info</option>
+                                <option value="guestbook">Gæstebog</option>
+                            </select>
+                            <div class="profile-info-page" id="profile-info-page">
+                                <dl class="profile-facts-view">
+                                    <div class="profile-fact"><dt>Level</dt><dd id="view-profile-room">1</dd></div>
+                                    <div class="profile-fact"><dt>Rigtigt navn</dt><dd id="view-profile-real-name"></dd></div>
+                                    <div class="profile-fact"><dt>Discord</dt><dd id="view-profile-discord"></dd></div>
+                                    <div class="profile-fact"><dt>Interesser</dt><dd id="view-profile-interests"></dd></div>
+                                    <div class="profile-fact"><dt>Oprettet</dt><dd id="view-profile-created-at"></dd></div>
+                                    <div class="profile-fact"><dt>Samlet online</dt><dd id="view-profile-online-duration"></dd></div>
+                                    <div class="profile-fact profile-fact-wide"><dt>Profiltekst</dt><dd id="view-profile-text"></dd></div>
+                                </dl>
+                            </div>
+                            <section class="guestbook-page" id="guestbook-page" aria-label="Gæstebog" hidden>
+                                <div class="guestbook-list" id="guestbook-list" role="list" aria-live="polite"></div>
+                                <p class="guestbook-empty" id="guestbook-empty">Gæstebogen er tom endnu.</p>
+                                <form class="guestbook-form" id="guestbook-form">
+                                    <label class="profile-field" for="guestbook-message">Skriv en hilsen
+                                        <textarea id="guestbook-message" maxlength="300" required></textarea>
+                                    </label>
+                                    <button id="guestbook-send-button" type="submit">Skriv i gæstebogen</button>
+                                    <p class="guestbook-status" id="guestbook-status" aria-live="polite"></p>
+                                </form>
+                            </section>
                         </section>
                     </aside>
                 </div>
@@ -690,6 +805,18 @@
             const viewProfileOnlineDuration = document.getElementById('view-profile-online-duration');
             const viewProfileInterests = document.getElementById('view-profile-interests');
             const viewProfileText = document.getElementById('view-profile-text');
+            const profileFriendButton = document.getElementById('profile-friend-button');
+            const profileEnemyButton = document.getElementById('profile-enemy-button');
+            const profileGuestbookButton = document.getElementById('profile-guestbook-button');
+            const profilePageSelect = document.getElementById('profile-page-select');
+            const profileInfoPage = document.getElementById('profile-info-page');
+            const guestbookPage = document.getElementById('guestbook-page');
+            const guestbookList = document.getElementById('guestbook-list');
+            const guestbookEmpty = document.getElementById('guestbook-empty');
+            const guestbookForm = document.getElementById('guestbook-form');
+            const guestbookMessage = document.getElementById('guestbook-message');
+            const guestbookSendButton = document.getElementById('guestbook-send-button');
+            const guestbookStatus = document.getElementById('guestbook-status');
             const avatarContextMenu = document.getElementById('avatar-context-menu');
             const avatarContextName = document.getElementById('avatar-context-name');
             const avatarContextProfile = document.getElementById('avatar-context-profile');
@@ -715,6 +842,7 @@
             let contextPlayerId = null;
             let viewingProfilePlayerId = null;
             let sessionKickMessage = '';
+            let viewingOwnProfile = false;
 
             function authFetch(url, options = {}) {
                 return fetch(url, {
@@ -850,6 +978,77 @@
                 contextPlayerId = null;
             }
 
+            function updateProfileRelationship(relationship) {
+                const friendAdded = relationship === 'friend';
+                const enemyAdded = relationship === 'enemy';
+                profileFriendButton.setAttribute('aria-pressed', String(friendAdded));
+                profileFriendButton.setAttribute('aria-label', friendAdded ? 'Fjern fra venneliste' : 'Tilføj til venneliste');
+                profileFriendButton.title = friendAdded ? 'Fjern fra venneliste' : 'Tilføj til venneliste';
+                profileEnemyButton.setAttribute('aria-pressed', String(enemyAdded));
+                profileEnemyButton.setAttribute('aria-label', enemyAdded ? 'Fjern fra fjendeliste' : 'Tilføj til fjendeliste');
+                profileEnemyButton.title = enemyAdded ? 'Fjern fra fjendeliste' : 'Tilføj til fjendeliste';
+                profileFriendButton.disabled = viewingOwnProfile;
+                profileEnemyButton.disabled = viewingOwnProfile;
+            }
+
+            function selectProfilePage(page) {
+                const showGuestbook = page === 'guestbook';
+                profileInfoPage.hidden = showGuestbook;
+                guestbookPage.hidden = !showGuestbook;
+                profilePageSelect.value = page;
+                if (showGuestbook && viewingProfilePlayerId) {
+                    guestbookList.replaceChildren();
+                    guestbookEmpty.classList.remove('hidden');
+                    guestbookEmpty.textContent = 'Henter hilsner…';
+                    guestbookStatus.textContent = '';
+                    socket.emit('guestbook-request', { playerId: viewingProfilePlayerId });
+                }
+            }
+
+            function renderGuestbookEntry(entry) {
+                const item = document.createElement('article');
+                item.className = 'guestbook-entry';
+                item.dataset.entryId = String(entry.id);
+                item.setAttribute('role', 'listitem');
+                const header = document.createElement('div');
+                header.className = 'guestbook-entry-header';
+                const author = document.createElement('span');
+                author.className = 'guestbook-author';
+                author.textContent = entry.authorName;
+                header.append(author);
+                const date = new Date(entry.createdAt);
+                if (!Number.isNaN(date.getTime())) {
+                    const time = document.createElement('time');
+                    time.className = 'guestbook-date';
+                    time.dateTime = date.toISOString();
+                    time.textContent = new Intl.DateTimeFormat('da-DK', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric'
+                    }).format(date);
+                    header.append(time);
+                }
+                if (viewingOwnProfile) {
+                    const remove = document.createElement('button');
+                    remove.className = 'guestbook-delete';
+                    remove.type = 'button';
+                    remove.textContent = 'Slet';
+                    remove.setAttribute('aria-label', `Slet hilsen fra ${entry.authorName}`);
+                    remove.addEventListener('click', () => {
+                        socket.emit('guestbook-delete', {
+                            playerId: viewingProfilePlayerId,
+                            entryId: entry.id
+                        });
+                    });
+                    header.append(remove);
+                }
+                const message = document.createElement('p');
+                message.className = 'guestbook-message';
+                message.textContent = entry.message;
+                item.append(header, message);
+                guestbookList.append(item);
+            }
+
             async function openProfileEditor() {
                 if (!currentUser) return;
                 selectSidePanel('profile-editor');
@@ -878,8 +1077,19 @@
 
             function showPublicProfile(playerId) {
                 viewingProfilePlayerId = playerId;
+                viewingOwnProfile = playerId === myId;
                 selectSidePanel('profile-view');
                 viewProfileName.textContent = 'Henter profil…';
+                profilePageSelect.value = '';
+                profileInfoPage.hidden = false;
+                guestbookPage.hidden = true;
+                guestbookList.replaceChildren();
+                guestbookEmpty.classList.remove('hidden');
+                guestbookEmpty.textContent = 'Gæstebogen er tom endnu.';
+                guestbookStatus.textContent = '';
+                guestbookMessage.value = '';
+                guestbookForm.hidden = viewingOwnProfile;
+                updateProfileRelationship(null);
                 viewProfileRoom.textContent = '1';
                 viewProfileRealName.textContent = '';
                 viewProfileDiscord.textContent = '';
@@ -1264,6 +1474,36 @@
             avatarContextProfile.addEventListener('click', () => {
                 if (contextPlayerId) showPublicProfile(contextPlayerId);
             });
+            profileFriendButton.addEventListener('click', () => {
+                if (viewingProfilePlayerId && !viewingOwnProfile) {
+                    socket.emit('profile-relationship-toggle', {
+                        playerId: viewingProfilePlayerId,
+                        relationship: 'friend'
+                    });
+                }
+            });
+            profileEnemyButton.addEventListener('click', () => {
+                if (viewingProfilePlayerId && !viewingOwnProfile) {
+                    socket.emit('profile-relationship-toggle', {
+                        playerId: viewingProfilePlayerId,
+                        relationship: 'enemy'
+                    });
+                }
+            });
+            profileGuestbookButton.addEventListener('click', () => selectProfilePage('guestbook'));
+            profilePageSelect.addEventListener('change', () => {
+                selectProfilePage(profilePageSelect.value || 'info');
+            });
+            guestbookForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                if (!viewingProfilePlayerId || viewingOwnProfile) return;
+                guestbookSendButton.disabled = true;
+                guestbookStatus.textContent = 'Gemmer hilsen…';
+                socket.emit('guestbook-add', {
+                    playerId: viewingProfilePlayerId,
+                    message: guestbookMessage.value
+                });
+            });
 
             profileForm.addEventListener('submit', async (event) => {
                 event.preventDefault();
@@ -1522,6 +1762,9 @@
             socket.on('profile-info', (profile) => {
                 if (profile.playerId !== viewingProfilePlayerId) return;
                 viewProfileName.textContent = profile.avatarName;
+                viewingOwnProfile = profile.isOwnProfile;
+                guestbookForm.hidden = viewingOwnProfile;
+                updateProfileRelationship(profile.relationship);
                 viewProfileRoom.textContent = '1';
                 viewProfileRealName.textContent = profile.realName || 'Ikke angivet';
                 viewProfileDiscord.textContent = profile.discordName || 'Ikke angivet';
@@ -1529,6 +1772,50 @@
                 setOnlineDuration(viewProfileOnlineDuration, profile.totalOnlineMs);
                 viewProfileInterests.textContent = profile.interests || 'Ikke angivet';
                 viewProfileText.textContent = profile.profileText || 'Ingen profiltekst endnu.';
+            });
+
+            socket.on('profile-relationship-result', ({ playerId, relationship, error } = {}) => {
+                if (playerId !== viewingProfilePlayerId) return;
+                if (error) {
+                    setRoomNotice(error);
+                    return;
+                }
+                updateProfileRelationship(relationship);
+            });
+
+            socket.on('guestbook-info', ({ playerId, entries } = {}) => {
+                if (playerId !== viewingProfilePlayerId || !Array.isArray(entries)) return;
+                guestbookList.replaceChildren();
+                entries.forEach((entry) => renderGuestbookEntry({
+                    id: entry.id,
+                    authorName: entry.author_name,
+                    message: entry.message,
+                    createdAt: entry.created_at
+                }));
+                guestbookEmpty.classList.toggle('hidden', entries.length > 0);
+                guestbookEmpty.textContent = 'Gæstebogen er tom endnu.';
+                guestbookSendButton.disabled = false;
+            });
+
+            socket.on('guestbook-added', ({ playerId } = {}) => {
+                if (playerId !== viewingProfilePlayerId) return;
+                guestbookMessage.value = '';
+                guestbookStatus.textContent = 'Din hilsen er skrevet.';
+                guestbookSendButton.disabled = false;
+                if (!guestbookPage.hidden) socket.emit('guestbook-request', { playerId });
+            });
+
+            socket.on('guestbook-deleted', ({ playerId } = {}) => {
+                if (playerId !== viewingProfilePlayerId) return;
+                guestbookStatus.textContent = 'Hilsnen er slettet.';
+                socket.emit('guestbook-request', { playerId });
+            });
+
+            socket.on('guestbook-error', ({ playerId, message } = {}) => {
+                if (playerId !== viewingProfilePlayerId) return;
+                guestbookStatus.textContent = message || 'Gæstebogen kunne ikke opdateres.';
+                guestbookEmpty.textContent = message || 'Gæstebogen kunne ikke indlæses.';
+                guestbookSendButton.disabled = false;
             });
 
             socket.on('profile-error', ({ playerId, message } = {}) => {

@@ -16,6 +16,7 @@ const {
 const { hashRegistrationIp, MAX_ACCOUNTS_PER_IP } = require('../lib/account-ip-limit');
 const { normalizePublicProfile } = require('../lib/public-profile');
 const { CHAT_BURST_LIMIT, CHAT_BURST_WINDOW_MS, registerChatMessage } = require('../lib/chat-rate-limit');
+const { GUESTBOOK_MESSAGE_MAX_LENGTH, normalizeGuestbookMessage } = require('../lib/guestbook');
 
 test('redacts Render and GitHub tokens before a message is stored', () => {
     const message = redactSecrets('Render rnd_exampleToken123456789 GitHub ghp_abcdefghijklmnopqrstuvwxyz');
@@ -115,6 +116,14 @@ test('matches mentions as whole usernames without marking other recipients', () 
     assert.equal(isMentioned('Tommy kom lige med et æble.', 'Tommy'), true);
     assert.equal(isMentioned('Tommy2 kom lige med et æble.', 'Tommy'), false);
     assert.equal(isMentioned('Tommy kom lige med et æble.', 'Nico'), false);
+});
+
+test('normalizes guestbook messages and enforces safe length and characters', () => {
+    assert.equal(normalizeGuestbookMessage('  Hej Tommy!  '), 'Hej Tommy!');
+    assert.equal(normalizeGuestbookMessage(''), null);
+    assert.equal(normalizeGuestbookMessage('x'.repeat(GUESTBOOK_MESSAGE_MAX_LENGTH + 1)), null);
+    assert.equal(normalizeGuestbookMessage('Hej\u0000'), null);
+    assert.equal(normalizeGuestbookMessage(123), null);
 });
 
 test('accepts passwords only from 8 to 72 UTF-8 bytes', () => {
