@@ -1,126 +1,119 @@
 const express = require('express');
 const http = require('http');
+const path = require('path');
 const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
+const io = new Server(server);
 
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
-const AVATAR_RADIUS = 16;
-const GRID_SIZE = 48;
-const PLAY_AREA_WIDTH = 288; // 6 * 48
-const PLAY_AREA_HEIGHT = 288;
+const GRID_COUNT = 6;
+const MESSAGE_DURATION = 10_000;
 const players = {};
 
-function snapToDiagonalGrid(x, y) {
-    let cx = PLAY_AREA_WIDTH / 2;
-    let cy = PLAY_AREA_HEIGHT / 2;
-    let dx = x - cx;
-    let dy = y - cy;
-    let angle = -Math.PI / 4;
-    let cos = Math.cos(angle);
-    let sin = Math.sin(angle);
-    let rx = dx * cos - dy * sin;
-    let ry = dx * sin + dy * cos;
-    
-    // Sikrer at avataren lander midt i feltet (romben) og ikke på stregen
-    let snappedRx = Math.floor(rx / GRID_SIZE) * GRID_SIZE + GRID_SIZE / 2;
-    let snappedRy = Math.floor(ry / GRID_SIZE) * GRID_SIZE + GRID_SIZE / 2;
-    
-    let backAngle = Math.PI / 4;
-    let bCos = Math.cos(backAngle);
-    let bSin = Math.sin(backAngle);
-    let finalDx = snappedRx * bCos - snappedRy * bSin;
-    let finalDy = snappedRx * bSin + snappedRy * bCos;
-    return {
-        x: Math.round(cx + finalDx),
-        y: Math.round(cy + finalDy)
-    };
-}
-
-function getValidPosition(socketId, targetX, targetY) {
-    const snapped = snapToDiagonalGrid(targetX, targetY);
-    let x = Math.max(AVATAR_RADIUS, Math.min(PLAY_AREA_WIDTH - AVATAR_RADIUS, snapped.x));
-    let y = Math.max(AVATAR_RADIUS, Math.min(PLAY_AREA_HEIGHT - AVATAR_RADIUS, snapped.y));
-
-    for (const id in players) {
-        if (id === socketId) continue;
-        const other = players[id];
-        const dx = x - other.x;
-        const dy = y - other.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        const minDistance = AVATAR_RADIUS * 2;
-
-        if (distance < minDistance) {
-            if (distance === 0) {
-                x += minDistance;
-            } else {
-                const overlap = minDistance - distance;
-                x += (dx / distance) * overlap;
-                y += (dy / distance) * overlap;
-            }
+function getOpenCell() {
+    const cells = [];
+    for (let row = 0; row < GRID_COUNT; row++) {
+        for (let col = 0; col < GRID_COUNT; col++) {
+            cells.push({ col, row });
         }
     }
-    return { x: Math.round(x), y: Math.round(y) };
+
+    cells.sort((first, second) => {
+        const firstDistance = Math.abs(first.col - 2.5) + Math.abs(first.row - 2.5);
+        const secondDistance = Math.abs(second.col - 2.5) + Math.abs(second.row - 2.5);
+        return firstDistance - secondDistance;
+    });
+
+    return cells.find((cell) =>
+        !Object.values(players).some((player) => player.col === cell.col && player.row === cell.row)
+    );
+}
+
+function isGridCoordinate(value) {
+    return Number.isInteger(value) && value >= 0 && value < GRID_COUNT;
 }
 
 io.on('connection', (socket) => {
-    console.log('Ny forbindelse:', socket.id);
-
     socket.on('join', (username) => {
-        if (typeof username !== 'string') return;
-        const cleanName = username.trim().slice(0, 15);
+        if (players[socket.id]) {
+            socket.emit('join-success', players);
+            return;
+        }
+
+        if (typeof username !== 'string') {
+            socket.emit('error-msg', 'Indtast et gyldigt brugernavn.');
+            return;
+        }
+
+        const cleanName = username.trim().slice(0, 18);
         if (!cleanName) {
             socket.emit('error-msg', 'Indtast et gyldigt brugernavn.');
             return;
         }
-        let startX = 144;
-        let startY = 144;
-        const validStart = getValidPosition(socket.id, startX, startY);
 
-        players[socket.id] = {
+        const cell = getOpenCell();
+        if (!cell) {
+            socket.emit('error-msg', 'Rummet er fyldt. Prøv igen senere.');
+            return;
+        }
+
+        const player = {
             id: socket.id,
-            x: validStart.x,
-            y: validStart.y,
             name: cleanName,
+            col: cell.col,
+            row: cell.row,
             text: '',
             messageTime: null
         };
+        players[socket.id] = player;
 
         socket.emit('join-success', players);
-        socket.broadcast.emit('newPlayer', players[socket.id]);
+        socket.broadcast.emit('newPlayer', player);
     });
 
-    socket.on('move', (pos) => {
-        if (players[socket.id] && pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
-            const validPos = getValidPosition(socket.id, pos.x, pos.y);
-            players[socket.id].x = validPos.x;
-            players[socket.id].y = validPos.y;
-            io.emit('playerMoved', { id: socket.id, x: validPos.x, y: validPos.y });
-        }
+    socket.on('move', (position) => {
+        const player = players[socket.id];
+        if (!player || !position || typeof position !== 'object') return;
+        if (!isGridCoordinate(position.col) || !isGridCoordinate(position.row)) return;
+
+        player.col = position.col;
+        player.row = position.row;
+        io.emit('playerMoved', { id: socket.id, col: player.col, row: player.row });
     });
 
     socket.on('chat-message', (text) => {
-        if (players[socket.id] && typeof text === 'string' && text.trim().length > 0) {
-            let cleanText = text.trim().slice(0, 100);
-            players[socket.id].text = cleanText;
-            players[socket.id].messageTime = Date.now();
+        const player = players[socket.id];
+        if (!player || typeof text !== 'string') return;
 
-            io.emit('playerChatMessage', {
-                id: socket.id,
-                text: cleanText,
-                messageTime: players[socket.id].messageTime
-            });
-        }
+        const cleanText = text.trim().slice(0, 140);
+        if (!cleanText) return;
+
+        const messageTime = Math.max(Date.now(), (player.messageTime || 0) + 1);
+        player.text = cleanText;
+        player.messageTime = messageTime;
+        io.emit('playerChatMessage', {
+            id: socket.id,
+            text: cleanText,
+            messageTime
+        });
+
+        setTimeout(() => {
+            const currentPlayer = players[socket.id];
+            if (!currentPlayer || currentPlayer.messageTime !== messageTime) return;
+
+            currentPlayer.text = '';
+            currentPlayer.messageTime = null;
+            io.emit('playerChatExpired', { id: socket.id, messageTime });
+        }, MESSAGE_DURATION);
     });
 
     socket.on('disconnect', () => {
-        if (players[socket.id]) {
-            delete players[socket.id];
-            io.emit('playerDisconnected', socket.id);
-        }
+        if (!players[socket.id]) return;
+        delete players[socket.id];
+        io.emit('playerDisconnected', socket.id);
     });
 });
 

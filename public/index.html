@@ -3,528 +3,793 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>2D Chat Multiplayer - Netstationen Stil</title>
+    <meta name="theme-color" content="#10110f">
+    <title>Rundt om bordet — 2D-chat</title>
     <style>
+        :root {
+            color-scheme: dark;
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #10110f;
+            color: #f2f0e9;
+            font-synthesis: none;
+            text-rendering: optimizeLegibility;
+            --muted: #96988f;
+            --line: #292b26;
+            --accent: #c1f078;
+        }
+
+        * { box-sizing: border-box; }
+
         body {
-            background-color: #121212;
-            color: #ffffff;
-            font-family: Arial, sans-serif;
+            min-width: 320px;
+            min-height: 100vh;
             margin: 0;
+            background: radial-gradient(ellipse at 50% 0%, #1b2018 0, #10110f 55%);
+        }
+
+        button, input { font: inherit; }
+        button { color: inherit; }
+
+        .page {
+            width: min(100% - 40px, 1100px);
+            min-height: 100vh;
+            margin: 0 auto;
             display: flex;
             flex-direction: column;
-            justify-content: center;
+        }
+
+        .topbar {
+            min-height: 76px;
+            display: flex;
             align-items: center;
-            height: 100vh;
-            overflow: hidden;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--line);
         }
-        .container {
-            background-color: #1e1e1e;
-            padding: 30px;
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 11px;
+            font-size: 14px;
+            font-weight: 650;
+            letter-spacing: -.02em;
+        }
+
+        .brand-mark {
+            display: grid;
+            width: 31px;
+            height: 31px;
+            place-items: center;
             border-radius: 10px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            width: 320px;
-            text-align: center;
+            background: var(--accent);
+            color: #17200e;
+            font-size: 16px;
         }
-        input, button {
+
+        .connection {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .connection-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #74766f;
+        }
+
+        .connection.online .connection-dot {
+            background: var(--accent);
+            box-shadow: 0 0 12px #c1f07880;
+        }
+
+        main {
+            flex: 1;
+            display: grid;
+            place-items: center;
+            padding: 46px 0;
+        }
+
+        .login-card {
+            width: min(100%, 390px);
+            padding: 34px;
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            background: #171815;
+            box-shadow: 0 24px 90px #0004;
+        }
+
+        .eyebrow {
+            margin: 0 0 12px;
+            color: var(--accent);
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .14em;
+            text-transform: uppercase;
+        }
+
+        h1, h2, p { margin-top: 0; }
+
+        .login-card h1 {
+            margin-bottom: 10px;
+            font-size: clamp(27px, 5vw, 36px);
+            letter-spacing: -.055em;
+        }
+
+        .login-card > p:not(.eyebrow) {
+            margin-bottom: 26px;
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .login-form { display: flex; gap: 9px; }
+
+        input {
+            min-width: 0;
+            border: 1px solid #363831;
+            border-radius: 10px;
+            outline: none;
+            background: #10110f;
+            color: #f2f0e9;
+            transition: border-color .2s ease, box-shadow .2s ease;
+        }
+
+        input:focus {
+            border-color: #9fc65f;
+            box-shadow: 0 0 0 3px #c1f0781a;
+        }
+
+        .login-form input {
+            flex: 1;
+            padding: 12px 13px;
+            font-size: 14px;
+        }
+
+        .primary-button {
+            border: 0;
+            border-radius: 10px;
+            background: var(--accent);
+            color: #17200e;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: filter .2s ease, transform .2s ease;
+        }
+
+        .primary-button:hover { filter: brightness(1.07); }
+        .primary-button:active { transform: scale(.98); }
+        .primary-button:disabled { cursor: not-allowed; opacity: .55; }
+        .login-form .primary-button { padding: 0 17px; white-space: nowrap; }
+
+        .error-message {
+            min-height: 18px;
+            margin: 10px 0 0;
+            color: #ff9d8b;
+            font-size: 12px;
+        }
+
+        .game { width: min(100%, 850px); }
+
+        .game-heading {
+            display: flex;
+            align-items: end;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 19px;
+        }
+
+        .game-heading .eyebrow { margin-bottom: 7px; }
+        .game-heading h1 { margin-bottom: 0; font-size: 22px; letter-spacing: -.04em; }
+        .online-count { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+        .room {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 245px;
+            gap: 14px;
+        }
+
+        .board-card, .side-card {
+            overflow: hidden;
+            border: 1px solid var(--line);
+            border-radius: 15px;
+            background: #171815;
+        }
+
+        .board-card { padding: 15px; }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+            border-radius: 9px;
+            touch-action: manipulation;
+            cursor: crosshair;
+        }
+
+        .board-hint {
+            margin: 12px 2px 0;
+            color: var(--muted);
+            font-size: 11px;
+            line-height: 1.5;
+        }
+
+        .side-card {
+            display: flex;
+            min-height: 100%;
+            flex-direction: column;
+        }
+
+        .side-section { padding: 17px; }
+        .side-section + .side-section { border-top: 1px solid var(--line); }
+        .side-title { margin: 0 0 13px; font-size: 12px; font-weight: 650; }
+        .member-list { display: grid; gap: 10px; }
+
+        .member {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            min-width: 0;
+            color: #d9d8d1;
+            font-size: 12px;
+        }
+
+        .member-dot {
+            width: 9px;
+            height: 9px;
+            flex: 0 0 9px;
+            border-radius: 50%;
+        }
+
+        .member-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .you-tag { margin-left: auto; color: var(--muted); font-size: 10px; }
+
+        .chat-section {
+            display: flex;
+            flex: 1;
+            flex-direction: column;
+        }
+
+        .chat-hint {
+            margin: -5px 0 13px;
+            color: var(--muted);
+            font-size: 11px;
+            line-height: 1.5;
+        }
+
+        .chat-form { display: flex; gap: 7px; }
+
+        .chat-form input {
             width: 100%;
             padding: 10px;
-            margin: 10px 0;
-            border-radius: 5px;
-            border: 1px solid #333;
-            background-color: #2a2a2a;
-            color: #fff;
-            box-sizing: border-box;
-        }
-        button {
-            background-color: #28a745;
-            border: none;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        button:hover {
-            background-color: #218838;
-        }
-        .error {
-            color: #ff4d4d;
-            font-size: 14px;
-            margin-top: 10px;
-        }
-        #game-container {
-            display: none;
-            position: relative;
-            width: 580px;
-            text-align: center;
-        }
-        #online-indicator {
-            position: absolute;
-            top: -25px;
-            left: 0;
-            background-color: #2a0000;
-            color: #fff;
-            padding: 4px 10px;
             font-size: 12px;
-            font-weight: bold;
-            border: 1px solid #444;
-            border-radius: 4px;
         }
-        #main-workspace {
-            display: flex;
-            gap: 10px;
-            justify-content: center;
-            position: relative;
-            margin-top: 5px;
-        }
-        canvas {
-            background: #1a1a1a;
-            display: block;
-            border: 2px solid #444;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        #right-panel {
-            width: 280px;
-            height: 288px;
-            background-color: #1a1a1a;
-            border: 2px solid #444;
-            border-radius: 5px;
-            display: flex;
-            flex-direction: column;
-        }
-        .panel-header {
-            background-color: #2a0000;
-            color: #fff;
-            padding: 8px;
-            font-weight: bold;
-            text-align: center;
-            border-bottom: 1px solid #444;
-        }
-        .panel-body {
-            flex: 1;
-            padding: 10px;
+
+        .chat-form .primary-button { padding: 0 12px; }
+
+        .chat-log {
+            max-height: 180px;
             overflow-y: auto;
-            font-size: 12px;
-            text-align: left;
+            margin-top: 13px;
+            color: #b7b7ae;
+            font-size: 11px;
+            line-height: 1.55;
         }
-        .panel-tab {
-            display: none;
-            height: 100%;
-            flex-direction: column;
+
+        .chat-entry { margin: 0 0 8px; overflow-wrap: anywhere; }
+        .chat-entry strong { color: #f2f0e9; font-weight: 600; }
+        .chat-empty { color: #777970; }
+        .hidden { display: none !important; }
+
+        footer {
+            padding: 18px 0;
+            color: #71736b;
+            font-size: 11px;
+            text-align: center;
         }
-        .panel-tab.active {
-            display: flex;
+
+        @media (max-width: 700px) {
+            .page { width: min(100% - 28px, 520px); }
+            main { padding: 28px 0; }
+            .room { grid-template-columns: 1fr; }
+            .side-card { min-height: 0; }
+            .chat-section { min-height: 170px; }
+            .chat-log { max-height: 110px; }
         }
-        .log-message {
-            margin-bottom: 6px;
-            word-break: break-all;
+
+        @media (max-width: 420px) {
+            .page { width: min(100% - 20px, 390px); }
+            .login-card { padding: 25px 20px; }
+            .game-heading h1 { font-size: 19px; }
+            .board-card { padding: 9px; }
+            .board-hint { margin: 9px 2px 1px; }
         }
-        #bottom-toolbar {
-            display: flex;
-            background-color: #1a0000;
-            border: 2px solid #444;
-            border-radius: 5px;
-            margin-top: 8px;
-            padding: 5px;
-            gap: 5px;
-        }
-        .tool-btn {
-            background: #330000;
-            border: 1px solid #555;
-            color: #fff;
-            padding: 6px 12px;
-            cursor: pointer;
-            border-radius: 3px;
-            font-size: 12px;
-            width: auto;
-            margin: 0;
-        }
-        .tool-btn:hover, .tool-btn.active {
-            background: #550000;
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
         }
     </style>
 </head>
 <body>
-
-    <div class="container" id="login-section">
-        <h2>2D Chat</h2>
-        <input type="text" id="username-input" placeholder="Indtast dit brugernavn...">
-        <button id="join-btn">Start Spil</button>
-        <div id="error-msg" class="error"></div>
-    </div>
-
-    <div id="game-container">
-        <div id="online-indicator">Online: 1</div>
-
-        <div id="main-workspace">
-            <canvas id="gameCanvas" width="288" height="288"></canvas>
-            
-            <div id="right-panel">
-                <div class="panel-header" id="panel-title">Tekstboks</div>
-                <div class="panel-body">
-                    
-                    <div class="panel-tab active" id="tab-chatlog">
-                        <div id="chatlog-content" style="flex: 1; overflow-y: auto;">
-                            <div class="log-message">Velkommen til chatten!</div>
-                        </div>
-                    </div>
-
-                    <div class="panel-tab" id="tab-online">
-                        <div id="online-users-list">Indlæser online brugere...</div>
-                    </div>
-
-                </div>
+    <div class="page">
+        <header class="topbar">
+            <div class="brand"><span class="brand-mark" aria-hidden="true">↗</span> Rundt om bordet</div>
+            <div class="connection" id="connection-status" aria-live="polite">
+                <span class="connection-dot" aria-hidden="true"></span>
+                <span id="connection-label">Forbinder…</span>
             </div>
-        </div>
+        </header>
 
-        <div id="bottom-toolbar">
-            <button class="tool-btn active" id="btn-chat">💬 Tekstboks</button>
-            <button class="tool-btn" id="btn-online">👥 Online brugere</button>
-        </div>
+        <main>
+            <section class="login-card" id="login-section">
+                <p class="eyebrow">Et lille sted på nettet</p>
+                <h1>Find en plads.</h1>
+                <p>Vælg et navn, træd ind på gulvet, og sig hej til dem, der allerede er her.</p>
+                <form class="login-form" id="login-form">
+                    <input id="username-input" maxlength="18" autocomplete="nickname" placeholder="Dit navn" aria-label="Dit navn" required>
+                    <button class="primary-button" id="join-button" type="submit" disabled>Træd ind</button>
+                </form>
+                <p class="error-message" id="login-error" aria-live="polite"></p>
+            </section>
+
+            <section class="game hidden" id="game-section">
+                <div class="game-heading">
+                    <div>
+                        <p class="eyebrow">Fællesrum</p>
+                        <h1>Vælg en flise. Find din plads.</h1>
+                    </div>
+                    <span class="online-count" id="online-count" aria-live="polite">0 online</span>
+                </div>
+                <div class="room">
+                    <section class="board-card" aria-label="Chatrum">
+                        <canvas id="game-canvas" width="600" height="600" tabindex="0" aria-label="Et grid med 6 gange 6 felter. Klik på et felt for at flytte din avatar.">
+                            Dit browserprogram understøtter ikke canvas.
+                        </canvas>
+                        <p class="board-hint">Klik på en flise for at flytte din avatar. Brug piletasterne, når gulvet er valgt.</p>
+                    </section>
+                    <aside class="side-card">
+                        <section class="side-section">
+                            <h2 class="side-title">Her lige nu</h2>
+                            <div class="member-list" id="member-list" aria-live="polite"></div>
+                        </section>
+                        <section class="side-section chat-section">
+                            <h2 class="side-title">Sig noget</h2>
+                            <p class="chat-hint">Din taleboble bliver på gulvet i 10 sekunder.</p>
+                            <form class="chat-form" id="chat-form">
+                                <input id="chat-input" maxlength="140" autocomplete="off" placeholder="Skriv en besked…" aria-label="Skriv en besked">
+                                <button class="primary-button" id="send-button" type="submit">Send</button>
+                            </form>
+                            <div class="chat-log" id="chat-log" aria-live="polite">
+                                <p class="chat-empty" id="chat-empty">Samtalen begynder her.</p>
+                            </div>
+                        </section>
+                    </aside>
+                </div>
+            </section>
+        </main>
+        <footer>Et roligt hjørne at hænge ud i.</footer>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        const socket = io();
+        (() => {
+            const socket = io();
+            const canvas = document.getElementById('game-canvas');
+            const ctx = canvas.getContext('2d');
+            const loginSection = document.getElementById('login-section');
+            const gameSection = document.getElementById('game-section');
+            const usernameInput = document.getElementById('username-input');
+            const joinButton = document.getElementById('join-button');
+            const loginError = document.getElementById('login-error');
+            const connectionStatus = document.getElementById('connection-status');
+            const connectionLabel = document.getElementById('connection-label');
+            const memberList = document.getElementById('member-list');
+            const chatInput = document.getElementById('chat-input');
+            const chatLog = document.getElementById('chat-log');
+            const chatEmpty = document.getElementById('chat-empty');
+            const gridCount = 6;
+            const cellSize = canvas.width / gridCount;
+            const avatarRadius = 19;
+            const messageDuration = 10000;
+            const avatarColors = ['#c1f078', '#83c9f4', '#f3a985', '#c4a7f5', '#f5d16f', '#f18db0'];
 
-        const loginSection = document.getElementById('login-section');
-        const gameContainer = document.getElementById('game-container');
-        const usernameInput = document.getElementById('username-input');
-        const joinBtn = document.getElementById('join-btn');
-        const errorMsg = document.getElementById('error-msg');
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        const chatlogContent = document.getElementById('chatlog-content');
-        const onlineIndicator = document.getElementById('online-indicator');
+            let players = {};
+            let myId = null;
+            let hoveredCell = null;
+            let animationFrame = null;
+            let lastFrameTime = 0;
+            let draftText = '';
 
-        let players = {};
-        let myId = null;
-        const radius = 16;
-        const gridSize = 48;
-        const gridCount = 6; // 6x6 felter
-        let currentTyping = '';
-
-        function updateOnlineCount() {
-            const count = Object.keys(players).length;
-            onlineIndicator.innerText = `Online: ${count}`;
-        }
-
-        function switchTab(tabName, titleText, btnElement) {
-            document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
-            
-            document.getElementById('tab-' + tabName).classList.add('active');
-            document.getElementById('panel-title').innerText = titleText;
-            btnElement.classList.add('active');
-        }
-
-        document.getElementById('btn-chat').addEventListener('click', function() {
-            switchTab('chatlog', 'Tekstboks', this);
-        });
-
-        document.getElementById('btn-online').addEventListener('click', function() {
-            switchTab('online', 'Online brugere', this);
-            const listDiv = document.getElementById('online-users-list');
-            listDiv.innerHTML = '';
-            Object.values(players).forEach(p => {
-                const userRow = document.createElement('div');
-                userRow.style.padding = '6px 0';
-                userRow.style.borderBottom = '1px solid #333';
-                userRow.innerHTML = `👤 <b>${p.name}</b>`;
-                listDiv.appendChild(userRow);
-            });
-        });
-
-        function addChatLog(sender, text) {
-            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            const div = document.createElement('div');
-            div.className = 'log-message';
-            div.innerHTML = `<b>${sender}:</b> ${text} <span style="color:#777; font-size:10px; white-space: nowrap;">${time}</span>`;
-            chatlogContent.appendChild(div);
-            chatlogContent.scrollTop = chatlogContent.scrollHeight;
-        }
-
-        function handleJoin() {
-            const username = usernameInput.value.trim();
-            errorMsg.innerText = '';
-            if (!username) {
-                errorMsg.innerText = 'Indtast venligst et brugernavn.';
-                return;
-            }
-            socket.emit('join', username);
-        }
-
-        joinBtn.addEventListener('click', handleJoin);
-        usernameInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') handleJoin();
-        });
-
-        socket.on('error-msg', (msg) => { errorMsg.innerText = msg; });
-
-        socket.on('join-success', (serverPlayers) => {
-            players = serverPlayers;
-            myId = socket.id;
-            updateOnlineCount();
-            loginSection.style.display = 'none';
-            gameContainer.style.display = 'block';
-            requestAnimationFrame(gameLoop);
-        });
-
-        socket.on('newPlayer', (player) => { 
-            players[player.id] = player; 
-            updateOnlineCount();
-        });
-
-        socket.on('playerMoved', (data) => {
-            if (players[data.id]) {
-                players[data.id].x = data.x;
-                players[data.id].y = data.y;
-            }
-        });
-
-        socket.on('playerChatMessage', (data) => {
-            if (players[data.id]) {
-                const p = players[data.id];
-                p.text = data.text;
-                p.messageTime = data.messageTime;
-                addChatLog(p.name, data.text);
-            }
-        });
-
-        socket.on('playerDisconnected', (id) => { 
-            delete players[id]; 
-            updateOnlineCount();
-        });
-
-        function snapToDiagonalGrid(x, y) {
-            let cx = canvas.width / 2;
-            let cy = canvas.height / 2;
-            let dx = x - cx;
-            let dy = y - cy;
-
-            let angle = -Math.PI / 4;
-            let cos = Math.cos(angle);
-            let sin = Math.sin(angle);
-            let rx = dx * cos - dy * sin;
-            let ry = dx * sin + dy * cos;
-
-            // Snapper præcist til midten af det specifikke 6x6 felt
-            let snappedRx = Math.floor(rx / gridSize) * gridSize + gridSize / 2;
-            let snappedRy = Math.floor(ry / gridSize) * gridSize + gridSize / 2;
-
-            let backAngle = Math.PI / 4;
-            let bCos = Math.cos(backAngle);
-            let bSin = Math.sin(backAngle);
-            let finalDx = snappedRx * bCos - snappedRy * bSin;
-            let finalDy = snappedRx * bSin + snappedRy * bCos;
-
-            return {
-                x: Math.round(cx + finalDx),
-                y: Math.round(cy + finalDy)
-            };
-        }
-
-        canvas.addEventListener('click', (e) => {
-            if (!myId || !players[myId]) return;
-            const rect = canvas.getBoundingClientRect();
-            const snapped = snapToDiagonalGrid(e.clientX - rect.left, e.clientY - rect.top);
-            socket.emit('move', snapped);
-        });
-
-        window.addEventListener('keydown', (e) => {
-            if (!myId || !players[myId]) return;
-
-            if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
-                return;
-            }
-
-            if (e.key === 'Enter') {
-                const finalMsg = currentTyping.trim();
-                currentTyping = '';
-                if (finalMsg) {
-                    socket.emit('chat-message', finalMsg);
+            function colorForPlayer(id) {
+                let hash = 0;
+                for (let index = 0; index < id.length; index++) {
+                    hash = (hash * 31 + id.charCodeAt(index)) >>> 0;
                 }
-            } else if (e.key === 'Backspace') {
-                currentTyping = currentTyping.slice(0, -1);
-            } else if (e.key.length === 1) {
-                currentTyping += e.key;
+                return avatarColors[hash % avatarColors.length];
             }
-        });
 
-        function getLines(context, text, maxWidth) {
-            let words = text.split(' ');
-            let lines = [];
-            let currentLine = '';
+            function positionFor(player) {
+                return {
+                    x: (player.col + 0.5) * cellSize,
+                    y: (player.row + 0.5) * cellSize
+                };
+            }
 
-            for (let i = 0; i < words.length; i++) {
-                let word = words[i];
-                if (context.measureText(word).width > maxWidth) {
-                    if (currentLine) {
-                        lines.push(currentLine);
-                        currentLine = '';
-                    }
-                    let subWord = '';
-                    for (let char of word) {
-                        if (context.measureText(subWord + char).width <= maxWidth) {
-                            subWord += char;
-                        } else {
-                            lines.push(subWord);
-                            subWord = char;
+            function showPlayer(player, animate) {
+                const target = positionFor(player);
+                if (!player.position || !animate) {
+                    player.position = { x: target.x, y: target.y };
+                }
+                player.target = target;
+                players[player.id] = player;
+            }
+
+            function updateOnlineList() {
+                const onlinePlayers = Object.values(players);
+                document.getElementById('online-count').textContent =
+                    `${onlinePlayers.length} ${onlinePlayers.length === 1 ? 'person online' : 'personer online'}`;
+                memberList.replaceChildren();
+
+                onlinePlayers
+                    .sort((first, second) => first.name.localeCompare(second.name, 'da'))
+                    .forEach((player) => {
+                        const row = document.createElement('div');
+                        row.className = 'member';
+                        const dot = document.createElement('span');
+                        dot.className = 'member-dot';
+                        dot.style.backgroundColor = colorForPlayer(player.id);
+                        const name = document.createElement('span');
+                        name.className = 'member-name';
+                        name.textContent = player.name;
+                        row.setAttribute('aria-label', player.id === myId ? `${player.name}, dig` : player.name);
+                        row.append(dot, name);
+                        if (player.id === myId) {
+                            const you = document.createElement('span');
+                            you.className = 'you-tag';
+                            you.textContent = 'dig';
+                            row.append(you);
+                        }
+                        memberList.append(row);
+                    });
+            }
+
+            function addChatEntry(player, text) {
+                chatEmpty.classList.add('hidden');
+                const entry = document.createElement('p');
+                entry.className = 'chat-entry';
+                const sender = document.createElement('strong');
+                sender.textContent = `${player.name}: `;
+                entry.append(sender, document.createTextNode(text));
+                chatLog.append(entry);
+                while (chatLog.children.length > 41) {
+                    chatLog.removeChild(chatLog.children[1]);
+                }
+                chatLog.scrollTop = chatLog.scrollHeight;
+            }
+
+            function getCellFromPointer(event) {
+                const bounds = canvas.getBoundingClientRect();
+                const x = (event.clientX - bounds.left) * canvas.width / bounds.width;
+                const y = (event.clientY - bounds.top) * canvas.height / bounds.height;
+                return {
+                    col: Math.max(0, Math.min(gridCount - 1, Math.floor(x / cellSize))),
+                    row: Math.max(0, Math.min(gridCount - 1, Math.floor(y / cellSize)))
+                };
+            }
+
+            function moveToCell(col, row) {
+                if (!myId || !players[myId]) return;
+                socket.emit('move', { col, row });
+            }
+
+            function drawBoard() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#11130f';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                for (let row = 0; row < gridCount; row++) {
+                    for (let col = 0; col < gridCount; col++) {
+                        const x = col * cellSize;
+                        const y = row * cellSize;
+                        ctx.fillStyle = (row + col) % 2 === 0 ? '#191c16' : '#151813';
+                        ctx.fillRect(x, y, cellSize, cellSize);
+                        if (hoveredCell && hoveredCell.col === col && hoveredCell.row === row) {
+                            ctx.fillStyle = '#c1f07812';
+                            ctx.fillRect(x, y, cellSize, cellSize);
                         }
                     }
-                    if (subWord) {
-                        currentLine = subWord;
-                    }
-                } else {
-                    let testLine = currentLine ? currentLine + ' ' + word : word;
-                    if (context.measureText(testLine).width <= maxWidth) {
-                        currentLine = testLine;
-                    } else {
-                        if (currentLine) lines.push(currentLine);
-                        currentLine = word;
-                    }
                 }
-            }
-            if (currentLine) {
-                lines.push(currentLine);
-            }
-            return lines;
-        }
 
-        function draw() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // Tegn det 6x6 tjekkede gulv (rombe- / trekant-fliser)
-            ctx.save();
-            ctx.translate(canvas.width / 2, canvas.height / 2);
-            ctx.rotate(Math.PI / 4);
-
-            let startX = -(gridCount * gridSize) / 2;
-            let startY = -(gridCount * gridSize) / 2;
-
-            for (let i = 0; i < gridCount; i++) {
-                for (let j = 0; j < gridCount; j++) {
-                    let x = startX + i * gridSize;
-                    let y = startY + j * gridSize;
-
+                ctx.strokeStyle = '#292d25';
+                ctx.lineWidth = 1;
+                for (let index = 0; index <= gridCount; index++) {
+                    const point = Math.round(index * cellSize) + 0.5;
                     ctx.beginPath();
-                    ctx.moveTo(x, y + gridSize / 2);
-                    ctx.lineTo(x + gridSize / 2, y);
-                    ctx.lineTo(x + gridSize, y + gridSize / 2);
-                    ctx.lineTo(x + gridSize / 2, y + gridSize);
-                    ctx.closePath();
-
-                    // Klassisk Netstationen ternet gulvfarve
-                    ctx.fillStyle = (i + j) % 2 === 0 ? '#1c1c1c' : '#262626';
-                    ctx.fill();
-                    ctx.strokeStyle = '#333333';
-                    ctx.lineWidth = 1;
+                    ctx.moveTo(point, 0);
+                    ctx.lineTo(point, canvas.height);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(0, point);
+                    ctx.lineTo(canvas.width, point);
                     ctx.stroke();
                 }
-            }
-            ctx.restore();
 
-            const now = Date.now();
+                const now = Date.now();
+                for (const player of Object.values(players)) {
+                    const position = player.position || player.target || positionFor(player);
+                    if (!position) continue;
+                    const color = colorForPlayer(player.id);
+                    const isTyping = player.id === myId && draftText.trim().length > 0;
+                    const bubbleText = isTyping ? draftText.trim().slice(0, 140) : player.text;
+                    const expiresAt = player.messageTime ? player.messageTime + messageDuration : 0;
+                    const remaining = expiresAt - now;
 
-            for (let id in players) {
-                let p = players[id];
-
-                // Avatar tegnes nu præcist i midten af flisen
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
-                ctx.fillStyle = '#28a745';
-                ctx.fill();
-                ctx.lineWidth = 2;
-                ctx.strokeStyle = '#fff';
-                ctx.stroke();
-                ctx.closePath();
-
-                ctx.fillStyle = '#fff';
-                ctx.font = '12px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText(p.name, p.x, p.y - radius - 6);
-
-                let displayText = (id === myId && currentTyping) ? currentTyping : p.text;
-                let isMyTyping = (id === myId && currentTyping.length > 0);
-
-                if (!isMyTyping && p.text && p.messageTime) {
-                    let elapsed = now - p.messageTime;
-                    if (elapsed > 5000) {
-                        p.text = '';
-                        p.messageTime = null;
-                        displayText = '';
-                    }
-                }
-
-                if (displayText) {
-                    ctx.save();
-                    if (isMyTyping) {
-                        ctx.globalAlpha = 0.7;
-                    } else if (p.messageTime) {
-                        let elapsed = now - p.messageTime;
-                        if (elapsed > 4000) {
-                            ctx.globalAlpha = 1 - (elapsed - 4000) / 1000;
+                    if (isTyping || (bubbleText && remaining > 0)) {
+                        ctx.save();
+                        if (isTyping) {
+                            ctx.globalAlpha = .68;
+                        } else if (remaining < 900) {
+                            ctx.globalAlpha = Math.max(0, remaining / 900);
                         }
+
+                        const lines = wrapText(bubbleText, 210);
+                        ctx.font = '13px Inter, system-ui, sans-serif';
+                        const bubbleWidth = Math.min(240, Math.max(62, ...lines.map((line) => ctx.measureText(line).width + 22)));
+                        const bubbleHeight = lines.length * 18 + 20;
+                        const bubbleX = Math.max(8, Math.min(canvas.width - bubbleWidth - 8, position.x - bubbleWidth / 2));
+                        const bubbleY = Math.max(8, position.y - avatarRadius - bubbleHeight - 17);
+
+                        roundedRect(ctx, bubbleX, bubbleY, bubbleWidth, bubbleHeight, 9);
+                        ctx.fillStyle = '#f2f0e9';
+                        ctx.fill();
+                        ctx.beginPath();
+                        const tailX = Math.max(bubbleX + 13, Math.min(position.x, bubbleX + bubbleWidth - 13));
+                        ctx.moveTo(tailX - 6, bubbleY + bubbleHeight - 1);
+                        ctx.lineTo(tailX + 6, bubbleY + bubbleHeight - 1);
+                        ctx.lineTo(tailX, bubbleY + bubbleHeight + 7);
+                        ctx.closePath();
+                        ctx.fill();
+                        ctx.fillStyle = '#171815';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        lines.forEach((line, index) => {
+                            ctx.fillText(line, bubbleX + bubbleWidth / 2, bubbleY + 12 + index * 18, bubbleWidth - 16);
+                        });
+                        ctx.restore();
                     }
 
-                    ctx.font = '12px Arial';
-                    let maxWidth = 150;
-                    let lines = getLines(ctx, displayText, maxWidth);
-                    
-                    let lineHeight = 16;
-                    let padding = 8;
-                    let bubbleWidth = 0;
-                    lines.forEach(line => {
-                        let w = ctx.measureText(line).width;
-                        if (w > bubbleWidth) bubbleWidth = w;
-                    });
-                    bubbleWidth = Math.max(bubbleWidth + padding * 2, 35);
-                    let bubbleHeight = lines.length * lineHeight + padding * 2;
-                    
-                    let bubbleX = p.x - bubbleWidth / 2;
-                    let bubbleY = p.y - radius - bubbleHeight - 12;
+                    ctx.save();
+                    ctx.globalAlpha = 0.16;
+                    ctx.beginPath();
+                    ctx.ellipse(position.x, position.y + 20, 18, 6, 0, 0, Math.PI * 2);
+                    ctx.fillStyle = '#000';
+                    ctx.fill();
+                    ctx.restore();
 
-                    if (bubbleX < 5) bubbleX = 5;
-                    else if (bubbleX + bubbleWidth > canvas.width - 5) bubbleX = canvas.width - bubbleWidth - 5;
-
-                    if (bubbleY < 5) {
-                        bubbleY = 5;
-                    }
-
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
-                    ctx.strokeStyle = '#28a745';
+                    ctx.beginPath();
+                    ctx.arc(position.x, position.y, avatarRadius + 3, 0, Math.PI * 2);
+                    ctx.fillStyle = '#10110f';
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(position.x, position.y, avatarRadius, 0, Math.PI * 2);
+                    ctx.fillStyle = color;
+                    ctx.fill();
+                    ctx.fillStyle = '#20231b';
+                    ctx.beginPath();
+                    ctx.arc(position.x - 6, position.y - 2, 1.8, 0, Math.PI * 2);
+                    ctx.arc(position.x + 6, position.y - 2, 1.8, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = '#20231b';
                     ctx.lineWidth = 1.5;
                     ctx.beginPath();
-                    if (ctx.roundRect) {
-                        ctx.roundRect(bubbleX, bubbleY, bubbleWidth, bubbleHeight, 6);
-                    } else {
-                        ctx.rect(bubbleX, bubbleY, bubbleWidth, bubbleHeight);
-                    }
-                    ctx.fill();
+                    ctx.arc(position.x, position.y + 2, 5, .2, Math.PI - .2);
                     ctx.stroke();
 
-                    ctx.beginPath();
-                    let tailTipX = Math.max(bubbleX + 10, Math.min(p.x, bubbleX + bubbleWidth - 10));
-                    ctx.moveTo(tailTipX - 6, bubbleY + bubbleHeight);
-                    ctx.lineTo(tailTipX + 6, bubbleY + bubbleHeight);
-                    ctx.lineTo(tailTipX, bubbleY + bubbleHeight + 8);
-                    ctx.closePath();
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
-                    ctx.fill();
-                    ctx.stroke();
-
-                    ctx.fillStyle = '#fff';
+                    ctx.font = '11px Inter, system-ui, sans-serif';
                     ctx.textAlign = 'center';
-                    for (let i = 0; i < lines.length; i++) {
-                        ctx.fillText(lines[i], bubbleX + bubbleWidth / 2, bubbleY + padding + (i + 1) * lineHeight - 3);
-                    }
-                    ctx.restore();
+                    ctx.textBaseline = 'top';
+                    const nameWidth = ctx.measureText(player.name).width;
+                    const labelWidth = Math.min(cellSize - 10, nameWidth + 14);
+                    roundedRect(ctx, position.x - labelWidth / 2, position.y + 27, labelWidth, 19, 6);
+                    ctx.fillStyle = '#10110f';
+                    ctx.fill();
+                    ctx.fillStyle = '#e8e7df';
+                    ctx.fillText(player.name, position.x, position.y + 31, labelWidth - 8);
                 }
             }
-        }
 
-        function gameLoop() {
-            draw();
-            requestAnimationFrame(gameLoop);
-        }
+            function wrapText(text, maxWidth) {
+                ctx.font = '13px Inter, system-ui, sans-serif';
+                const words = text.split(/\s+/);
+                const lines = [];
+                let line = '';
+                for (const word of words) {
+                    const parts = [];
+                    let part = '';
+                    for (const character of word) {
+                        if (ctx.measureText(part + character).width > maxWidth - 22 && part) {
+                            parts.push(part);
+                            part = character;
+                        } else {
+                            part += character;
+                        }
+                    }
+                    if (part) parts.push(part);
+                    for (const piece of parts) {
+                        const candidate = line ? `${line} ${piece}` : piece;
+                        if (ctx.measureText(candidate).width > maxWidth - 22 && line) {
+                            lines.push(line);
+                            line = piece;
+                        } else {
+                            line = candidate;
+                        }
+                    }
+                }
+                if (line) lines.push(line);
+                return lines.length ? lines : [''];
+            }
+
+            function roundedRect(context, x, y, width, height, radius) {
+                context.beginPath();
+                context.roundRect(x, y, width, height, radius);
+            }
+
+            function gameLoop(timestamp) {
+                const delta = lastFrameTime ? Math.min(timestamp - lastFrameTime, 48) : 16;
+                lastFrameTime = timestamp;
+                const easing = 1 - Math.exp(-delta / 140);
+                for (const player of Object.values(players)) {
+                    if (!player.position || !player.target) continue;
+                    player.position.x += (player.target.x - player.position.x) * easing;
+                    player.position.y += (player.target.y - player.position.y) * easing;
+                }
+                drawBoard();
+                animationFrame = requestAnimationFrame(gameLoop);
+            }
+
+            document.getElementById('login-form').addEventListener('submit', (event) => {
+                event.preventDefault();
+                loginError.textContent = '';
+                if (!socket.connected) {
+                    loginError.textContent = 'Forbindelsen er afbrudt. Prøv igen om et øjeblik.';
+                    return;
+                }
+                joinButton.disabled = true;
+                socket.emit('join', usernameInput.value);
+            });
+
+            document.getElementById('chat-form').addEventListener('submit', (event) => {
+                event.preventDefault();
+                const text = chatInput.value.trim();
+                if (!text || !myId) return;
+                socket.emit('chat-message', text);
+                chatInput.value = '';
+                draftText = '';
+            });
+
+            chatInput.addEventListener('input', () => {
+                draftText = chatInput.value;
+            });
+
+            canvas.addEventListener('click', (event) => {
+                const cell = getCellFromPointer(event);
+                moveToCell(cell.col, cell.row);
+            });
+
+            canvas.addEventListener('pointermove', (event) => {
+                hoveredCell = getCellFromPointer(event);
+            });
+
+            canvas.addEventListener('pointerleave', () => {
+                hoveredCell = null;
+            });
+
+            canvas.addEventListener('keydown', (event) => {
+                if (!myId || !players[myId]) return;
+                const directions = {
+                    ArrowUp: [0, -1],
+                    ArrowDown: [0, 1],
+                    ArrowLeft: [-1, 0],
+                    ArrowRight: [1, 0]
+                };
+                const direction = directions[event.key];
+                if (!direction) return;
+                event.preventDefault();
+                const player = players[myId];
+                moveToCell(
+                    Math.max(0, Math.min(gridCount - 1, player.col + direction[0])),
+                    Math.max(0, Math.min(gridCount - 1, player.row + direction[1]))
+                );
+            });
+
+            socket.on('connect', () => {
+                connectionStatus.classList.add('online');
+                connectionLabel.textContent = 'Forbundet';
+                joinButton.disabled = false;
+            });
+
+            socket.on('disconnect', () => {
+                connectionStatus.classList.remove('online');
+                connectionLabel.textContent = 'Forbindelsen blev afbrudt';
+                if (myId) {
+                    myId = null;
+                    players = {};
+                    updateOnlineList();
+                    gameSection.classList.add('hidden');
+                    loginSection.classList.remove('hidden');
+                    loginError.textContent = 'Forbindelsen blev afbrudt. Log ind igen, når du er forbundet.';
+                    joinButton.disabled = true;
+                }
+            });
+
+            socket.on('connect_error', () => {
+                connectionStatus.classList.remove('online');
+                connectionLabel.textContent = 'Forbinder igen…';
+            });
+
+            socket.on('error-msg', (message) => {
+                loginError.textContent = message;
+                joinButton.disabled = false;
+            });
+
+            socket.on('join-success', (serverPlayers) => {
+                players = {};
+                myId = socket.id;
+                for (const player of Object.values(serverPlayers)) {
+                    showPlayer(player, false);
+                }
+                updateOnlineList();
+                loginSection.classList.add('hidden');
+                gameSection.classList.remove('hidden');
+                loginError.textContent = '';
+                if (animationFrame === null) {
+                    lastFrameTime = 0;
+                    animationFrame = requestAnimationFrame(gameLoop);
+                }
+                canvas.focus();
+            });
+
+            socket.on('newPlayer', (player) => {
+                showPlayer(player, false);
+                updateOnlineList();
+            });
+
+            socket.on('playerMoved', (player) => {
+                if (!players[player.id]) return;
+                players[player.id].col = player.col;
+                players[player.id].row = player.row;
+                players[player.id].target = positionFor(player);
+            });
+
+            socket.on('playerChatMessage', (message) => {
+                const player = players[message.id];
+                if (!player) return;
+                player.text = message.text;
+                player.messageTime = message.messageTime;
+                addChatEntry(player, message.text);
+            });
+
+            socket.on('playerChatExpired', (message) => {
+                const player = players[message.id];
+                if (player && player.messageTime === message.messageTime) {
+                    player.text = '';
+                    player.messageTime = null;
+                }
+            });
+
+            socket.on('playerDisconnected', (id) => {
+                delete players[id];
+                updateOnlineList();
+            });
+        })();
     </script>
 </body>
 </html>
