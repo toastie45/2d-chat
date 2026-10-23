@@ -11,14 +11,15 @@ const io = new Server(server, {
 app.use(express.static('public'));
 
 const AVATAR_RADIUS = 16;
+const PLAY_AREA_WIDTH = 408;
+const PLAY_AREA_HEIGHT = 374;
 const players = {};
 
 function getValidPosition(socketId, targetX, targetY) {
-  let x = targetX;
-  let y = targetY;
-  x = Math.max(AVATAR_RADIUS, Math.min(408 - AVATAR_RADIUS, x));
-  y = Math.max(AVATAR_RADIUS, Math.min(374 - AVATAR_RADIUS, y));
+  let x = Math.max(AVATAR_RADIUS, Math.min(PLAY_AREA_WIDTH - AVATAR_RADIUS, targetX));
+  let y = Math.max(AVATAR_RADIUS, Math.min(PLAY_AREA_HEIGHT - AVATAR_RADIUS, targetY));
 
+  // Kollisionslogik: Forhindrer at spillere kan stå oven på hinanden
   for (const id in players) {
     if (id === socketId) continue;
     const other = players[id];
@@ -44,14 +45,14 @@ io.on('connection', (socket) => {
   console.log('Ny forbindelse:', socket.id);
 
   socket.on('join', (username) => {
-    const cleanName = username ? username.trim().slice(0, 15) : 'Anonym';
+    const cleanName = typeof username === 'string' ? username.trim().slice(0, 15) : 'Anonym';
     if (!cleanName) {
       socket.emit('error-msg', 'Indtast et gyldigt brugernavn.');
       return;
     }
 
-    let startX = Math.floor(Math.random() * 300) + 50;
-    let startY = Math.floor(Math.random() * 200) + 100;
+    let startX = Math.floor(Math.random() * 200) + 100;
+    let startY = Math.floor(Math.random() * 150) + 100;
     const validStart = getValidPosition(socket.id, startX, startY);
 
     players[socket.id] = {
@@ -68,38 +69,49 @@ io.on('connection', (socket) => {
     socket.broadcast.emit('newPlayer', players[socket.id]);
   });
 
+  // Server-side validering mod teleportation / snyd
   socket.on('move', (pos) => {
-    if (players[socket.id]) {
-      const validPos = getValidPosition(socket.id, pos.x, pos.y);
-      players[socket.id].x = validPos.x;
-      players[socket.id].y = validPos.y;
-      io.emit('playerMoved', { id: socket.id, x: validPos.x, y: validPos.y });
+    if (players[socket.id] && pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
+      let p = players[socket.id];
+      let dx = pos.x - p.x;
+      let dy = pos.y - p.y;
+      let distance = Math.sqrt(dx * dx + dy * dy);
+      const maxAllowedStep = 80; // Tilladt maks skridtlængde
+
+      if (distance <= maxAllowedStep) {
+        const validPos = getValidPosition(socket.id, pos.x, pos.y);
+        players[socket.id].x = validPos.x;
+        players[socket.id].y = validPos.y;
+        io.emit('playerMoved', { id: socket.id, x: validPos.x, y: validPos.y });
+      }
     }
   });
 
+  // Server-side validering af chat og tekst
   socket.on('typing', (data) => {
-    if (players[socket.id]) {
-      players[socket.id].typingText = data.typingText;
-      players[socket.id].text = data.text;
+    if (players[socket.id] && data) {
+      let cleanTyping = typeof data.typingText === 'string' ? data.typingText.slice(0, 100) : '';
+      let cleanText = typeof data.text === 'string' ? data.text.slice(0, 100) : '';
+
+      players[socket.id].typingText = cleanTyping;
+      players[socket.id].text = cleanText;
       
-      // Sæt tidsstempel hvis der sendes en rigtig besked
-      if (data.text) {
+      if (cleanText) {
         players[socket.id].messageTime = Date.now();
-      } else if (!data.typingText) {
+      } else if (!cleanTyping) {
         players[socket.id].messageTime = null;
       }
 
       io.emit('playerTyping', { 
         id: socket.id, 
-        typingText: data.typingText, 
-        text: data.text,
+        typingText: cleanTyping, 
+        text: cleanText,
         messageTime: players[socket.id].messageTime
       });
     }
   });
 
   socket.on('disconnect', () => {
-    console.log('Spiller afbrudt:', socket.id);
     if (players[socket.id]) {
       delete players[socket.id];
       io.emit('playerDisconnected', socket.id);
