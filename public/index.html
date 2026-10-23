@@ -38,6 +38,8 @@
             flex-direction: column;
         }
 
+        .page.has-session { padding-bottom: 92px; }
+
         .topbar {
             min-height: 82px;
             display: flex;
@@ -105,6 +107,41 @@
 
         .topbar-button.primary:hover { border-color: #d2ff96; background: #d2ff96; }
         .topbar-button.logout { border-color: #363831; background: #171815; }
+
+        .room-strip {
+            display: flex;
+            min-height: 44px;
+            align-items: center;
+            gap: 10px;
+            margin-top: 16px;
+            padding: 0 14px;
+            border: 1px solid #292b26;
+            border-radius: 11px;
+            background: #151613cc;
+            color: var(--muted);
+            font-size: 11px;
+        }
+
+        .room-indicator {
+            width: 8px;
+            height: 8px;
+            flex: 0 0 8px;
+            border-radius: 50%;
+            background: var(--accent);
+            box-shadow: 0 0 12px #c1f07866;
+        }
+
+        .room-strip-name { color: #f2f0e9; font-weight: 650; }
+        .room-strip-divider { width: 1px; height: 16px; background: #33352e; }
+        .room-strip-spacer { flex: 1; }
+        .room-strip-user {
+            max-width: 150px;
+            overflow: hidden;
+            color: #d9d8d1;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .room-strip-count { font-variant-numeric: tabular-nums; white-space: nowrap; }
 
         .connection {
             display: flex;
@@ -226,10 +263,7 @@
             margin-bottom: 19px;
         }
 
-        .game-heading .eyebrow { margin-bottom: 7px; }
         .game-heading h1 { margin-bottom: 0; font-size: 22px; letter-spacing: -.04em; }
-        .online-count { color: var(--muted); font-size: 12px; white-space: nowrap; }
-        .heading-actions { display: flex; align-items: center; gap: 13px; }
         .room-notice {
             min-height: 16px;
             margin: 9px 2px 0;
@@ -317,6 +351,68 @@
         }
         .side-panel { min-height: 0; flex: 1; padding: 20px 17px; }
         .side-panel[hidden] { display: none; }
+
+        .bottom-toolbar {
+            position: fixed;
+            z-index: 5;
+            right: 50%;
+            bottom: max(16px, env(safe-area-inset-bottom));
+            display: grid;
+            width: min(calc(100% - 32px), 460px);
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 5px;
+            padding: 6px;
+            transform: translateX(50%);
+            border: 1px solid #393b33;
+            border-radius: 16px;
+            background: #171815f2;
+            box-shadow: 0 15px 50px #0009, inset 0 1px #ffffff08;
+            backdrop-filter: blur(18px);
+        }
+
+        .toolbar-button {
+            display: flex;
+            min-width: 0;
+            min-height: 48px;
+            align-items: center;
+            justify-content: center;
+            gap: 9px;
+            padding: 0 12px;
+            border: 1px solid transparent;
+            border-radius: 11px;
+            background: transparent;
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background .2s ease, color .2s ease, border-color .2s ease, transform .2s ease;
+        }
+
+        .toolbar-button:hover { color: #f2f0e9; background: #20211d; }
+        .toolbar-button:active { transform: translateY(1px); }
+        .toolbar-button[aria-pressed="true"] {
+            border-color: #393d30;
+            background: #292c23;
+            color: var(--accent);
+        }
+
+        .toolbar-button:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+
+        .toolbar-button svg {
+            width: 18px;
+            height: 18px;
+            flex: 0 0 18px;
+            fill: none;
+            stroke: currentColor;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            stroke-width: 1.7;
+        }
+
+        .toolbar-button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .side-title { margin: 0 0 13px; font-size: 12px; font-weight: 650; }
         .member-list {
             display: grid;
@@ -420,6 +516,12 @@
             .member-list { max-height: 130px; }
             .topbar { min-height: 72px; }
             .connection { display: none; }
+            .room-strip { min-height: 40px; margin-top: 12px; padding: 0 11px; }
+            .room-strip-user { max-width: 90px; }
+            .page.has-session { padding-bottom: 86px; }
+            .bottom-toolbar { bottom: max(10px, env(safe-area-inset-bottom)); width: min(calc(100% - 20px), 460px); }
+            .toolbar-button { min-height: 46px; gap: 6px; padding: 0 6px; font-size: 10px; }
+            .toolbar-button svg { width: 17px; height: 17px; flex-basis: 17px; }
         }
 
         @media (max-width: 420px) {
@@ -471,13 +573,19 @@
             </section>
 
             <section class="game hidden" id="game-section">
+                <div class="room-strip hidden" id="room-strip" aria-label="Rummets status">
+                    <span class="room-indicator" aria-hidden="true"></span>
+                    <span class="room-strip-name">Fællesrum</span>
+                    <span class="room-strip-divider" aria-hidden="true"></span>
+                    <span>Det åbne gulv</span>
+                    <span class="room-strip-spacer"></span>
+                    <span class="room-strip-count" id="room-strip-count">0 online</span>
+                    <span class="room-strip-divider" aria-hidden="true"></span>
+                    <span class="room-strip-user" id="room-strip-user"></span>
+                </div>
                 <div class="game-heading">
                     <div>
-                        <p class="eyebrow">Fællesrum</p>
                         <h1>Vælg en flise. Find din plads.</h1>
-                    </div>
-                    <div class="heading-actions">
-                        <span class="online-count" id="online-count" aria-live="polite">0 online</span>
                     </div>
                 </div>
                 <div class="room">
@@ -513,6 +621,20 @@
         </main>
         <footer>Et roligt hjørne at hænge ud i.</footer>
     </div>
+    <nav class="bottom-toolbar hidden" id="bottom-toolbar" aria-label="Navigation i chatrummet">
+        <button class="toolbar-button" id="floor-nav-button" type="button" aria-pressed="true" aria-label="Gå til gulvet">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5 12 3l8 2.5v13L12 21l-8-2.5z"/><path d="m4 5.5 8 2.7 8-2.7M12 8.2V21"/></svg>
+            <span>Gulv</span>
+        </button>
+        <button class="toolbar-button" id="members-nav-button" type="button" aria-pressed="false" aria-label="Vis brugere">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19v-1.3A4.7 4.7 0 0 1 8.2 13h1.6a4.7 4.7 0 0 1 4.7 4.7V19z"/><path d="M16 5.3a3 3 0 0 1 0 5.8M17 13.3a4.7 4.7 0 0 1 3.5 4.5V19"/></svg>
+            <span>Brugere</span>
+        </button>
+        <button class="toolbar-button" id="chat-nav-button" type="button" aria-pressed="false" aria-label="Vis samtalen">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H7l-4 2v-6.1A7.5 7.5 0 1 1 20 11.5Z"/><path d="M8 11h8M8 14.5h5"/></svg>
+            <span>Samtale</span>
+        </button>
+    </nav>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
@@ -541,6 +663,16 @@
             const guestActions = document.getElementById('guest-actions');
             const loginNavButton = document.getElementById('login-nav-button');
             const registerNavButton = document.getElementById('register-nav-button');
+            const pageWrapper = document.querySelector('.page');
+            const roomStrip = document.getElementById('room-strip');
+            const roomStripCount = document.getElementById('room-strip-count');
+            const roomStripUser = document.getElementById('room-strip-user');
+            const bottomToolbar = document.getElementById('bottom-toolbar');
+            const floorNavButton = document.getElementById('floor-nav-button');
+            const membersNavButton = document.getElementById('members-nav-button');
+            const chatNavButton = document.getElementById('chat-nav-button');
+            const boardCard = document.querySelector('.board-card');
+            const sideCard = document.querySelector('.side-card');
             const connectionStatus = document.getElementById('connection-status');
             const connectionLabel = document.getElementById('connection-label');
             const memberList = document.getElementById('member-list');
@@ -622,8 +754,19 @@
             }
 
             function updateAccountActions() {
-                guestActions.classList.toggle('hidden', Boolean(currentUser));
-                logoutButton.classList.toggle('hidden', !currentUser);
+                const isAuthenticated = Boolean(currentUser);
+                guestActions.classList.toggle('hidden', isAuthenticated);
+                logoutButton.classList.toggle('hidden', !isAuthenticated);
+                roomStrip.classList.toggle('hidden', !isAuthenticated);
+                bottomToolbar.classList.toggle('hidden', !isAuthenticated);
+                pageWrapper.classList.toggle('has-session', isAuthenticated);
+                roomStripUser.textContent = isAuthenticated ? currentUser.username : '';
+            }
+
+            function setToolbarActive(activeButton) {
+                for (const button of [floorNavButton, membersNavButton, chatNavButton]) {
+                    button.setAttribute('aria-pressed', String(button === activeButton));
+                }
             }
 
             function selectAuthMode(mode) {
@@ -642,6 +785,13 @@
                 chatTab.setAttribute('aria-selected', String(!showMembers));
                 membersPanel.hidden = !showMembers;
                 chatPanel.hidden = showMembers;
+                setToolbarActive(showMembers ? membersNavButton : chatNavButton);
+                if (window.matchMedia('(max-width: 700px)').matches) {
+                    sideCard.scrollIntoView({
+                        block: 'start',
+                        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+                    });
+                }
             }
 
             function resetPendingAuthentication() {
@@ -701,7 +851,7 @@
             function updateOnlineList() {
                 const onlinePlayers = Object.values(players);
                 const countLabel = `${onlinePlayers.length} ${onlinePlayers.length === 1 ? 'person' : 'personer'}`;
-                document.getElementById('online-count').textContent = `${countLabel} online`;
+                roomStripCount.textContent = `${countLabel} online`;
                 roomMemberCount.textContent = onlinePlayers.length;
                 membersTab.setAttribute('aria-label', `Brugere, ${countLabel} online`);
                 const searchTerm = memberSearch.value.trim().toLocaleLowerCase('da');
@@ -1011,6 +1161,15 @@
             registerNavButton.addEventListener('click', () => selectAuthMode('register'));
             membersTab.addEventListener('click', () => selectSideTab('members'));
             chatTab.addEventListener('click', () => selectSideTab('chat'));
+            floorNavButton.addEventListener('click', () => {
+                setToolbarActive(floorNavButton);
+                boardCard.scrollIntoView({
+                    block: 'start',
+                    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+                });
+            });
+            membersNavButton.addEventListener('click', () => selectSideTab('members'));
+            chatNavButton.addEventListener('click', () => selectSideTab('chat'));
 
             memberSearch.addEventListener('input', updateOnlineList);
 
@@ -1191,6 +1350,7 @@
                 clearChatLog();
                 addChatSystemEntry(`Du er kommet ind i chatten som ${currentUser.username}.`);
                 updateOnlineList();
+                setToolbarActive(floorNavButton);
                 loginSection.classList.add('hidden');
                 gameSection.classList.remove('hidden');
                 updateAccountActions();
@@ -1246,6 +1406,7 @@
                     const result = await response.json();
                     if (!response.ok) throw new Error(result.error || 'Kunne ikke hente din session.');
                     currentUser = result.user;
+                    updateAccountActions();
                     usernameInput.value = result.user.username;
                     socket.connect();
                 })
