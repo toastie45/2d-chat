@@ -352,7 +352,8 @@
                         </section>
                         <section class="side-section chat-section">
                             <h2 class="side-title">Sig noget</h2>
-                            <p class="chat-hint">Skriv direkte på gulvet. Enter sender · Backspace retter · Talebobler vises i 10 sekunder.</p>
+                            <p class="chat-hint">Skriv direkte på gulvet. Maks. 100 tegn · Enter sender · Backspace retter · Talebobler vises i 10 sekunder.</p>
+                            <p class="chat-hint" id="message-counter" aria-live="off">0/100 tegn</p>
                             <div class="chat-log" id="chat-log" aria-live="polite">
                                 <p class="chat-empty" id="chat-empty">Samtalen begynder her.</p>
                             </div>
@@ -378,12 +379,14 @@
             const connectionStatus = document.getElementById('connection-status');
             const connectionLabel = document.getElementById('connection-label');
             const memberList = document.getElementById('member-list');
+            const messageCounter = document.getElementById('message-counter');
             const chatLog = document.getElementById('chat-log');
             const chatEmpty = document.getElementById('chat-empty');
             const gridCount = 6;
             const cellSize = canvas.width / gridCount;
             const avatarRadius = 19;
             const messageDuration = 10000;
+            const maxMessageLength = 100;
             const avatarColors = ['#c1f078', '#83c9f4', '#f3a985', '#c4a7f5', '#f5d16f', '#f18db0'];
 
             let players = {};
@@ -392,6 +395,11 @@
             let animationFrame = null;
             let lastFrameTime = 0;
             let draftText = '';
+
+            function updateDraftText(text) {
+                draftText = text.slice(0, maxMessageLength);
+                messageCounter.textContent = `${draftText.length}/${maxMessageLength} tegn`;
+            }
 
             function colorForPlayer(id) {
                 let hash = 0;
@@ -698,25 +706,25 @@
                     event.preventDefault();
                     const text = draftText.trim();
                     if (text) socket.emit('chat-message', text);
-                    draftText = '';
+                    updateDraftText('');
                     return;
                 }
 
                 if (event.key === 'Backspace') {
                     event.preventDefault();
-                    draftText = draftText.slice(0, -1);
+                    updateDraftText(draftText.slice(0, -1));
                     return;
                 }
 
                 if (event.key === 'Escape') {
                     event.preventDefault();
-                    draftText = '';
+                    updateDraftText('');
                     return;
                 }
 
                 if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
                     event.preventDefault();
-                    if (draftText.length < 140) draftText += event.key;
+                    if (draftText.length < maxMessageLength) updateDraftText(draftText + event.key);
                 }
             });
 

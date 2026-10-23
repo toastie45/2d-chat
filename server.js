@@ -11,6 +11,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const GRID_COUNT = 6;
 const MESSAGE_DURATION = 10_000;
+const MAX_MESSAGE_LENGTH = 100;
 const players = {};
 
 function getOpenCell() {
@@ -88,7 +89,7 @@ io.on('connection', (socket) => {
         const player = players[socket.id];
         if (!player || typeof text !== 'string') return;
 
-        const cleanText = text.trim().slice(0, 140);
+        const cleanText = text.trim().slice(0, MAX_MESSAGE_LENGTH);
         if (!cleanText) return;
 
         const messageTime = Math.max(Date.now(), (player.messageTime || 0) + 1);
