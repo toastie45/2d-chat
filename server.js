@@ -19,6 +19,7 @@ const {
 } = require('./lib/chat-security');
 const { isAuthorizedTabSession, isValidTabId } = require('./lib/tab-session');
 const { hashRegistrationIp, MAX_ACCOUNTS_PER_IP } = require('./lib/account-ip-limit');
+const { normalizePublicProfile } = require('./lib/public-profile');
 
 const GRID_COUNT = 6;
 const MESSAGE_DURATION = 10_000;
@@ -289,6 +290,8 @@ async function startServer() {
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
     `);
+    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS real_name VARCHAR(80)');
+    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS profile_text VARCHAR(500)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS registration_ip_hash TEXT');
     await pool.query('CREATE INDEX IF NOT EXISTS chat_users_registration_ip_hash_idx ON chat_users (registration_ip_hash) WHERE registration_ip_hash IS NOT NULL');
     await pool.query(`
@@ -360,6 +363,57 @@ async function startServer() {
             return;
         }
         response.json({ user: request.session.user });
+    });
+
+    app.get('/api/profile', async (request, response, next) => {
+        if (!isAuthorizedTabSession(request.session, getRequestTabId(request))) {
+            response.status(401).json({ error: 'Log ind for at fortsætte.' });
+            return;
+        }
+        try {
+            const { rows: [profile] } = await pool.query(
+                'SELECT real_name, profile_text FROM chat_users WHERE id = $1',
+                [request.session.user.id]
+            );
+            if (!profile) {
+                response.status(404).json({ error: 'Profilen blev ikke fundet.' });
+                return;
+            }
+            response.json({
+                realName: profile.real_name || '',
+                profileText: profile.profile_text || ''
+            });
+        } catch (error) {
+            next(error);
+        }
+    });
+
+    app.put('/api/profile', async (request, response, next) => {
+        if (!isAuthorizedTabSession(request.session, getRequestTabId(request))) {
+            response.status(401).json({ error: 'Log ind for at fortsætte.' });
+            return;
+        }
+        const profile = normalizePublicProfile(request.body);
+        if (!profile) {
+            response.status(400).json({ error: 'Profilen indeholder ugyldige felter eller overskrider tegnbegrænsningen.' });
+            return;
+        }
+        try {
+            const result = await pool.query(
+                'UPDATE chat_users SET real_name = $1, profile_text = $2 WHERE id = $3 RETURNING real_name, profile_text',
+                [profile.realName || null, profile.profileText || null, request.session.user.id]
+            );
+            if (!result.rowCount) {
+                response.status(404).json({ error: 'Profilen blev ikke fundet.' });
+                return;
+            }
+            response.json({
+                realName: result.rows[0].real_name || '',
+                profileText: result.rows[0].profile_text || ''
+            });
+        } catch (error) {
+            next(error);
+        }
     });
 
     app.post('/api/auth/register', enforceAuthRateLimit, async (request, response, next) => {
@@ -546,6 +600,49 @@ async function startServer() {
 
     io.on('connection', (socket) => {
         socket.join(`session:${socket.request.sessionID}`);
+        socket.on('profile-request', async (payload) => {
+            const playerId = payload && payload.playerId;
+            if (!activeSocketIds.has(socket.id) || typeof playerId !== 'string' || playerId.length > 128) return;
+            const now = Date.now();
+            if (now - Number(socket.data.lastProfileRequestAt || 0) < 750) {
+                socket.emit('profile-error', { playerId, message: 'Vent et øjeblik, før du åbner en profil mere.' });
+                return;
+            }
+            socket.data.lastProfileRequestAt = now;
+            try {
+                await cleanupStalePlayers();
+                const playerJson = await redis.hGet(playersKey, playerId);
+                if (!playerJson) {
+                    socket.emit('profile-error', { playerId, message: 'Brugeren er ikke længere i rummet.' });
+                    return;
+                }
+                const player = JSON.parse(playerJson);
+                const account = normalizeUsername(player.name);
+                if (!account) {
+                    socket.emit('profile-error', { playerId, message: 'Profilen kunne ikke indlæses.' });
+                    return;
+                }
+                const { rows: [profile] } = await pool.query(
+                    'SELECT real_name, profile_text FROM chat_users WHERE username_normalized = $1',
+                    [account.normalized]
+                );
+                if (!profile) {
+                    socket.emit('profile-error', { playerId, message: 'Profilen blev ikke fundet.' });
+                    return;
+                }
+                socket.emit('profile-info', {
+                    playerId,
+                    avatarName: player.name,
+                    room: 'Fællesrum',
+                    realName: profile.real_name || '',
+                    profileText: profile.profile_text || ''
+                });
+            } catch (error) {
+                console.error('Could not load public profile:', getSafeErrorCode(error));
+                socket.emit('profile-error', { playerId, message: 'Profilen kunne ikke indlæses. Prøv igen.' });
+            }
+        });
+
         socket.on('join', async () => {
             if (activeSocketIds.has(socket.id)) return;
             try {

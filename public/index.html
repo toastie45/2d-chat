@@ -379,6 +379,61 @@
 
         .you-tag { margin-left: auto; color: var(--muted); font-size: 10px; }
 
+        .profile-panel { overflow-y: auto; }
+        .profile-form { display: grid; gap: 13px; }
+        .profile-field { display: grid; gap: 6px; color: #d9d8d1; font-size: 11px; font-weight: 600; }
+        .profile-field input, .profile-field textarea {
+            width: 100%;
+            padding: 9px 10px;
+            border: 1px solid #363831;
+            border-radius: 8px;
+            background: #10110f;
+            color: #f2f0e9;
+            font-size: 12px;
+            font-weight: 400;
+        }
+        .profile-field textarea { min-height: 150px; resize: vertical; white-space: pre-wrap; }
+        .profile-hint, .profile-value { color: var(--muted); font-size: 11px; line-height: 1.6; }
+        .profile-value { margin: 0 0 18px; color: #e4e3dc; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .profile-status { min-height: 16px; margin: 0; color: var(--muted); font-size: 11px; }
+        .profile-save {
+            min-height: 36px;
+            padding: 0 13px;
+            border: 1px solid var(--accent);
+            border-radius: 8px;
+            background: var(--accent);
+            color: #17200e;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .profile-save:disabled { cursor: wait; opacity: .6; }
+
+        .avatar-context-menu {
+            position: fixed;
+            z-index: 10;
+            width: 190px;
+            padding: 7px;
+            border: 1px solid #383a33;
+            border-radius: 9px;
+            background: #171815;
+            box-shadow: 0 12px 32px #0009;
+        }
+        .avatar-context-name { margin: 2px 7px 0; color: #f2f0e9; font-size: 12px; font-weight: 650; }
+        .avatar-context-room { margin: 4px 7px 8px; color: var(--muted); font-size: 10px; }
+        .avatar-context-action {
+            width: 100%;
+            padding: 8px 7px;
+            border: 0;
+            border-radius: 6px;
+            background: transparent;
+            color: #e4e3dc;
+            text-align: left;
+            font-size: 11px;
+            cursor: pointer;
+        }
+        .avatar-context-action:hover { background: #292b26; color: #fff; }
+
         .chat-section {
             display: flex;
             flex: 1;
@@ -487,7 +542,7 @@
                 </div>
                 <div class="room">
                     <section class="board-card" aria-label="Chatrum">
-                        <canvas id="game-canvas" width="600" height="600" tabindex="0" aria-label="Et grid med 6 gange 6 felter, der fylder hele spillefladen. Klik på et felt for at flytte din avatar. Skriv for at chatte, og tryk Enter for at sende.">
+                        <canvas id="game-canvas" width="600" height="600" tabindex="0" aria-label="Et grid med 6 gange 6 felter. Klik på et felt for at flytte din avatar. Højreklik på en anden avatar for at se profilen. Skriv for at chatte, og tryk Enter for at sende.">
                             Dit browserprogram understøtter ikke canvas.
                         </canvas>
                         <p class="room-notice" id="room-notice" aria-live="polite"></p>
@@ -500,6 +555,9 @@
                             </button>
                             <button class="toolbar-button" id="members-nav-button" type="button" aria-pressed="true" aria-controls="members-panel" aria-label="Vis online i rummet" title="Online i rummet">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19v-1.3A4.7 4.7 0 0 1 8.2 13h1.6a4.7 4.7 0 0 1 4.7 4.7V19z"/><path d="M16 5.3a3 3 0 0 1 0 5.8M17 13.3a4.7 4.7 0 0 1 3.5 4.5V19"/></svg>
+                            </button>
+                            <button class="toolbar-button" id="profile-nav-button" type="button" aria-pressed="false" aria-controls="profile-editor-panel" aria-label="Rediger min profil" title="Min profil">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 6.5 3-3 3 3-3 3"/><path d="m3 21 4.5-1 11-11-3.5-3.5-11 11L3 21Z"/><path d="m13 8 3.5 3.5"/></svg>
                             </button>
                         </nav>
                     </section>
@@ -515,10 +573,42 @@
                                 <p class="chat-empty" id="chat-empty">Samtalen begynder her.</p>
                             </div>
                         </section>
+                        <section class="side-panel profile-panel" id="profile-editor-panel" aria-labelledby="profile-editor-title" hidden>
+                            <h2 class="side-title" id="profile-editor-title">Min profil</h2>
+                            <p class="profile-hint">Avatarnavn: <strong id="profile-avatar-name"></strong></p>
+                            <form class="profile-form" id="profile-form">
+                                <label class="profile-field" for="profile-real-name">
+                                    Rigtigt navn <span class="profile-hint">Valgfrit — synligt for andre</span>
+                                    <input id="profile-real-name" name="realName" maxlength="80" autocomplete="name">
+                                </label>
+                                <label class="profile-field" for="profile-text">
+                                    Profiltekst <span class="profile-hint">Valgfrit — højst 500 tegn</span>
+                                    <textarea id="profile-text" name="profileText" maxlength="500"></textarea>
+                                </label>
+                                <button class="profile-save" id="profile-save-button" type="submit">Gem profil</button>
+                                <p class="profile-status" id="profile-status" aria-live="polite"></p>
+                            </form>
+                        </section>
+                        <section class="side-panel profile-panel" id="profile-view-panel" aria-labelledby="profile-view-title" hidden>
+                            <h2 class="side-title" id="profile-view-title">Profil</h2>
+                            <p class="profile-hint">Avatarnavn</p>
+                            <p class="profile-value" id="view-profile-avatar"></p>
+                            <p class="profile-hint">Rum</p>
+                            <p class="profile-value" id="view-profile-room"></p>
+                            <p class="profile-hint">Rigtigt navn</p>
+                            <p class="profile-value" id="view-profile-real-name"></p>
+                            <p class="profile-hint">Profiltekst</p>
+                            <p class="profile-value" id="view-profile-text"></p>
+                        </section>
                     </aside>
                 </div>
             </section>
         </main>
+        <div class="avatar-context-menu hidden" id="avatar-context-menu" role="menu" aria-label="Avatarhandlinger">
+            <p class="avatar-context-name" id="avatar-context-name"></p>
+            <p class="avatar-context-room">Fællesrum</p>
+            <button class="avatar-context-action" id="avatar-context-profile" type="button" role="menuitem">Se profilinfo</button>
+        </div>
     </div>
     <script src="/socket.io/socket.io.js"></script>
     <script>
@@ -555,10 +645,26 @@
             const refreshNavButton = document.getElementById('refresh-nav-button');
             const membersNavButton = document.getElementById('members-nav-button');
             const chatNavButton = document.getElementById('chat-nav-button');
+            const profileNavButton = document.getElementById('profile-nav-button');
             const memberList = document.getElementById('member-list');
             const memberEmpty = document.getElementById('member-empty');
             const membersPanel = document.getElementById('members-panel');
             const chatPanel = document.getElementById('chat-panel');
+            const profileEditorPanel = document.getElementById('profile-editor-panel');
+            const profileViewPanel = document.getElementById('profile-view-panel');
+            const profileForm = document.getElementById('profile-form');
+            const profileAvatarName = document.getElementById('profile-avatar-name');
+            const profileRealName = document.getElementById('profile-real-name');
+            const profileText = document.getElementById('profile-text');
+            const profileSaveButton = document.getElementById('profile-save-button');
+            const profileStatus = document.getElementById('profile-status');
+            const viewProfileAvatar = document.getElementById('view-profile-avatar');
+            const viewProfileRoom = document.getElementById('view-profile-room');
+            const viewProfileRealName = document.getElementById('view-profile-real-name');
+            const viewProfileText = document.getElementById('view-profile-text');
+            const avatarContextMenu = document.getElementById('avatar-context-menu');
+            const avatarContextName = document.getElementById('avatar-context-name');
+            const avatarContextProfile = document.getElementById('avatar-context-profile');
             const roomNotice = document.getElementById('room-notice');
             const logoutButton = document.getElementById('logout-button');
             const chatLog = document.getElementById('chat-log');
@@ -578,6 +684,8 @@
             let authMode = 'login';
             let currentUser = null;
             let roomNoticeTimer = null;
+            let contextPlayerId = null;
+            let viewingProfilePlayerId = null;
 
             function authFetch(url, options = {}) {
                 return fetch(url, {
@@ -639,6 +747,7 @@
             function updateToolbarState() {
                 membersNavButton.setAttribute('aria-pressed', String(!membersPanel.hidden));
                 chatNavButton.setAttribute('aria-pressed', String(!chatPanel.hidden));
+                profileNavButton.setAttribute('aria-pressed', String(!profileEditorPanel.hidden));
             }
 
             function selectAuthMode(mode) {
@@ -652,10 +761,50 @@
             }
 
             function selectSidePanel(panel) {
-                const showMembers = panel === 'members';
-                membersPanel.hidden = !showMembers;
-                chatPanel.hidden = showMembers;
+                if (panel !== 'profile-view') viewingProfilePlayerId = null;
+                membersPanel.hidden = panel !== 'members';
+                chatPanel.hidden = panel !== 'chat';
+                profileEditorPanel.hidden = panel !== 'profile-editor';
+                profileViewPanel.hidden = panel !== 'profile-view';
                 updateToolbarState();
+            }
+
+            function closeAvatarContextMenu() {
+                avatarContextMenu.classList.add('hidden');
+                contextPlayerId = null;
+            }
+
+            async function openProfileEditor() {
+                if (!currentUser) return;
+                selectSidePanel('profile-editor');
+                profileAvatarName.textContent = currentUser.username;
+                profileStatus.textContent = 'Henter dine profiloplysninger…';
+                profileSaveButton.disabled = true;
+                let profileLoaded = false;
+                try {
+                    const response = await authFetch('/api/profile');
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.error || 'Profilen kunne ikke hentes.');
+                    profileRealName.value = result.realName;
+                    profileText.value = result.profileText;
+                    profileStatus.textContent = 'Rigtigt navn og profiltekst vises offentligt, når de er udfyldt.';
+                    profileLoaded = true;
+                } catch (error) {
+                    profileStatus.textContent = error.message || 'Profilen kunne ikke hentes. Prøv igen.';
+                } finally {
+                    profileSaveButton.disabled = !profileLoaded;
+                }
+            }
+
+            function showPublicProfile(playerId) {
+                viewingProfilePlayerId = playerId;
+                selectSidePanel('profile-view');
+                viewProfileAvatar.textContent = 'Henter…';
+                viewProfileRoom.textContent = 'Fællesrum';
+                viewProfileRealName.textContent = '';
+                viewProfileText.textContent = '';
+                closeAvatarContextMenu();
+                socket.emit('profile-request', { playerId });
             }
 
             function resetPendingAuthentication() {
@@ -1005,6 +1154,35 @@
             refreshNavButton.addEventListener('click', () => window.location.reload());
             membersNavButton.addEventListener('click', () => selectSidePanel('members'));
             chatNavButton.addEventListener('click', () => selectSidePanel('chat'));
+            profileNavButton.addEventListener('click', openProfileEditor);
+            avatarContextProfile.addEventListener('click', () => {
+                if (contextPlayerId) showPublicProfile(contextPlayerId);
+            });
+
+            profileForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                profileSaveButton.disabled = true;
+                profileStatus.textContent = 'Gemmer…';
+                try {
+                    const response = await authFetch('/api/profile', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            realName: profileRealName.value,
+                            profileText: profileText.value
+                        })
+                    });
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.error || 'Profilen kunne ikke gemmes.');
+                    profileRealName.value = result.realName;
+                    profileText.value = result.profileText;
+                    profileStatus.textContent = 'Profilen er gemt.';
+                } catch (error) {
+                    profileStatus.textContent = error.message || 'Profilen kunne ikke gemmes. Prøv igen.';
+                } finally {
+                    profileSaveButton.disabled = false;
+                }
+            });
 
             logoutButton.addEventListener('click', async () => {
                 logoutButton.disabled = true;
@@ -1020,6 +1198,8 @@
                     updateOnlineList();
                     loginSection.classList.remove('hidden');
                     gameSection.classList.add('hidden');
+                    closeAvatarContextMenu();
+                    selectSidePanel('members');
                     loginError.textContent = '';
                     passwordInput.value = '';
                     authMode = 'login';
@@ -1034,9 +1214,31 @@
             });
 
             canvas.addEventListener('click', (event) => {
+                closeAvatarContextMenu();
                 const cell = getCellFromPointer(event);
                 canvas.focus({ preventScroll: true });
                 moveToCell(cell.col, cell.row);
+            });
+
+            canvas.addEventListener('contextmenu', (event) => {
+                event.preventDefault();
+                const bounds = canvas.getBoundingClientRect();
+                const x = (event.clientX - bounds.left) * canvas.width / bounds.width;
+                const y = (event.clientY - bounds.top) * canvas.height / bounds.height;
+                const target = Object.values(players).find((player) => {
+                    if (player.id === myId) return false;
+                    const position = player.position || positionFor(player);
+                    return Math.hypot(position.x - x, position.y - y) <= avatarRadius + 7;
+                });
+                if (!target) {
+                    closeAvatarContextMenu();
+                    return;
+                }
+                contextPlayerId = target.id;
+                avatarContextName.textContent = target.name;
+                avatarContextMenu.classList.remove('hidden');
+                avatarContextMenu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - avatarContextMenu.offsetWidth - 8))}px`;
+                avatarContextMenu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - avatarContextMenu.offsetHeight - 8))}px`;
             });
 
             canvas.addEventListener('pointermove', (event) => {
@@ -1046,6 +1248,12 @@
             canvas.addEventListener('pointerleave', () => {
                 hoveredCell = null;
             });
+
+            document.addEventListener('click', (event) => {
+                if (!avatarContextMenu.contains(event.target)) closeAvatarContextMenu();
+            });
+
+            window.addEventListener('resize', closeAvatarContextMenu);
 
             canvas.addEventListener('keydown', (event) => {
                 if (!myId || !players[myId]) return;
@@ -1182,6 +1390,20 @@
 
             socket.on('move-rejected', ({ message } = {}) => {
                 setRoomNotice(message || 'Feltet er allerede optaget.');
+            });
+
+            socket.on('profile-info', (profile) => {
+                if (profile.playerId !== viewingProfilePlayerId) return;
+                viewProfileAvatar.textContent = profile.avatarName;
+                viewProfileRoom.textContent = profile.room;
+                viewProfileRealName.textContent = profile.realName || 'Ikke angivet';
+                viewProfileText.textContent = profile.profileText || 'Ingen profiltekst endnu.';
+            });
+
+            socket.on('profile-error', ({ playerId, message } = {}) => {
+                if (playerId !== viewingProfilePlayerId) return;
+                viewProfileAvatar.textContent = players[playerId]?.name || 'Profil';
+                viewProfileRealName.textContent = message || 'Profilen kunne ikke indlæses.';
             });
 
             socket.on('playerChatMessage', (message) => {

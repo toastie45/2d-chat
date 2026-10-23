@@ -8,6 +8,7 @@ const {
 } = require('../lib/chat-security');
 const { isAuthorizedTabSession, isValidTabId } = require('../lib/tab-session');
 const { hashRegistrationIp, MAX_ACCOUNTS_PER_IP } = require('../lib/account-ip-limit');
+const { normalizePublicProfile } = require('../lib/public-profile');
 
 test('redacts Render and GitHub tokens before a message is stored', () => {
     const message = redactSecrets('Render rnd_exampleToken123456789 GitHub ghp_abcdefghijklmnopqrstuvwxyz');
@@ -46,6 +47,23 @@ test('validates and normalizes account usernames', () => {
     assert.equal(normalizeUsername('Tommy').normalized, normalizeUsername('tommy').normalized);
     assert.equal(normalizeUsername('ab'), null);
     assert.equal(normalizeUsername('bad name'), null);
+});
+
+test('normalizes optional public profile fields and enforces safe limits', () => {
+    assert.deepEqual(normalizePublicProfile({
+        realName: '  Ada Lovelace ',
+        profileText: '  Hej\nmed dig  '
+    }), {
+        realName: 'Ada Lovelace',
+        profileText: 'Hej\nmed dig'
+    });
+    assert.deepEqual(normalizePublicProfile({ realName: '', profileText: '' }), {
+        realName: '',
+        profileText: ''
+    });
+    assert.equal(normalizePublicProfile({ realName: 'A'.repeat(81), profileText: '' }), null);
+    assert.equal(normalizePublicProfile({ realName: '', profileText: 'A'.repeat(501) }), null);
+    assert.equal(normalizePublicProfile({ realName: 'Ada\u0000', profileText: '' }), null);
 });
 
 test('accepts passwords only from 8 to 72 UTF-8 bytes', () => {
