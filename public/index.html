@@ -525,17 +525,10 @@
                 }
             }
 
-            function showHistory(messages) {
+            function clearChatLog() {
                 chatLog.replaceChildren();
-                if (!messages.length) {
-                    chatEmpty.classList.remove('hidden');
-                    chatLog.append(chatEmpty);
-                    return;
-                }
-                chatEmpty.classList.add('hidden');
-                for (const message of messages) {
-                    addChatEntry({ name: message.name }, message.text);
-                }
+                chatEmpty.classList.remove('hidden');
+                chatLog.append(chatEmpty);
             }
 
             function colorForPlayer(id) {
@@ -1019,15 +1012,17 @@
                 setRoomNotice(message || 'Den flise er allerede optaget.');
             });
 
-            socket.on('join-success', ({ players: serverPlayers, history }) => {
+            socket.on('join-success', ({ players: serverPlayers }) => {
                 players = {};
                 myId = socket.id;
                 joinButton.disabled = false;
                 authToggle.disabled = false;
                 for (const player of Object.values(serverPlayers)) {
+                    player.text = '';
+                    player.messageTime = 0;
                     showPlayer(player, false);
                 }
-                showHistory(history || []);
+                clearChatLog();
                 addChatSystemEntry(`Du er kommet ind i chatten som ${currentUser.username}.`);
                 updateOnlineList();
                 loginSection.classList.add('hidden');

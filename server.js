@@ -485,29 +485,6 @@ async function startServer() {
         });
     });
 
-    app.get('/api/chat-history', async (request, response, next) => {
-        if (!isAuthorizedTabSession(request.session, getRequestTabId(request))) {
-            response.status(401).json({ error: 'Log ind for at se beskederne.' });
-            return;
-        }
-        try {
-            const result = await pool.query(
-                'SELECT id, username, message, created_at FROM chat_messages ORDER BY id DESC LIMIT $1',
-                [HISTORY_LIMIT]
-            );
-            response.json({
-                messages: result.rows.reverse().map((row) => ({
-                    id: row.id,
-                    name: row.username,
-                    text: sanitizeChatMessage(row.message),
-                    createdAt: row.created_at
-                }))
-            });
-        } catch (error) {
-            next(error);
-        }
-    });
-
     app.use((error, request, response, next) => {
         console.error('Request failed:', getSafeErrorCode(error));
         if (response.headersSent) {
@@ -567,19 +544,6 @@ async function startServer() {
         return getPublicPlayers(await redis.hGetAll(playersKey));
     }
 
-    async function getRecentMessages() {
-        const result = await pool.query(
-            'SELECT id, username, message, created_at FROM chat_messages ORDER BY id DESC LIMIT $1',
-            [HISTORY_LIMIT]
-        );
-        return result.rows.reverse().map((row) => ({
-            id: row.id,
-            name: row.username,
-            text: sanitizeChatMessage(row.message),
-            createdAt: row.created_at
-        }));
-    }
-
     io.on('connection', (socket) => {
         socket.join(`session:${socket.request.sessionID}`);
         socket.on('join', async () => {
@@ -611,11 +575,12 @@ async function startServer() {
 
                 const player = publicPlayer(JSON.parse(joinedPlayerJson));
                 activeSocketIds.add(socket.id);
-                const [currentPlayers, history] = await Promise.all([
-                    getPlayers(),
-                    getRecentMessages()
-                ]);
-                socket.emit('join-success', { players: currentPlayers, history });
+                const currentPlayers = await getPlayers();
+                for (const player of Object.values(currentPlayers)) {
+                    player.text = '';
+                    player.messageTime = 0;
+                }
+                socket.emit('join-success', { players: currentPlayers });
                 socket.broadcast.emit('newPlayer', player);
             } catch (error) {
                 console.error('Could not add chat participant:', getSafeErrorCode(error));
