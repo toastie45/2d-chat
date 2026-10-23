@@ -1,7 +1,7 @@
 {
-  "name": "2d-chat",
+  "name": "2d-chat-netstationen",
   "version": "1.0.0",
-  "description": "2D Chat",
+  "description": "2D Chat Multiplayer",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
