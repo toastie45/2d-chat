@@ -95,18 +95,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('typing', (data) => {
-        if (players[socket.id] && data) {
-            let cleanTyping = typeof data.typingText === 'string' ? data.typingText.slice(0, 100) : '';
-            players[socket.id].typingText = cleanTyping;
-
-            io.emit('playerTyping', {
-                id: socket.id,
-                typingText: cleanTyping
-            });
-        }
-    });
-
+    // Kun når der trykkes Enter sendes besked til alle
     socket.on('chat-message', (text) => {
         if (players[socket.id] && typeof text === 'string' && text.trim().length > 0) {
             let cleanText = text.trim().slice(0, 100);
