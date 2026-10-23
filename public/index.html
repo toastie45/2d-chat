@@ -128,7 +128,7 @@
     <div id="login-screen">
       
       <!-- Trin 1: Opret bruger (Brugernavn, E-mail, Fødselsdato, Regler) -->
-      <div id="step-info" class="login-step active">
+      <div id="step-info" class="login-step">
         <h2>Opret bruger</h2>
         <input type="text" id="username-input" class="input-field" placeholder="Skriv ønsket brugernavn" maxlength="15" autocomplete="off" />
         <input type="email" id="email-input" class="input-field" placeholder="Din e-mailadresse..." autocomplete="off" />
@@ -161,8 +161,8 @@
         <button id="save-password-btn" class="action-btn">Gem kodeord & Deltag</button>
       </div>
 
-      <!-- Login Vindue (Eksisterende brugere) -->
-      <div id="step-login" class="login-step">
+      <!-- Login Vindue (Standard start-skærm nu) -->
+      <div id="step-login" class="login-step active">
         <h2>Log ind</h2>
         <input type="text" id="login-username" class="input-field" placeholder="Brugernavn..." maxlength="15" autocomplete="off" />
         <input type="password" id="login-password" class="input-field" placeholder="Kodeord..." autocomplete="off" />
@@ -214,7 +214,6 @@
     let bubbleTimeout = null;
     let gameStarted = false;
 
-    // Skift mellem oprettelse og login i samme fane
     toLoginBtn.addEventListener('click', () => {
       stepInfo.classList.remove('active');
       stepCode.classList.remove('active');
@@ -229,7 +228,6 @@
       errorMsg.textContent = '';
     });
 
-    // Trin 1: Anmod om kode
     sendCodeBtn.addEventListener('click', () => {
       const username = usernameInput.value.trim();
       const email = emailInput.value.trim();
@@ -261,7 +259,6 @@
       socket.emit('request-code', { username, email, birthdate });
     });
 
-    // Trin 2: Bekræft kode
     verifyBtn.addEventListener('click', () => {
       const code = codeInput.value.trim();
       errorMsg.textContent = '';
@@ -274,7 +271,6 @@
       socket.emit('verify-code', code);
     });
 
-    // Trin 3: Gem kodeord
     savePasswordBtn.addEventListener('click', () => {
       const password = passwordInput.value.trim();
       errorMsg.textContent = '';
@@ -286,7 +282,6 @@
       socket.emit('set-password', password);
     });
 
-    // Direkte Login Knap
     loginBtn.addEventListener('click', () => {
       const username = loginUsername.value.trim();
       const password = loginPassword.value.trim();
