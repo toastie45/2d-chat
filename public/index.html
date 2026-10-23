@@ -38,8 +38,6 @@
             flex-direction: column;
         }
 
-        .page.has-session { padding-bottom: 92px; }
-
         .topbar {
             min-height: 82px;
             display: flex;
@@ -110,14 +108,15 @@
 
         .room-strip {
             display: flex;
-            min-height: 44px;
+            min-height: 52px;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
             margin-top: 16px;
-            padding: 0 14px;
+            padding: 0 16px;
             border: 1px solid #292b26;
-            border-radius: 11px;
-            background: #151613cc;
+            border-radius: 13px;
+            background: linear-gradient(110deg, #191b16, #141512);
+            box-shadow: inset 0 1px #ffffff08, 0 8px 24px #0002;
             color: var(--muted);
             font-size: 11px;
         }
@@ -134,6 +133,12 @@
         .room-strip-name { color: #f2f0e9; font-weight: 650; }
         .room-strip-divider { width: 1px; height: 16px; background: #33352e; }
         .room-strip-spacer { flex: 1; }
+        .room-strip-presence {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
         .room-strip-user {
             max-width: 150px;
             overflow: hidden;
@@ -142,6 +147,20 @@
             white-space: nowrap;
         }
         .room-strip-count { font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .room-strip-logout {
+            min-height: 32px;
+            padding: 0 11px;
+            border: 1px solid #393b33;
+            border-radius: 8px;
+            background: #20211d;
+            color: #d9d8d1;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background .2s ease, border-color .2s ease, color .2s ease;
+        }
+        .room-strip-logout:hover { border-color: #55584e; background: #292b25; color: #fff; }
+        .room-strip-logout:disabled { cursor: wait; opacity: .55; }
 
         .connection {
             display: flex;
@@ -314,21 +333,19 @@
         .side-panel[hidden] { display: none; }
 
         .bottom-toolbar {
-            position: fixed;
-            z-index: 5;
-            right: 50%;
             bottom: 0;
-            display: grid;
-            width: min(calc(100% - 32px), 1040px);
-            grid-template-columns: repeat(3, 38px);
+            display: flex;
+            width: calc(100% + 30px);
+            min-height: 54px;
+            align-items: center;
             gap: 9px;
-            padding: 9px 12px;
-            transform: translateX(50%);
+            margin: 10px -15px -15px;
+            padding: 9px 15px;
             border: 1px solid #252525;
             border-bottom: 0;
-            border-radius: 10px 10px 0 0;
+            border-radius: 0 0 15px 15px;
             background: #080909;
-            box-shadow: 0 -9px 28px #0007;
+            box-shadow: inset 0 1px #ffffff08;
         }
 
         .toolbar-button {
@@ -484,10 +501,10 @@
             .connection { display: none; }
             .room-strip { min-height: 40px; margin-top: 12px; padding: 0 11px; }
             .room-strip-user { max-width: 90px; }
-            .page.has-session { padding-bottom: 74px; }
             .bottom-toolbar {
-                width: min(calc(100% - 20px), 600px);
-                padding-bottom: max(9px, env(safe-area-inset-bottom));
+                width: calc(100% + 18px);
+                margin: 10px -9px -9px;
+                padding: 9px;
             }
         }
 
@@ -522,7 +539,6 @@
                     <button class="topbar-button primary" id="login-nav-button" type="button" aria-pressed="true">Log ind</button>
                     <button class="topbar-button" id="register-nav-button" type="button" aria-pressed="false">Opret konto</button>
                 </nav>
-                <button class="topbar-button logout hidden" id="logout-button" type="button">Log ud</button>
             </div>
         </header>
 
@@ -546,9 +562,12 @@
                     <span class="room-strip-divider" aria-hidden="true"></span>
                     <span>Det åbne gulv</span>
                     <span class="room-strip-spacer"></span>
-                    <span class="room-strip-count" id="room-strip-count">0 online</span>
-                    <span class="room-strip-divider" aria-hidden="true"></span>
-                    <span class="room-strip-user" id="room-strip-user"></span>
+                    <span class="room-strip-presence">
+                        <span class="room-strip-count" id="room-strip-count">0 online</span>
+                        <span class="room-strip-divider" aria-hidden="true"></span>
+                        <span class="room-strip-user" id="room-strip-user"></span>
+                    </span>
+                    <button class="room-strip-logout hidden" id="logout-button" type="button">Log ud</button>
                 </div>
                 <div class="game-heading">
                     <div>
@@ -561,7 +580,17 @@
                             Dit browserprogram understøtter ikke canvas.
                         </canvas>
                         <p class="room-notice" id="room-notice" aria-live="polite"></p>
-                        <p class="board-hint">Klik på en flise for at flytte din avatar. Skriv direkte i rummet, og tryk Enter for at sende. Brug piletasterne til at bevæge dig.</p>
+                        <nav class="bottom-toolbar hidden" id="bottom-toolbar" aria-label="Navigation i chatrummet">
+                            <button class="toolbar-button" id="refresh-nav-button" type="button" aria-label="Genindlæs chatten" title="Genindlæs chatten">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5"/><path d="M4.9 9A7.5 7.5 0 0 1 18 6.5L20 12M4 17v-5h5"/><path d="M19.1 15A7.5 7.5 0 0 1 6 17.5L4 12"/></svg>
+                            </button>
+                            <button class="toolbar-button" id="members-nav-button" type="button" aria-pressed="true" aria-controls="members-panel" aria-label="Vis brugere" title="Brugere">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19v-1.3A4.7 4.7 0 0 1 8.2 13h1.6a4.7 4.7 0 0 1 4.7 4.7V19z"/><path d="M16 5.3a3 3 0 0 1 0 5.8M17 13.3a4.7 4.7 0 0 1 3.5 4.5V19"/></svg>
+                            </button>
+                            <button class="toolbar-button" id="chat-nav-button" type="button" aria-pressed="false" aria-controls="chat-panel" aria-label="Vis samtalen" title="Samtale">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H7l-4 2v-6.1A7.5 7.5 0 1 1 20 11.5Z"/><path d="M8 11h8M8 14.5h5"/></svg>
+                            </button>
+                        </nav>
                     </section>
                     <aside class="side-card">
                         <section class="side-panel" id="members-panel" aria-labelledby="members-title">
@@ -582,18 +611,6 @@
         </main>
         <footer>Et roligt hjørne at hænge ud i.</footer>
     </div>
-    <nav class="bottom-toolbar hidden" id="bottom-toolbar" aria-label="Navigation i chatrummet">
-        <button class="toolbar-button" id="refresh-nav-button" type="button" aria-label="Genindlæs chatten" title="Genindlæs chatten">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5"/><path d="M4.9 9A7.5 7.5 0 0 1 18 6.5L20 12M4 17v-5h5"/><path d="M19.1 15A7.5 7.5 0 0 1 6 17.5L4 12"/></svg>
-        </button>
-        <button class="toolbar-button" id="members-nav-button" type="button" aria-pressed="true" aria-controls="members-panel" aria-label="Vis brugere" title="Brugere">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19v-1.3A4.7 4.7 0 0 1 8.2 13h1.6a4.7 4.7 0 0 1 4.7 4.7V19z"/><path d="M16 5.3a3 3 0 0 1 0 5.8M17 13.3a4.7 4.7 0 0 1 3.5 4.5V19"/></svg>
-        </button>
-        <button class="toolbar-button" id="chat-nav-button" type="button" aria-pressed="false" aria-controls="chat-panel" aria-label="Vis samtalen" title="Samtale">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H7l-4 2v-6.1A7.5 7.5 0 1 1 20 11.5Z"/><path d="M8 11h8M8 14.5h5"/></svg>
-        </button>
-    </nav>
-
     <script src="/socket.io/socket.io.js"></script>
     <script>
         (() => {
