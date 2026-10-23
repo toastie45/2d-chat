@@ -10,8 +10,8 @@ app.use(express.static('public'));
 
 const AVATAR_RADIUS = 16;
 const GRID_SIZE = 48;
-const PLAY_AREA_WIDTH = 408;
-const PLAY_AREA_HEIGHT = 374;
+const PLAY_AREA_WIDTH = 288; // 6 * 48 for et præcist 6x6 gitter
+const PLAY_AREA_HEIGHT = 288;
 const players = {};
 
 function snapToDiagonalGrid(x, y) {
@@ -20,15 +20,19 @@ function snapToDiagonalGrid(x, y) {
     let dx = x - cx;
     let dy = y - cy;
     let angle = -Math.PI / 4;
-    let rx = dx * Math.cos(angle) - dy * Math.sin(angle);
-    let ry = dx * Math.sin(angle) + dy * Math.cos(angle);
+    let cos = Math.cos(angle);
+    let sin = Math.sin(angle);
+    let rx = dx * cos - dy * sin;
+    let ry = dx * sin + dy * cos;
     
-    // Serveren snapper nu også til midten af det diagonale felt (+ GRID_SIZE / 2)
     let snappedRx = Math.floor(rx / GRID_SIZE) * GRID_SIZE + GRID_SIZE / 2;
     let snappedRy = Math.floor(ry / GRID_SIZE) * GRID_SIZE + GRID_SIZE / 2;
     
-    let finalDx = snappedRx * Math.cos(-angle) - snappedRy * Math.sin(-angle);
-    let finalDy = snappedRx * Math.sin(-angle) + snappedRy * Math.cos(-angle);
+    let backAngle = Math.PI / 4;
+    let bCos = Math.cos(backAngle);
+    let bSin = Math.sin(backAngle);
+    let finalDx = snappedRx * bCos - snappedRy * bSin;
+    let finalDy = snappedRx * bSin + snappedRy * bCos;
     return {
         x: Math.round(cx + finalDx),
         y: Math.round(cy + finalDy)
@@ -71,8 +75,8 @@ io.on('connection', (socket) => {
             socket.emit('error-msg', 'Indtast et gyldigt brugernavn.');
             return;
         }
-        let startX = Math.floor(Math.random() * 200) + 100;
-        let startY = Math.floor(Math.random() * 150) + 100;
+        let startX = 144;
+        let startY = 144;
         const validStart = getValidPosition(socket.id, startX, startY);
 
         players[socket.id] = {
@@ -81,7 +85,6 @@ io.on('connection', (socket) => {
             y: validStart.y,
             name: cleanName,
             text: '',
-            typingText: '',
             messageTime: null
         };
 
@@ -101,7 +104,6 @@ io.on('connection', (socket) => {
     socket.on('chat-message', (text) => {
         if (players[socket.id] && typeof text === 'string' && text.trim().length > 0) {
             let cleanText = text.trim().slice(0, 100);
-            players[socket.id].typingText = '';
             players[socket.id].text = cleanText;
             players[socket.id].messageTime = Date.now();
 
