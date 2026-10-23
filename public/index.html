@@ -199,6 +199,7 @@
         let myId = null;
         const radius = 16;
         const gridSize = 48;
+        const gridCount = 6; // 6x6 felter
         let currentTyping = '';
 
         function updateOnlineCount() {
@@ -305,7 +306,7 @@
             let rx = dx * cos - dy * sin;
             let ry = dx * sin + dy * cos;
 
-            // Snapper præcist til midten af feltet vha. + gridSize / 2
+            // Snapper præcist til midten af det specifikke 6x6 felt
             let snappedRx = Math.floor(rx / gridSize) * gridSize + gridSize / 2;
             let snappedRy = Math.floor(ry / gridSize) * gridSize + gridSize / 2;
 
@@ -391,23 +392,33 @@
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+            // Tegn det 6x6 tjekkede gulv (rombe- / trekant-fliser)
             ctx.save();
             ctx.translate(canvas.width / 2, canvas.height / 2);
             ctx.rotate(Math.PI / 4);
-            ctx.strokeStyle = '#252525';
-            ctx.lineWidth = 1;
-            let range = 500;
-            for (let x = -range; x <= range; x += gridSize) {
-                ctx.beginPath();
-                ctx.moveTo(x, -range);
-                ctx.lineTo(x, range);
-                ctx.stroke();
-            }
-            for (let y = -range; y <= range; y += gridSize) {
-                ctx.beginPath();
-                ctx.moveTo(-range, y);
-                ctx.lineTo(range, y);
-                ctx.stroke();
+
+            let startX = -(gridCount * gridSize) / 2;
+            let startY = -(gridCount * gridSize) / 2;
+
+            for (let i = 0; i < gridCount; i++) {
+                for (let j = 0; j < gridCount; j++) {
+                    let x = startX + i * gridSize;
+                    let y = startY + j * gridSize;
+
+                    ctx.beginPath();
+                    ctx.moveTo(x, y + gridSize / 2);
+                    ctx.lineTo(x + gridSize / 2, y);
+                    ctx.lineTo(x + gridSize, y + gridSize / 2);
+                    ctx.lineTo(x + gridSize / 2, y + gridSize);
+                    ctx.closePath();
+
+                    // Klassisk Netstationen ternet gulvfarve
+                    ctx.fillStyle = (i + j) % 2 === 0 ? '#1c1c1c' : '#262626';
+                    ctx.fill();
+                    ctx.strokeStyle = '#333333';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
             }
             ctx.restore();
 
@@ -416,6 +427,7 @@
             for (let id in players) {
                 let p = players[id];
 
+                // Avatar tegnes nu præcist i midten af flisen
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
                 ctx.fillStyle = '#28a745';
