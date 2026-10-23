@@ -161,6 +161,23 @@ for index = 1, #entries, 2 do
         table.insert(removed, id)
     end
 end
+
+local occupiedCells = redis.call('HGETALL', KEYS[2])
+for index = 1, #occupiedCells, 2 do
+    local cell = occupiedCells[index]
+    local id = occupiedCells[index + 1]
+    local encoded = redis.call('HGET', KEYS[1], id)
+    if not encoded then
+        redis.call('HDEL', KEYS[2], cell)
+    else
+        local player = cjson.decode(encoded)
+        local playerCell = player.col .. ':' .. player.row
+        if playerCell ~= cell then
+            redis.call('HDEL', KEYS[2], cell)
+        end
+    end
+end
+
 return removed
 `;
 
@@ -523,6 +540,14 @@ async function startServer() {
                     arguments: joinArguments
                 });
                 if (!joinedPlayerJson) {
+                    const [playerCount, occupiedCellCount] = await Promise.all([
+                        redis.hLen(playersKey),
+                        redis.hLen(cellsKey)
+                    ]);
+                    console.warn('Chat room has no available grid cells:', {
+                        players: playerCount,
+                        occupiedCells: occupiedCellCount
+                    });
                     socket.emit('room-error', { message: 'Rummet er fyldt. Prøv igen senere.' });
                     return;
                 }
