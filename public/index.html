@@ -94,6 +94,7 @@
         const radius = 16;
         const gridSize = 48;
         let currentTyping = '';
+        let typingTimeout = null;
 
         function joinGame() {
             const username = usernameInput.value.trim();
@@ -142,7 +143,7 @@
             delete players[id];
         });
 
-        // Snap til det diagonale (45-graders) gitter
+        // Snap til midtpunktet af det diagonale felt
         function snapToDiagonalGrid(x, y) {
             let cx = canvas.width / 2;
             let cy = canvas.height / 2;
@@ -156,8 +157,8 @@
             let rx = dx * cos - dy * sin;
             let ry = dx * sin + dy * cos;
 
-            let snappedRx = Math.round(rx / gridSize) * gridSize;
-            let snappedRy = Math.round(ry / gridSize) * gridSize;
+            let snappedRx = Math.floor(rx / gridSize) * gridSize + gridSize / 2;
+            let snappedRy = Math.floor(ry / gridSize) * gridSize + gridSize / 2;
 
             angle = Math.PI / 4;
             cos = Math.cos(angle);
@@ -171,7 +172,6 @@
             };
         }
 
-        // Musse-klik: Flyt og snap til center af diagonalt felt
         canvas.addEventListener('click', (e) => {
             if (!myId || !players[myId]) return;
             const rect = canvas.getBoundingClientRect();
@@ -182,11 +182,12 @@
             socket.emit('move', snapped);
         });
 
-        // Direkte tastatur-skrivning (uden chatbar)
+        // Optimeret tastatur-skrivning med Debounce (ingen spam pr. bogstav)
         window.addEventListener('keydown', (e) => {
             if (!myId || !players[myId]) return;
 
             if (e.key === 'Enter') {
+                clearTimeout(typingTimeout);
                 const finalMsg = currentTyping;
                 currentTyping = '';
                 players[myId].text = finalMsg;
@@ -197,12 +198,22 @@
                 currentTyping = currentTyping.slice(0, -1);
                 players[myId].typingText = currentTyping;
                 players[myId].text = '';
-                socket.emit('typing', { typingText: currentTyping, text: '' });
+                
+                // Send opdatering med debounce
+                clearTimeout(typingTimeout);
+                typingTimeout = setTimeout(() => {
+                    socket.emit('typing', { typingText: currentTyping, text: '' });
+                }, 200);
             } else if (e.key.length === 1) {
                 currentTyping += e.key;
                 players[myId].typingText = currentTyping;
                 players[myId].text = '';
-                socket.emit('typing', { typingText: currentTyping, text: '' });
+                
+                // Send opdatering med debounce (sender kun når du lige pauser eller hvert 200. millisekund)
+                clearTimeout(typingTimeout);
+                typingTimeout = setTimeout(() => {
+                    socket.emit('typing', { typingText: currentTyping, text: '' });
+                }, 200);
             }
         });
 
@@ -251,11 +262,10 @@
 
             const now = Date.now();
 
-            // Tegn spillere og avancerede tekstbobler
             for (let id in players) {
                 let p = players[id];
 
-                // Grøn cirkel centreret i feltet
+                // Cirkel centreret i feltet
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
                 ctx.fillStyle = '#28a745';
@@ -274,7 +284,6 @@
                 let displayText = p.typingText || p.text;
                 let isTyping = !!p.typingText;
 
-                // Fade-out logik efter 5 sekunder
                 if (!isTyping && p.text && p.messageTime) {
                     let elapsed = now - p.messageTime;
                     if (elapsed > 5000) {
@@ -312,6 +321,18 @@
                     
                     let bubbleX = p.x - bubbleWidth / 2;
                     let bubbleY = p.y - radius - bubbleHeight - 12;
+                    let tailPointsUp = false;
+
+                    if (bubbleX < 5) {
+                        bubbleX = 5;
+                    } else if (bubbleX + bubbleWidth > canvas.width - 5) {
+                        bubbleX = canvas.width - bubbleWidth - 5;
+                    }
+
+                    if (bubbleY < 5) {
+                        bubbleY = p.y + radius + 12;
+                        tailPointsUp = true;
+                    }
 
                     // Taleboble boks
                     ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
@@ -326,11 +347,18 @@
                     ctx.fill();
                     ctx.stroke();
 
-                    // Taleboble hale (peger på cirklen)
+                    // Taleboble hale
                     ctx.beginPath();
-                    ctx.moveTo(p.x - 6, bubbleY + bubbleHeight);
-                    ctx.lineTo(p.x + 6, bubbleY + bubbleHeight);
-                    ctx.lineTo(p.x, bubbleY + bubbleHeight + 8);
+                    let tailTipX = Math.max(bubbleX + 10, Math.min(p.x, bubbleX + bubbleWidth - 10));
+                    if (!tailPointsUp) {
+                        ctx.moveTo(tailTipX - 6, bubbleY + bubbleHeight);
+                        ctx.lineTo(tailTipX + 6, bubbleY + bubbleHeight);
+                        ctx.lineTo(p.x, bubbleY + bubbleHeight + 8);
+                    } else {
+                        ctx.moveTo(tailTipX - 6, bubbleY);
+                        ctx.lineTo(tailTipX + 6, bubbleY);
+                        ctx.lineTo(p.x, bubbleY - 8);
+                    }
                     ctx.closePath();
                     ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
                     ctx.fill();
