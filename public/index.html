@@ -609,15 +609,14 @@
                         </section>
                         <section class="side-panel profile-panel" id="profile-view-panel" aria-labelledby="profile-view-title" hidden>
                             <h2 class="side-title" id="profile-view-title">Profil</h2>
-                            <p class="profile-section-title">Facts</p>
+                            <p class="profile-section-title" id="profile-view-name">Henter profil…</p>
                             <dl class="profile-facts-view">
-                                <div class="profile-fact"><dt>Avatarnavn</dt><dd id="view-profile-avatar"></dd></div>
                                 <div class="profile-fact"><dt>Rum</dt><dd id="view-profile-room"></dd></div>
                                 <div class="profile-fact"><dt>Rigtigt navn</dt><dd id="view-profile-real-name"></dd></div>
                                 <div class="profile-fact"><dt>Discord</dt><dd id="view-profile-discord"></dd></div>
+                                <div class="profile-fact"><dt>Interesser</dt><dd id="view-profile-interests"></dd></div>
                                 <div class="profile-fact"><dt>Oprettet</dt><dd id="view-profile-created-at"></dd></div>
                                 <div class="profile-fact"><dt>Samlet online</dt><dd id="view-profile-online-duration"></dd></div>
-                                <div class="profile-fact profile-fact-wide"><dt>Interesser</dt><dd id="view-profile-interests"></dd></div>
                                 <div class="profile-fact profile-fact-wide"><dt>Profiltekst</dt><dd id="view-profile-text"></dd></div>
                             </dl>
                         </section>
@@ -683,7 +682,7 @@
             const profileStatus = document.getElementById('profile-status');
             const profileCreatedAt = document.getElementById('profile-created-at');
             const profileOnlineDuration = document.getElementById('profile-online-duration');
-            const viewProfileAvatar = document.getElementById('view-profile-avatar');
+            const viewProfileName = document.getElementById('profile-view-name');
             const viewProfileRoom = document.getElementById('view-profile-room');
             const viewProfileRealName = document.getElementById('view-profile-real-name');
             const viewProfileDiscord = document.getElementById('view-profile-discord');
@@ -880,7 +879,7 @@
             function showPublicProfile(playerId) {
                 viewingProfilePlayerId = playerId;
                 selectSidePanel('profile-view');
-                viewProfileAvatar.textContent = 'Henter…';
+                viewProfileName.textContent = 'Henter profil…';
                 viewProfileRoom.textContent = 'Fællesrum';
                 viewProfileRealName.textContent = '';
                 viewProfileDiscord.textContent = '';
@@ -1522,7 +1521,7 @@
 
             socket.on('profile-info', (profile) => {
                 if (profile.playerId !== viewingProfilePlayerId) return;
-                viewProfileAvatar.textContent = profile.avatarName;
+                viewProfileName.textContent = profile.avatarName;
                 viewProfileRoom.textContent = profile.room;
                 viewProfileRealName.textContent = profile.realName || 'Ikke angivet';
                 viewProfileDiscord.textContent = profile.discordName || 'Ikke angivet';
@@ -1534,7 +1533,7 @@
 
             socket.on('profile-error', ({ playerId, message } = {}) => {
                 if (playerId !== viewingProfilePlayerId) return;
-                viewProfileAvatar.textContent = players[playerId]?.name || 'Profil';
+                viewProfileName.textContent = players[playerId]?.name || 'Profil';
                 viewProfileRealName.textContent = message || 'Profilen kunne ikke indlæses.';
             });
 
