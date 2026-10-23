@@ -615,7 +615,7 @@
                             <form class="profile-form" id="profile-form">
                                 <dl class="profile-facts profile-meta">
                                     <div><dt>Oprettet</dt><dd id="profile-created-at">Henter…</dd></div>
-                                    <div><dt>Online i denne session</dt><dd id="profile-online-duration">Ikke online</dd></div>
+                                    <div><dt>Samlet online</dt><dd id="profile-online-duration">Henter…</dd></div>
                                 </dl>
                                 <div class="profile-facts">
                                     <label class="profile-field" for="profile-real-name">
@@ -648,7 +648,7 @@
                                 <div class="profile-fact"><dt>Rigtigt navn</dt><dd id="view-profile-real-name"></dd></div>
                                 <div class="profile-fact"><dt>Discord</dt><dd id="view-profile-discord"></dd></div>
                                 <div class="profile-fact"><dt>Oprettet</dt><dd id="view-profile-created-at"></dd></div>
-                                <div class="profile-fact"><dt>Online i denne session</dt><dd id="view-profile-online-duration"></dd></div>
+                                <div class="profile-fact"><dt>Samlet online</dt><dd id="view-profile-online-duration"></dd></div>
                                 <div class="profile-fact profile-fact-wide"><dt>Interesser</dt><dd id="view-profile-interests"></dd></div>
                                 <div class="profile-fact profile-fact-wide"><dt>Profiltekst</dt><dd id="view-profile-text"></dd></div>
                             </dl>
@@ -775,20 +775,38 @@
             }
 
             function formatOnlineDuration(value) {
-                const timestamp = Number(value);
-                if (!Number.isFinite(timestamp) || timestamp <= 0) return 'Ikke online';
-                const minutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60_000));
-                if (minutes < 1) return 'Mindre end et minut';
-                if (minutes < 60) return `${minutes} ${minutes === 1 ? 'minut' : 'minutter'}`;
-                const hours = Math.floor(minutes / 60);
-                if (hours < 24) return `${hours} ${hours === 1 ? 'time' : 'timer'}`;
-                const days = Math.floor(hours / 24);
-                return `${days} ${days === 1 ? 'dag' : 'dage'}`;
+                const milliseconds = Number(value);
+                if (!Number.isFinite(milliseconds) || milliseconds <= 0) return '0 timer';
+                const totalMinutes = Math.floor(milliseconds / 60_000);
+                if (totalMinutes < 1) return 'Mindre end et minut';
+                const hours = Math.floor(totalMinutes / 60);
+                const minutes = totalMinutes % 60;
+                const hourLabel = `${hours} ${hours === 1 ? 'time' : 'timer'}`;
+                const minuteLabel = `${minutes} ${minutes === 1 ? 'minut' : 'minutter'}`;
+                if (hours === 0) return minuteLabel;
+                return minutes === 0 ? hourLabel : `${hourLabel} og ${minuteLabel}`;
+            }
+
+            function setOnlineDuration(element, totalMilliseconds) {
+                element.dataset.onlineTotalMs = String(Math.max(0, Number(totalMilliseconds) || 0));
+                element.dataset.onlineUpdatedAt = String(Date.now());
+                updateOnlineDurations();
+            }
+
+            function freezeOnlineDuration(element) {
+                if (!element.dataset.onlineTotalMs) return;
+                const total = Number(element.dataset.onlineTotalMs) || 0;
+                const updatedAt = Number(element.dataset.onlineUpdatedAt) || Date.now();
+                element.textContent = formatOnlineDuration(total + Math.max(0, Date.now() - updatedAt));
+                delete element.dataset.onlineTotalMs;
+                delete element.dataset.onlineUpdatedAt;
             }
 
             function updateOnlineDurations() {
-                document.querySelectorAll('[data-online-since]').forEach((element) => {
-                    element.textContent = formatOnlineDuration(element.dataset.onlineSince);
+                document.querySelectorAll('[data-online-total-ms]').forEach((element) => {
+                    const total = Number(element.dataset.onlineTotalMs) || 0;
+                    const updatedAt = Number(element.dataset.onlineUpdatedAt) || Date.now();
+                    element.textContent = formatOnlineDuration(total + Math.max(0, Date.now() - updatedAt));
                 });
             }
 
@@ -882,8 +900,7 @@
                     profileInterests.value = result.interests;
                     profileText.value = result.profileText;
                     profileCreatedAt.textContent = formatProfileDate(result.createdAt);
-                    profileOnlineDuration.dataset.onlineSince = result.onlineSince || '';
-                    updateOnlineDurations();
+                    setOnlineDuration(profileOnlineDuration, result.totalOnlineMs);
                     profileStatus.textContent = 'Udfyldte profilfelter vises offentligt.';
                     profileLoaded = true;
                 } catch (error) {
@@ -902,7 +919,8 @@
                 viewProfileDiscord.textContent = '';
                 viewProfileCreatedAt.textContent = '';
                 viewProfileOnlineDuration.textContent = '';
-                delete viewProfileOnlineDuration.dataset.onlineSince;
+                delete viewProfileOnlineDuration.dataset.onlineTotalMs;
+                delete viewProfileOnlineDuration.dataset.onlineUpdatedAt;
                 viewProfileInterests.textContent = '';
                 viewProfileText.textContent = '';
                 closeAvatarContextMenu();
@@ -1554,8 +1572,7 @@
                 viewProfileRealName.textContent = profile.realName || 'Ikke angivet';
                 viewProfileDiscord.textContent = profile.discordName || 'Ikke angivet';
                 viewProfileCreatedAt.textContent = formatProfileDate(profile.createdAt);
-                viewProfileOnlineDuration.dataset.onlineSince = profile.onlineSince || '';
-                updateOnlineDurations();
+                setOnlineDuration(viewProfileOnlineDuration, profile.totalOnlineMs);
                 viewProfileInterests.textContent = profile.interests || 'Ikke angivet';
                 viewProfileText.textContent = profile.profileText || 'Ingen profiltekst endnu.';
             });
@@ -1585,6 +1602,8 @@
             socket.on('playerDisconnected', (id) => {
                 const player = players[id];
                 delete players[id];
+                if (id === myId) freezeOnlineDuration(profileOnlineDuration);
+                if (id === viewingProfilePlayerId) freezeOnlineDuration(viewProfileOnlineDuration);
                 updateOnlineList();
                 if (player) addChatSystemEntry(`${player.name} har forladt chatten.`);
             });

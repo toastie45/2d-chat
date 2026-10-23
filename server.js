@@ -28,8 +28,9 @@ const HISTORY_LIMIT = 500;
 const PRESENCE_HEARTBEAT_INTERVAL = 10_000;
 const PRESENCE_EXPIRY = 45_000;
 const PRESENCE_CLEANUP_INTERVAL = 15_000;
+const ONLINE_TIME_ACCOUNTING_INTERVAL = 10_000;
 const PLAYER_IDLE_TIMEOUT = 20 * 60 * 1000;
-const PLAYER_IDLE_CHECK_INTERVAL = 60_000;
+const PLAYER_IDLE_CHECK_INTERVAL = 10_000;
 const LOGIN_ATTEMPT_LIMIT = 10;
 const LOGIN_ATTEMPT_WINDOW_SECONDS = 15 * 60;
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
@@ -324,7 +325,16 @@ async function startServer() {
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS discord_name VARCHAR(64)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS interests VARCHAR(160)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS registration_ip_hash TEXT');
+    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS total_online_ms BIGINT NOT NULL DEFAULT 0');
     await pool.query('CREATE INDEX IF NOT EXISTS chat_users_registration_ip_hash_idx ON chat_users (registration_ip_hash) WHERE registration_ip_hash IS NOT NULL');
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS chat_online_sessions (
+            socket_id TEXT PRIMARY KEY,
+            user_id BIGINT NOT NULL REFERENCES chat_users(id) ON DELETE CASCADE,
+            last_accounted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS chat_online_sessions_user_id_idx ON chat_online_sessions (user_id)');
     await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_messages (
             id BIGSERIAL PRIMARY KEY,
@@ -368,18 +378,64 @@ async function startServer() {
 
     const getRequestTabId = (request) => request.get('x-chat-tab-id');
 
-    async function getOnlineSince(username) {
-        const normalizedUsername = normalizeUsername(username);
-        if (!normalizedUsername) return null;
-        const redisPlayers = await redis.hGetAll(playersKey);
-        for (const encoded of Object.values(redisPlayers)) {
-            const player = JSON.parse(encoded);
-            const playerUsername = normalizeUsername(player.name);
-            if (playerUsername && playerUsername.normalized === normalizedUsername.normalized) {
-                return Number(player.joinedAt || 0) || null;
+    async function getTotalOnlineMs(userId) {
+        const { rows: [row] } = await pool.query(`
+            SELECT
+                u.total_online_ms::text AS total_online_ms,
+                COALESCE(SUM(GREATEST(
+                    0,
+                    FLOOR(EXTRACT(EPOCH FROM (NOW() - s.last_accounted_at)) * 1000)
+                )), 0)::text AS pending_online_ms
+            FROM chat_users u
+            LEFT JOIN chat_online_sessions s ON s.user_id = u.id
+            WHERE u.id = $1
+            GROUP BY u.id
+        `, [userId]);
+        if (!row) return 0;
+        return Number(row.total_online_ms) + Number(row.pending_online_ms);
+    }
+
+    async function accountOnlineSession(socketId, finish = false, accountedUntil = new Date()) {
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            const { rows: [onlineSession] } = await client.query(
+                'SELECT user_id, last_accounted_at FROM chat_online_sessions WHERE socket_id = $1 FOR UPDATE',
+                [socketId]
+            );
+            if (onlineSession) {
+                await client.query(`
+                    UPDATE chat_users
+                    SET total_online_ms = total_online_ms + GREATEST(
+                        0,
+                        FLOOR(EXTRACT(EPOCH FROM ($2::timestamptz - $3::timestamptz)) * 1000)::bigint
+                    )
+                    WHERE id = $1
+                `, [onlineSession.user_id, accountedUntil, onlineSession.last_accounted_at]);
+                if (finish) {
+                    await client.query('DELETE FROM chat_online_sessions WHERE socket_id = $1', [socketId]);
+                } else {
+                    await client.query(
+                        'UPDATE chat_online_sessions SET last_accounted_at = $2 WHERE socket_id = $1',
+                        [socketId, accountedUntil]
+                    );
+                }
             }
+            await client.query('COMMIT');
+            return Boolean(onlineSession);
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
         }
-        return null;
+    }
+
+    async function startOnlineSession(socketId, userId) {
+        await pool.query(`
+            INSERT INTO chat_online_sessions (socket_id, user_id, last_accounted_at)
+            VALUES ($1, $2, NOW())
+        `, [socketId, userId]);
     }
 
     const requireTabId = (request, response) => {
@@ -430,7 +486,7 @@ async function startServer() {
                 discordName: profile.discord_name || '',
                 interests: profile.interests || '',
                 createdAt: profile.created_at,
-                onlineSince: await getOnlineSince(request.session.user.username)
+                totalOnlineMs: await getTotalOnlineMs(request.session.user.id)
             });
         } catch (error) {
             next(error);
@@ -646,7 +702,31 @@ async function startServer() {
         });
         for (const id of removedIds) {
             activeSocketIds.delete(id);
+            try {
+                await accountOnlineSession(id, true, new Date(Date.now() - PRESENCE_EXPIRY));
+            } catch (error) {
+                console.error('Could not account for expired chat session:', getSafeErrorCode(error));
+            }
             io.emit('playerDisconnected', id);
+        }
+        await cleanupOrphanedOnlineSessions();
+    }
+
+    async function cleanupOrphanedOnlineSessions() {
+        const [players, { rows: onlineSessions }] = await Promise.all([
+            redis.hGetAll(playersKey),
+            pool.query('SELECT socket_id, last_accounted_at FROM chat_online_sessions')
+        ]);
+        const playerIds = new Set(Object.keys(players));
+        for (const onlineSession of onlineSessions) {
+            if (playerIds.has(onlineSession.socket_id)) continue;
+            const lastAccountedAt = new Date(onlineSession.last_accounted_at).getTime();
+            const maxAccountedAt = Math.min(Date.now(), lastAccountedAt + ONLINE_TIME_ACCOUNTING_INTERVAL);
+            try {
+                await accountOnlineSession(onlineSession.socket_id, true, new Date(maxAccountedAt));
+            } catch (error) {
+                console.error('Could not close orphaned online-time session:', getSafeErrorCode(error));
+            }
         }
     }
 
@@ -657,6 +737,11 @@ async function startServer() {
         });
         for (const id of removedIds) {
             activeSocketIds.delete(id);
+            try {
+                await accountOnlineSession(id, true);
+            } catch (error) {
+                console.error('Could not account for inactive chat session:', getSafeErrorCode(error));
+            }
             io.to(id).emit('session-kicked', { message: 'Du blev fjernet fra rummet efter 20 minutters inaktivitet.' });
             io.emit('playerDisconnected', id);
             setTimeout(() => io.in(id).disconnectSockets(true), 100);
@@ -673,6 +758,11 @@ async function startServer() {
             if (removed) io.emit('playerDisconnected', socketId);
         } catch (error) {
             console.error('Could not remove kicked chat participant:', getSafeErrorCode(error));
+        }
+        try {
+            await accountOnlineSession(socketId, true);
+        } catch (error) {
+            console.error('Could not account for kicked chat session:', getSafeErrorCode(error));
         }
         io.to(socketId).emit('session-kicked', { message });
         setTimeout(() => io.in(socketId).disconnectSockets(true), 100);
@@ -708,7 +798,7 @@ async function startServer() {
                     return;
                 }
                 const { rows: [profile] } = await pool.query(
-                    'SELECT real_name, profile_text, discord_name, interests, created_at FROM chat_users WHERE username_normalized = $1',
+                    'SELECT id, real_name, profile_text, discord_name, interests, created_at FROM chat_users WHERE username_normalized = $1',
                     [account.normalized]
                 );
                 if (!profile) {
@@ -724,7 +814,7 @@ async function startServer() {
                     discordName: profile.discord_name || '',
                     interests: profile.interests || '',
                     createdAt: profile.created_at,
-                    onlineSince: Number(player.joinedAt || 0) || null
+                    totalOnlineMs: await getTotalOnlineMs(profile.id)
                 });
             } catch (error) {
                 console.error('Could not load public profile:', getSafeErrorCode(error));
@@ -757,6 +847,16 @@ async function startServer() {
                     });
                     socket.emit('room-error', { message: 'Rummet er fyldt. Prøv igen senere.' });
                     return;
+                }
+
+                try {
+                    await startOnlineSession(socket.id, socket.data.user.id);
+                } catch (error) {
+                    await redis.eval(REMOVE_PLAYER_SCRIPT, {
+                        keys: [playersKey, cellsKey],
+                        arguments: [socket.id]
+                    });
+                    throw error;
                 }
 
                 const player = publicPlayer(JSON.parse(joinedPlayerJson));
@@ -882,6 +982,11 @@ async function startServer() {
             } catch (error) {
                 console.error('Could not remove chat participant:', getSafeErrorCode(error));
             }
+            try {
+                await accountOnlineSession(socket.id, true);
+            } catch (error) {
+                console.error('Could not account for disconnected chat session:', getSafeErrorCode(error));
+            }
         });
     });
 
@@ -896,9 +1001,16 @@ async function startServer() {
             });
         } catch (error) {
             console.error('Could not refresh chat presence:', getSafeErrorCode(error));
-        } finally {
-            heartbeatRunning = false;
         }
+        const accountedAt = new Date();
+        for (const socketId of [...activeSocketIds]) {
+            try {
+                await accountOnlineSession(socketId, false, accountedAt);
+            } catch (error) {
+                console.error('Could not update accumulated online time:', getSafeErrorCode(error));
+            }
+        }
+        heartbeatRunning = false;
     }, PRESENCE_HEARTBEAT_INTERVAL);
     const cleanupTimer = setInterval(() => {
         cleanupStalePlayers().catch((error) => {
