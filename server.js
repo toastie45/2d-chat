@@ -693,6 +693,7 @@ async function startServer() {
         }
         socket.data.user = session.user;
         socket.data.tabId = tabId;
+        socket.data.sessionId = socket.request.sessionID;
         next();
     });
 
@@ -753,6 +754,20 @@ async function startServer() {
         }
     }
 
+    async function invalidateSocketSession(socketId) {
+        const sockets = await io.in(socketId).fetchSockets();
+        const sessionIds = new Set(
+            sockets
+                .map((socket) => socket.data.sessionId)
+                .filter((sessionId) => typeof sessionId === 'string' && sessionId)
+        );
+        for (const sessionId of sessionIds) {
+            await new Promise((resolve, reject) => {
+                sessionStore.destroy(sessionId, (error) => error ? reject(error) : resolve());
+            });
+        }
+    }
+
     async function kickIdlePlayers() {
         const removedIds = await redis.eval(KICK_IDLE_PLAYERS_SCRIPT, {
             keys: [playersKey, cellsKey],
@@ -764,6 +779,11 @@ async function startServer() {
                 await accountOnlineSession(id, true);
             } catch (error) {
                 console.error('Could not account for inactive chat session:', getSafeErrorCode(error));
+            }
+            try {
+                await invalidateSocketSession(id);
+            } catch (error) {
+                console.error('Could not invalidate inactive participant session:', getSafeErrorCode(error));
             }
             io.to(id).emit('session-kicked', { message: 'Du blev fjernet fra rummet efter 20 minutters inaktivitet.' });
             io.emit('playerDisconnected', id);
@@ -786,6 +806,11 @@ async function startServer() {
             await accountOnlineSession(socketId, true);
         } catch (error) {
             console.error('Could not account for kicked chat session:', getSafeErrorCode(error));
+        }
+        try {
+            await invalidateSocketSession(socketId);
+        } catch (error) {
+            console.error('Could not invalidate kicked participant session:', getSafeErrorCode(error));
         }
         io.to(socketId).emit('session-kicked', { message });
         setTimeout(() => io.in(socketId).disconnectSockets(true), 100);

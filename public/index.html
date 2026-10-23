@@ -1221,12 +1221,6 @@
                 loginError.textContent = '';
                 joinButton.disabled = true;
                 if (currentUser) {
-                    if (sessionKickMessage) {
-                        sessionKickMessage = '';
-                        joinButton.textContent = 'Forbinder…';
-                        socket.connect();
-                        return;
-                    }
                     if (socket.connected) {
                         socket.emit('join');
                     } else {
@@ -1246,6 +1240,7 @@
                     });
                     const result = await response.json();
                     if (!response.ok) throw new Error(result.error || 'Kunne ikke logge ind.');
+                    sessionKickMessage = '';
                     currentUser = result.user;
                     updateAccountActions();
                     usernameInput.value = result.user.username;
@@ -1467,14 +1462,17 @@
 
             socket.on('session-kicked', ({ message } = {}) => {
                 sessionKickMessage = message || 'Du blev fjernet fra chatten.';
+                currentUser = null;
+                authMode = 'login';
+                passwordInput.value = '';
+                resetPendingAuthentication();
                 players = {};
                 myId = null;
                 updateOnlineList();
                 gameSection.classList.add('hidden');
                 loginSection.classList.remove('hidden');
-                loginError.textContent = `${sessionKickMessage} Du kan gå ind i rummet igen, når du er klar.`;
+                loginError.textContent = `${sessionKickMessage} Log ind igen med din adgangskode for at gå ind i rummet.`;
                 joinButton.disabled = false;
-                joinButton.textContent = 'Gå ind i rummet';
                 socket.disconnect();
             });
 
