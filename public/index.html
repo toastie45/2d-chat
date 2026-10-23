@@ -1341,7 +1341,6 @@
                 const x = (event.clientX - bounds.left) * canvas.width / bounds.width;
                 const y = (event.clientY - bounds.top) * canvas.height / bounds.height;
                 const target = Object.values(players).find((player) => {
-                    if (player.id === myId) return false;
                     const position = player.position || positionFor(player);
                     return Math.hypot(position.x - x, position.y - y) <= avatarRadius + 7;
                 });
