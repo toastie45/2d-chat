@@ -68,7 +68,12 @@ for index = 4, #ARGV do
         return cjson.encode(player)
     end
 end
-return false
+return cjson.encode({
+    error = 'full',
+    argumentCount = #ARGV,
+    playerCount = redis.call('HLEN', KEYS[1]),
+    occupiedCellCount = redis.call('HLEN', KEYS[2])
+})
 `;
 
 const PLAYER_MOVE_SCRIPT = `
@@ -535,24 +540,22 @@ async function startServer() {
                     String(Date.now()),
                     ...GRID_CELLS.map((cell) => `${cell.col}:${cell.row}`)
                 ];
-                const joinedPlayerJson = await redis.eval(PLAYER_JOIN_SCRIPT, {
+                const joinedResultJson = await redis.eval(PLAYER_JOIN_SCRIPT, {
                     keys: [playersKey, cellsKey],
                     arguments: joinArguments
                 });
-                if (!joinedPlayerJson) {
-                    const [playerCount, occupiedCellCount] = await Promise.all([
-                        redis.hLen(playersKey),
-                        redis.hLen(cellsKey)
-                    ]);
-                    console.warn('Chat room has no available grid cells:', {
-                        players: playerCount,
-                        occupiedCells: occupiedCellCount
+                const joinedResult = joinedResultJson ? JSON.parse(joinedResultJson) : null;
+                if (!joinedResult || joinedResult.error) {
+                    console.warn('Chat room join did not allocate a grid cell:', joinedResult || {
+                        argumentCount: joinArguments.length,
+                        candidateCellCount: GRID_CELLS.length,
+                        resultType: typeof joinedResultJson
                     });
                     socket.emit('room-error', { message: 'Rummet er fyldt. Prøv igen senere.' });
                     return;
                 }
 
-                const player = publicPlayer(JSON.parse(joinedPlayerJson));
+                const player = publicPlayer(joinedResult);
                 activeSocketIds.add(socket.id);
                 const [currentPlayers, history] = await Promise.all([
                     getPlayers(),
