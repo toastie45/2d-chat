@@ -55,7 +55,6 @@
             width: 700px;
             text-align: center;
         }
-        /* Online-tæller i venstre hjørne */
         #online-indicator {
             position: absolute;
             top: -25px;
@@ -294,7 +293,7 @@
             updateOnlineCount();
         });
 
-        // Præcis centrering i felterne (sikrer at cirklen lander midt i cellen)
+        // Korrekt centrering i midten af det diagonale felt (ved hjælp af gridSize / 2 offset)
         function snapToDiagonalGrid(x, y) {
             let cx = canvas.width / 2;
             let cy = canvas.height / 2;
@@ -307,9 +306,8 @@
             let rx = dx * cos - dy * sin;
             let ry = dx * sin + dy * cos;
 
-            // Brug Math.round for at ramme midt i cellen
-            let snappedRx = Math.round(rx / gridSize) * gridSize;
-            let snappedRy = Math.round(ry / gridSize) * gridSize;
+            let snappedRx = Math.floor(rx / gridSize) * gridSize + gridSize / 2;
+            let snappedRy = Math.floor(ry / gridSize) * gridSize + gridSize / 2;
 
             let backAngle = Math.PI / 4;
             let bCos = Math.cos(backAngle);
@@ -393,20 +391,19 @@
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Tegn diagonalt gitter, hvor cellerne er centreret omkring origo
             ctx.save();
             ctx.translate(canvas.width / 2, canvas.height / 2);
             ctx.rotate(Math.PI / 4);
             ctx.strokeStyle = '#252525';
             ctx.lineWidth = 1;
             let range = 500;
-            for (let x = -range + gridSize / 2; x <= range; x += gridSize) {
+            for (let x = -range; x <= range; x += gridSize) {
                 ctx.beginPath();
                 ctx.moveTo(x, -range);
                 ctx.lineTo(x, range);
                 ctx.stroke();
             }
-            for (let y = -range + gridSize / 2; y <= range; y += gridSize) {
+            for (let y = -range; y <= range; y += gridSize) {
                 ctx.beginPath();
                 ctx.moveTo(-range, y);
                 ctx.lineTo(range, y);
