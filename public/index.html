@@ -95,7 +95,7 @@
         .topbar-button:hover { border-color: #383a33; background: #1a1c18; color: #fff; }
         .topbar-button:active { transform: translateY(1px); }
         .topbar-button:disabled { cursor: not-allowed; opacity: .5; }
-        .topbar-button:focus-visible, .side-tab:focus-visible {
+        .topbar-button:focus-visible {
             outline: 2px solid var(--accent);
             outline-offset: 2px;
         }
@@ -310,45 +310,6 @@
             flex-direction: column;
         }
 
-        .side-tabs {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 5px;
-            margin: 13px 13px 0;
-            padding: 4px;
-            border: 1px solid #292b26;
-            border-radius: 11px;
-            background: #11120f;
-        }
-
-        .side-tab {
-            min-height: 37px;
-            padding: 0 10px;
-            border: 0;
-            border-radius: 8px;
-            background: transparent;
-            color: var(--muted);
-            font-size: 11px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background .2s ease, color .2s ease;
-        }
-
-        .side-tab:hover { color: #f2f0e9; }
-        .side-tab[aria-selected="true"] { background: #24261f; color: var(--accent); }
-        .side-tab span {
-            display: inline-grid;
-            min-width: 19px;
-            height: 19px;
-            margin-left: 4px;
-            padding: 0 5px;
-            place-items: center;
-            border-radius: 10px;
-            background: #303229;
-            color: #d9d8d1;
-            font-size: 10px;
-            font-variant-numeric: tabular-nums;
-        }
         .side-panel { min-height: 0; flex: 1; padding: 20px 17px; }
         .side-panel[hidden] { display: none; }
 
@@ -387,7 +348,6 @@
 
         .toolbar-button:hover { border-color: #f24a3f; background: #bd120e; }
         .toolbar-button:active { transform: translateY(1px); }
-        .toolbar-button[aria-current="page"],
         .toolbar-button[aria-pressed="true"] {
             border-color: #d83229;
             background: #a90e0a;
@@ -604,18 +564,14 @@
                         <p class="board-hint">Klik på en flise for at flytte din avatar. Skriv direkte i rummet, og tryk Enter for at sende. Brug piletasterne til at bevæge dig.</p>
                     </section>
                     <aside class="side-card">
-                        <div class="side-tabs" role="tablist" aria-label="Rumoversigt">
-                            <button class="side-tab" id="members-tab" type="button" role="tab" aria-selected="true" aria-controls="members-panel">Brugere <span id="room-member-count">0</span></button>
-                            <button class="side-tab" id="chat-tab" type="button" role="tab" aria-selected="false" aria-controls="chat-panel">Samtale</button>
-                        </div>
-                        <section class="side-panel" id="members-panel" role="tabpanel" aria-labelledby="members-tab">
-                            <h2 class="side-title">Her lige nu</h2>
+                        <section class="side-panel" id="members-panel" aria-labelledby="members-title">
+                            <h2 class="side-title" id="members-title">Her lige nu</h2>
                             <input class="member-search" id="member-search" type="search" placeholder="Søg efter navn…" aria-label="Søg blandt brugere i rummet" autocomplete="off">
                             <div class="member-list" id="member-list" role="list" aria-live="polite"></div>
                             <p class="member-empty hidden" id="member-empty" role="status" aria-live="polite">Der er ingen brugere her endnu.</p>
                         </section>
-                        <section class="side-panel chat-section" id="chat-panel" role="tabpanel" aria-labelledby="chat-tab" hidden>
-                            <h2 class="side-title">Samtalen i rummet</h2>
+                        <section class="side-panel chat-section" id="chat-panel" aria-labelledby="chat-title" hidden>
+                            <h2 class="side-title" id="chat-title">Samtalen i rummet</h2>
                             <p class="chat-hint">Talebobler bliver vist i 10 sekunder.</p>
                             <p class="chat-hint" id="message-counter" aria-live="off">0/100 tegn</p>
                             <div class="chat-log" id="chat-log" role="log" aria-live="polite" aria-relevant="additions">
@@ -629,17 +585,14 @@
         <footer>Et roligt hjørne at hænge ud i.</footer>
     </div>
     <nav class="bottom-toolbar hidden" id="bottom-toolbar" aria-label="Navigation i chatrummet">
-        <button class="toolbar-button" id="floor-nav-button" type="button" aria-current="page" aria-label="Gå til chatrummet">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5 12 3l8 2.5v13L12 21l-8-2.5z"/><path d="m4 5.5 8 2.7 8-2.7M12 8.2V21"/></svg>
-            <span>Chatrum</span>
+        <button class="toolbar-button" id="refresh-nav-button" type="button" aria-label="Genindlæs chatten" title="Genindlæs chatten">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5"/><path d="M4.9 9A7.5 7.5 0 0 1 18 6.5L20 12M4 17v-5h5"/><path d="M19.1 15A7.5 7.5 0 0 1 6 17.5L4 12"/></svg>
         </button>
-        <button class="toolbar-button" id="members-nav-button" type="button" aria-pressed="false" aria-label="Vis brugere">
+        <button class="toolbar-button" id="members-nav-button" type="button" aria-pressed="true" aria-controls="members-panel" aria-label="Vis brugere" title="Brugere">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19v-1.3A4.7 4.7 0 0 1 8.2 13h1.6a4.7 4.7 0 0 1 4.7 4.7V19z"/><path d="M16 5.3a3 3 0 0 1 0 5.8M17 13.3a4.7 4.7 0 0 1 3.5 4.5V19"/></svg>
-            <span>Brugere</span>
         </button>
-        <button class="toolbar-button" id="chat-nav-button" type="button" aria-pressed="false" aria-label="Vis samtalen">
+        <button class="toolbar-button" id="chat-nav-button" type="button" aria-pressed="false" aria-controls="chat-panel" aria-label="Vis samtalen" title="Samtale">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H7l-4 2v-6.1A7.5 7.5 0 1 1 20 11.5Z"/><path d="M8 11h8M8 14.5h5"/></svg>
-            <span>Samtale</span>
         </button>
     </nav>
 
@@ -675,19 +628,14 @@
             const roomStripCount = document.getElementById('room-strip-count');
             const roomStripUser = document.getElementById('room-strip-user');
             const bottomToolbar = document.getElementById('bottom-toolbar');
-            const floorNavButton = document.getElementById('floor-nav-button');
+            const refreshNavButton = document.getElementById('refresh-nav-button');
             const membersNavButton = document.getElementById('members-nav-button');
             const chatNavButton = document.getElementById('chat-nav-button');
-            const boardCard = document.querySelector('.board-card');
-            const sideCard = document.querySelector('.side-card');
             const connectionStatus = document.getElementById('connection-status');
             const connectionLabel = document.getElementById('connection-label');
             const memberList = document.getElementById('member-list');
             const memberSearch = document.getElementById('member-search');
             const memberEmpty = document.getElementById('member-empty');
-            const roomMemberCount = document.getElementById('room-member-count');
-            const membersTab = document.getElementById('members-tab');
-            const chatTab = document.getElementById('chat-tab');
             const membersPanel = document.getElementById('members-panel');
             const chatPanel = document.getElementById('chat-panel');
             const messageCounter = document.getElementById('message-counter');
@@ -771,14 +719,8 @@
             }
 
             function updateToolbarState() {
-                floorNavButton.setAttribute('aria-current', 'page');
-                for (const button of [membersNavButton, chatNavButton]) {
-                    button.setAttribute('aria-pressed', String(
-                        button === membersNavButton
-                            ? membersTab.getAttribute('aria-selected') === 'true'
-                            : chatTab.getAttribute('aria-selected') === 'true'
-                    ));
-                }
+                membersNavButton.setAttribute('aria-pressed', String(!membersPanel.hidden));
+                chatNavButton.setAttribute('aria-pressed', String(!chatPanel.hidden));
             }
 
             function selectAuthMode(mode) {
@@ -791,10 +733,8 @@
                 }
             }
 
-            function selectSideTab(tab) {
-                const showMembers = tab === 'members';
-                membersTab.setAttribute('aria-selected', String(showMembers));
-                chatTab.setAttribute('aria-selected', String(!showMembers));
+            function selectSidePanel(panel) {
+                const showMembers = panel === 'members';
                 membersPanel.hidden = !showMembers;
                 chatPanel.hidden = showMembers;
                 updateToolbarState();
@@ -858,8 +798,7 @@
                 const onlinePlayers = Object.values(players);
                 const countLabel = `${onlinePlayers.length} ${onlinePlayers.length === 1 ? 'person' : 'personer'}`;
                 roomStripCount.textContent = `${countLabel} online`;
-                roomMemberCount.textContent = onlinePlayers.length;
-                membersTab.setAttribute('aria-label', `Brugere, ${countLabel} online`);
+                membersNavButton.setAttribute('aria-label', `Vis brugere, ${countLabel} online`);
                 const searchTerm = memberSearch.value.trim().toLocaleLowerCase('da');
                 const filteredPlayers = onlinePlayers
                     .filter((player) => player.name.toLocaleLowerCase('da').includes(searchTerm))
@@ -1165,16 +1104,9 @@
 
             loginNavButton.addEventListener('click', () => selectAuthMode('login'));
             registerNavButton.addEventListener('click', () => selectAuthMode('register'));
-            membersTab.addEventListener('click', () => selectSideTab('members'));
-            chatTab.addEventListener('click', () => selectSideTab('chat'));
-            floorNavButton.addEventListener('click', () => {
-                boardCard.scrollIntoView({
-                    block: 'start',
-                    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
-                });
-            });
-            membersNavButton.addEventListener('click', () => selectSideTab('members'));
-            chatNavButton.addEventListener('click', () => selectSideTab('chat'));
+            refreshNavButton.addEventListener('click', () => window.location.reload());
+            membersNavButton.addEventListener('click', () => selectSidePanel('members'));
+            chatNavButton.addEventListener('click', () => selectSidePanel('chat'));
 
             memberSearch.addEventListener('input', updateOnlineList);
 
