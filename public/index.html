@@ -306,6 +306,11 @@
 
         .chat-entry { margin: 0 0 8px; overflow-wrap: anywhere; }
         .chat-entry strong { color: #f2f0e9; font-weight: 600; }
+        .chat-system {
+            color: var(--muted);
+            font-size: 10px;
+            font-style: italic;
+        }
         .chat-empty { color: #777970; }
         .hidden { display: none !important; }
 
@@ -496,6 +501,20 @@
                 passwordInput.autocomplete = isRegistering ? 'new-password' : 'current-password';
             }
 
+            function resetPendingAuthentication() {
+                currentUser = null;
+                joinButton.disabled = false;
+                authToggle.disabled = false;
+                usernameInput.disabled = false;
+                passwordInput.disabled = false;
+                showAuthMode();
+            }
+
+            function setConnectionLabel(message, online = false) {
+                connectionStatus.classList.toggle('online', online);
+                connectionLabel.textContent = message;
+            }
+
             function setRoomNotice(message) {
                 roomNotice.textContent = message;
                 clearTimeout(roomNoticeTimer);
@@ -579,6 +598,18 @@
                 const sender = document.createElement('strong');
                 sender.textContent = `${player.name}: `;
                 entry.append(sender, document.createTextNode(hideSensitiveData(text)));
+                chatLog.append(entry);
+                while (chatLog.children.length > 500) {
+                    chatLog.removeChild(chatLog.firstElementChild);
+                }
+                chatLog.scrollTop = chatLog.scrollHeight;
+            }
+
+            function addChatSystemEntry(text) {
+                chatEmpty.classList.add('hidden');
+                const entry = document.createElement('p');
+                entry.className = 'chat-system';
+                entry.textContent = text;
                 chatLog.append(entry);
                 while (chatLog.children.length > 500) {
                     chatLog.removeChild(chatLog.firstElementChild);
@@ -780,6 +811,15 @@
                 event.preventDefault();
                 loginError.textContent = '';
                 joinButton.disabled = true;
+                if (currentUser) {
+                    if (socket.connected) {
+                        socket.emit('join');
+                    } else {
+                        socket.disconnect();
+                        socket.connect();
+                    }
+                    return;
+                }
                 try {
                     const response = await authFetch(`/api/auth/${authMode === 'register' ? 'register' : 'login'}`, {
                         method: 'POST',
@@ -794,6 +834,11 @@
                     currentUser = result.user;
                     usernameInput.value = result.user.username;
                     passwordInput.value = '';
+                    usernameInput.disabled = true;
+                    passwordInput.disabled = true;
+                    authToggle.disabled = true;
+                    joinButton.textContent = 'Forbinder…';
+                    setConnectionLabel('Logger ind · forbinder til chatten…');
                     socket.connect();
                 } catch (error) {
                     loginError.textContent = error.message || 'Kunne ikke forbinde. Prøv igen.';
@@ -813,7 +858,7 @@
                 logoutButton.disabled = true;
                 try {
                     const response = await authFetch('/api/auth/logout', {
-                        method: 'POST',
+                        method: 'POST'
                     });
                     if (!response.ok) throw new Error('Kunne ikke logge ud. Prøv igen.');
                     currentUser = null;
@@ -825,9 +870,10 @@
                     gameSection.classList.add('hidden');
                     loginError.textContent = '';
                     passwordInput.value = '';
+                    authMode = 'login';
+                    resetPendingAuthentication();
                     setRoomNotice('');
-                    connectionStatus.classList.remove('online');
-                    connectionLabel.textContent = 'Log ind for at forbinde';
+                    setConnectionLabel('Log ind for at forbinde');
                     updateDraftText('');
                 } catch (error) {
                     setRoomNotice(error.message || 'Kunne ikke logge ud. Prøv igen.');
@@ -896,23 +942,25 @@
             });
 
             socket.on('connect', () => {
-                connectionStatus.classList.add('online');
-                connectionLabel.textContent = 'Forbundet';
-                if (currentUser) socket.emit('join');
+                if (currentUser) {
+                    setConnectionLabel('Forbundet · går ind i chatten…', true);
+                    socket.emit('join');
+                } else {
+                    setConnectionLabel('Forbundet', true);
+                }
             });
 
             socket.on('disconnect', (reason) => {
-                connectionStatus.classList.remove('online');
-                connectionLabel.textContent = currentUser ? 'Forbindelsen afbrudt · prøver igen…' : 'Log ind for at forbinde';
+                setConnectionLabel(currentUser ? 'Forbindelsen afbrudt · prøver igen…' : 'Log ind for at forbinde');
                 if (currentUser && reason === 'io server disconnect') {
                     authFetch('/api/auth/me')
                         .then(async (response) => {
                             if (response.status === 401) {
-                                currentUser = null;
+                                resetPendingAuthentication();
                                 gameSection.classList.add('hidden');
                                 loginSection.classList.remove('hidden');
                                 loginError.textContent = 'Din session er udløbet. Log ind igen.';
-                                connectionLabel.textContent = 'Log ind for at forbinde';
+                                setConnectionLabel('Log ind for at forbinde');
                                 return;
                             }
                             if (!response.ok) throw new Error('Kunne ikke kontrollere din session.');
@@ -920,6 +968,10 @@
                         })
                         .catch((error) => {
                             setRoomNotice(error.message || 'Kunne ikke kontrollere din session.');
+                            if (gameSection.classList.contains('hidden')) {
+                                joinButton.disabled = false;
+                                joinButton.textContent = 'Prøv igen';
+                            }
                         });
                 }
             });
@@ -929,26 +981,38 @@
             });
 
             socket.on('connect_error', async () => {
-                connectionStatus.classList.remove('online');
-                connectionLabel.textContent = 'Forbinder igen…';
+                setConnectionLabel(currentUser ? 'Forbindelsen afbrudt · prøver igen…' : 'Kunne ikke forbinde');
                 if (!currentUser) return;
                 try {
                     const response = await authFetch('/api/auth/me');
-                    if (response.status !== 401) return;
-                    currentUser = null;
-                    socket.disconnect();
-                    joinButton.disabled = false;
-                    gameSection.classList.add('hidden');
-                    loginSection.classList.remove('hidden');
-                    loginError.textContent = 'Din session er udløbet. Log ind igen.';
-                    connectionLabel.textContent = 'Log ind for at forbinde';
-                } catch {
-                    loginError.textContent = 'Forbindelsen blev afbrudt. Prøv igen om et øjeblik.';
+                    if (response.status === 401) {
+                        resetPendingAuthentication();
+                        socket.disconnect();
+                        gameSection.classList.add('hidden');
+                        loginSection.classList.remove('hidden');
+                        loginError.textContent = 'Din session er udløbet. Log ind igen.';
+                        setConnectionLabel('Log ind for at forbinde');
+                        return;
+                    }
+                    if (!response.ok) throw new Error('Kunne ikke kontrollere din session.');
+                    loginError.textContent = 'Login er godkendt, men forbindelsen driller. Prøv igen om lidt.';
+                } catch (error) {
+                    loginError.textContent = error.message || 'Forbindelsen blev afbrudt. Prøv igen om et øjeblik.';
+                } finally {
+                    if (gameSection.classList.contains('hidden') && currentUser) {
+                        joinButton.disabled = false;
+                        joinButton.textContent = 'Prøv igen';
+                    }
                 }
             });
 
             socket.on('room-error', ({ message } = {}) => {
                 setRoomNotice(message || 'Der opstod en fejl. Prøv igen.');
+                if (gameSection.classList.contains('hidden') && currentUser) {
+                    joinButton.disabled = false;
+                    joinButton.textContent = 'Prøv igen';
+                    loginError.textContent = message || 'Kunne ikke komme ind i chatten. Prøv igen.';
+                }
             });
 
             socket.on('move-rejected', ({ message } = {}) => {
@@ -959,14 +1023,18 @@
                 players = {};
                 myId = socket.id;
                 joinButton.disabled = false;
+                authToggle.disabled = false;
                 for (const player of Object.values(serverPlayers)) {
                     showPlayer(player, false);
                 }
                 showHistory(history || []);
+                addChatSystemEntry(`Du er kommet ind i chatten som ${currentUser.username}.`);
                 updateOnlineList();
                 loginSection.classList.add('hidden');
                 gameSection.classList.remove('hidden');
                 loginError.textContent = '';
+                showAuthMode();
+                setConnectionLabel('Forbundet', true);
                 setRoomNotice('');
                 if (animationFrame === null) {
                     lastFrameTime = 0;
@@ -978,6 +1046,7 @@
             socket.on('newPlayer', (player) => {
                 showPlayer(player, false);
                 updateOnlineList();
+                addChatSystemEntry(`${player.name} er kommet ind i chatten.`);
             });
 
             socket.on('playerMoved', (player) => {
@@ -1004,8 +1073,10 @@
             });
 
             socket.on('playerDisconnected', (id) => {
+                const player = players[id];
                 delete players[id];
                 updateOnlineList();
+                if (player) addChatSystemEntry(`${player.name} har forladt chatten.`);
             });
 
             authFetch('/api/auth/me')
@@ -1019,6 +1090,8 @@
                 })
                 .catch((error) => {
                     loginError.textContent = error.message || 'Kunne ikke forbinde. Prøv igen.';
+                    setConnectionLabel('Kunne ikke kontrollere login');
+                    joinButton.disabled = false;
                 });
         })();
     </script>

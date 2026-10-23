@@ -583,6 +583,7 @@ async function startServer() {
     io.on('connection', (socket) => {
         socket.join(`session:${socket.request.sessionID}`);
         socket.on('join', async () => {
+            if (activeSocketIds.has(socket.id)) return;
             try {
                 await cleanupStalePlayers();
                 const joinArguments = [
