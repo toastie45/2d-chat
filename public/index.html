@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>2D Chat Multiplayer</title>
+    <title>2D Chat Multiplayer - Netstationen Stil</title>
     <style>
         body {
             background-color: #121212;
@@ -11,6 +11,7 @@
             font-family: Arial, sans-serif;
             margin: 0;
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
             height: 100vh;
@@ -51,31 +52,144 @@
         #game-container {
             display: none;
             position: relative;
+            width: 700px;
             text-align: center;
+        }
+        #main-workspace {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
         }
         canvas {
             background: #1a1a1a;
             display: block;
-            margin: 0 auto;
             border: 2px solid #444;
             border-radius: 5px;
             cursor: pointer;
+        }
+        #chatlog-panel {
+            width: 280px;
+            height: 374px;
+            background-color: #1a1a1a;
+            border: 2px solid #444;
+            border-radius: 5px;
+            display: flex;
+            flex-direction: column;
+        }
+        .panel-header {
+            background-color: #2a0000;
+            color: #fff;
+            padding: 8px;
+            font-weight: bold;
+            text-align: center;
+            border-bottom: 1px solid #444;
+        }
+        .panel-body {
+            flex: 1;
+            padding: 10px;
+            overflow-y: auto;
+            font-size: 12px;
+            text-align: left;
+        }
+        .log-message {
+            margin-bottom: 6px;
+            word-break: break-all;
+        }
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+        }
+        .modal-content {
+            background: #1e1e1e;
+            border: 2px solid #c00;
+            padding: 20px;
+            width: 320px;
+            border-radius: 5px;
+            max-height: 300px;
+            overflow-y: auto;
+            text-align: left;
+            color: #fff;
+        }
+        .modal-close {
+            background: #c00;
+            float: right;
+            border: none;
+            color: #fff;
+            cursor: pointer;
+            padding: 2px 6px;
+        }
+        #bottom-toolbar {
+            display: flex;
+            background-color: #1a0000;
+            border: 2px solid #444;
+            border-radius: 5px;
+            margin-top: 8px;
+            padding: 5px;
+            gap: 5px;
+        }
+        .tool-btn {
+            background: #330000;
+            border: 1px solid #555;
+            color: #fff;
+            padding: 6px 12px;
+            cursor: pointer;
+            border-radius: 3px;
+            font-size: 12px;
+            width: auto;
+            margin: 0;
+        }
+        .tool-btn:hover {
+            background: #550000;
         }
     </style>
 </head>
 <body>
 
-    <!-- START SKÆRM -->
     <div class="container" id="login-section">
         <h2>2D Chat</h2>
         <input type="text" id="username-input" placeholder="Indtast dit brugernavn...">
-        <button onclick="joinGame()">Start Spil</button>
+        <button id="join-btn">Start Spil</button>
         <div id="error-msg" class="error"></div>
     </div>
 
-    <!-- SPILLET -->
     <div id="game-container">
-        <canvas id="gameCanvas" width="408" height="374"></canvas>
+        <div id="main-workspace">
+            <canvas id="gameCanvas" width="408" height="374"></canvas>
+            <div id="chatlog-panel">
+                <div class="panel-header">Chatlog</div>
+                <div class="panel-body" id="chatlog-content">
+                    <div class="log-message">Velkommen til chatten!</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="bottom-toolbar">
+            <button class="tool-btn" id="btn-online">👥 Online brugere</button>
+            <button class="tool-btn" id="btn-search">🔍 Søg</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-online">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeModals()">X</button>
+            <h3>Online brugere</h3>
+            <div id="online-users-list">Indlæser...</div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-search">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeModals()">X</button>
+            <h3>Søg bruger</h3>
+            <input type="text" id="search-input" placeholder="Skriv brugernavn...">
+            <button id="search-action-btn">Søg</button>
+            <div id="search-results"></div>
+        </div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
@@ -85,9 +199,11 @@
         const loginSection = document.getElementById('login-section');
         const gameContainer = document.getElementById('game-container');
         const usernameInput = document.getElementById('username-input');
+        const joinBtn = document.getElementById('join-btn');
         const errorMsg = document.getElementById('error-msg');
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
+        const chatlogContent = document.getElementById('chatlog-content');
 
         let players = {};
         let myId = null;
@@ -96,21 +212,36 @@
         let currentTyping = '';
         let typingTimeout = null;
 
-        function joinGame() {
+        function closeModals() {
+            document.getElementById('modal-online').style.display = 'none';
+            document.getElementById('modal-search').style.display = 'none';
+        }
+
+        function addChatLog(sender, text) {
+            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const div = document.createElement('div');
+            div.className = 'log-message';
+            div.innerHTML = `<b>${sender}:</b> ${text} <span style="color:#777; font-size:10px;">${time}</span>`;
+            chatlogContent.appendChild(div);
+            chatlogContent.scrollTop = chatlogContent.scrollHeight;
+        }
+
+        function handleJoin() {
             const username = usernameInput.value.trim();
             errorMsg.innerText = '';
-
             if (!username) {
                 errorMsg.innerText = 'Indtast venligst et brugernavn.';
                 return;
             }
-
             socket.emit('join', username);
         }
 
-        socket.on('error-msg', (msg) => {
-            errorMsg.innerText = msg;
+        joinBtn.addEventListener('click', handleJoin);
+        usernameInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') handleJoin();
         });
+
+        socket.on('error-msg', (msg) => { errorMsg.innerText = msg; });
 
         socket.on('join-success', (serverPlayers) => {
             players = serverPlayers;
@@ -120,10 +251,7 @@
             requestAnimationFrame(gameLoop);
         });
 
-        socket.on('newPlayer', (player) => {
-            players[player.id] = player;
-        });
-
+        socket.on('newPlayer', (player) => { players[player.id] = player; });
         socket.on('playerMoved', (data) => {
             if (players[data.id]) {
                 players[data.id].x = data.x;
@@ -134,38 +262,64 @@
         socket.on('playerTyping', (data) => {
             if (players[data.id]) {
                 players[data.id].typingText = data.typingText;
-                players[data.id].text = data.text;
-                players[data.id].messageTime = data.messageTime;
             }
         });
 
-        socket.on('playerDisconnected', (id) => {
-            delete players[id];
+        socket.on('playerChatMessage', (data) => {
+            if (players[data.id]) {
+                const p = players[data.id];
+                p.typingText = '';
+                p.text = data.text;
+                p.messageTime = data.messageTime;
+                addChatLog(p.name, data.text);
+            }
         });
 
-        // Snap til midtpunktet af det diagonale felt
+        socket.on('playerDisconnected', (id) => { delete players[id]; });
+
+        document.getElementById('btn-online').addEventListener('click', () => {
+            const listDiv = document.getElementById('online-users-list');
+            listDiv.innerHTML = '';
+            Object.values(players).forEach(p => {
+                const userRow = document.createElement('div');
+                userRow.style.padding = '4px 0';
+                userRow.style.borderBottom = '1px solid #333';
+                userRow.innerHTML = `👤 <b>${p.name}</b>`;
+                listDiv.appendChild(userRow);
+            });
+            document.getElementById('modal-online').style.display = 'flex';
+        });
+
+        document.getElementById('btn-search').addEventListener('click', () => {
+            document.getElementById('modal-search').style.display = 'flex';
+        });
+
+        document.getElementById('search-action-btn').addEventListener('click', () => {
+            const query = document.getElementById('search-input').value.toLowerCase();
+            const resultsDiv = document.getElementById('search-results');
+            resultsDiv.innerHTML = '';
+            const matches = Object.values(players).filter(p => p.name.toLowerCase().includes(query));
+            if (matches.length === 0) {
+                resultsDiv.innerHTML = '<p style="color:#aaa;">Ingen brugere fundet.</p>';
+            } else {
+                matches.forEach(m => {
+                    resultsDiv.innerHTML += `<div style="padding:5px; border-bottom:1px solid #444;">Fandt: <b>${m.name}</b> (Online)</div>`;
+                });
+            }
+        });
+
         function snapToDiagonalGrid(x, y) {
             let cx = canvas.width / 2;
             let cy = canvas.height / 2;
-
             let dx = x - cx;
             let dy = y - cy;
-
             let angle = -Math.PI / 4;
-            let cos = Math.cos(angle);
-            let sin = Math.sin(angle);
-            let rx = dx * cos - dy * sin;
-            let ry = dx * sin + dy * cos;
-
+            let rx = dx * Math.cos(angle) - dy * Math.sin(angle);
+            let ry = dx * Math.sin(angle) + dy * Math.cos(angle);
             let snappedRx = Math.floor(rx / gridSize) * gridSize + gridSize / 2;
             let snappedRy = Math.floor(ry / gridSize) * gridSize + gridSize / 2;
-
-            angle = Math.PI / 4;
-            cos = Math.cos(angle);
-            sin = Math.sin(angle);
-            let finalDx = snappedRx * cos - snappedRy * sin;
-            let finalDy = snappedRx * sin + snappedRy * cos;
-
+            let finalDx = snappedRx * Math.cos(-angle) - snappedRy * Math.sin(-angle);
+            let finalDy = snappedRx * Math.sin(-angle) + snappedRy * Math.cos(-angle);
             return {
                 x: Math.round(cx + finalDx),
                 y: Math.round(cy + finalDy)
@@ -175,44 +329,35 @@
         canvas.addEventListener('click', (e) => {
             if (!myId || !players[myId]) return;
             const rect = canvas.getBoundingClientRect();
-            const clickX = e.clientX - rect.left;
-            const clickY = e.clientY - rect.top;
-
-            const snapped = snapToDiagonalGrid(clickX, clickY);
+            const snapped = snapToDiagonalGrid(e.clientX - rect.left, e.clientY - rect.top);
             socket.emit('move', snapped);
         });
 
-        // Optimeret tastatur-skrivning med Debounce (ingen spam pr. bogstav)
         window.addEventListener('keydown', (e) => {
             if (!myId || !players[myId]) return;
+            let p = players[myId];
 
             if (e.key === 'Enter') {
                 clearTimeout(typingTimeout);
-                const finalMsg = currentTyping;
+                const finalMsg = currentTyping.trim();
                 currentTyping = '';
-                players[myId].text = finalMsg;
-                players[myId].typingText = '';
-                players[myId].messageTime = Date.now();
-                socket.emit('typing', { typingText: '', text: finalMsg });
+                p.typingText = '';
+                if (finalMsg) {
+                    socket.emit('chat-message', finalMsg);
+                }
             } else if (e.key === 'Backspace') {
                 currentTyping = currentTyping.slice(0, -1);
-                players[myId].typingText = currentTyping;
-                players[myId].text = '';
-                
-                // Send opdatering med debounce
+                p.typingText = currentTyping;
                 clearTimeout(typingTimeout);
                 typingTimeout = setTimeout(() => {
-                    socket.emit('typing', { typingText: currentTyping, text: '' });
+                    socket.emit('typing', { typingText: currentTyping });
                 }, 200);
             } else if (e.key.length === 1) {
                 currentTyping += e.key;
-                players[myId].typingText = currentTyping;
-                players[myId].text = '';
-                
-                // Send opdatering med debounce (sender kun når du lige pauser eller hvert 200. millisekund)
+                p.typingText = currentTyping;
                 clearTimeout(typingTimeout);
                 typingTimeout = setTimeout(() => {
-                    socket.emit('typing', { typingText: currentTyping, text: '' });
+                    socket.emit('typing', { typingText: currentTyping });
                 }, 200);
             }
         });
@@ -239,7 +384,6 @@
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Tegn diagonalt gitter
             ctx.save();
             ctx.translate(canvas.width / 2, canvas.height / 2);
             ctx.rotate(Math.PI / 4);
@@ -265,7 +409,6 @@
             for (let id in players) {
                 let p = players[id];
 
-                // Cirkel centreret i feltet
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
                 ctx.fillStyle = '#28a745';
@@ -275,7 +418,6 @@
                 ctx.stroke();
                 ctx.closePath();
 
-                // Brugernavn
                 ctx.fillStyle = '#fff';
                 ctx.font = '12px Arial';
                 ctx.textAlign = 'center';
@@ -295,7 +437,6 @@
 
                 if (displayText) {
                     ctx.save();
-
                     if (isTyping) {
                         ctx.globalAlpha = 0.7;
                     } else if (p.messageTime) {
@@ -323,18 +464,14 @@
                     let bubbleY = p.y - radius - bubbleHeight - 12;
                     let tailPointsUp = false;
 
-                    if (bubbleX < 5) {
-                        bubbleX = 5;
-                    } else if (bubbleX + bubbleWidth > canvas.width - 5) {
-                        bubbleX = canvas.width - bubbleWidth - 5;
-                    }
+                    if (bubbleX < 5) bubbleX = 5;
+                    else if (bubbleX + bubbleWidth > canvas.width - 5) bubbleX = canvas.width - bubbleWidth - 5;
 
                     if (bubbleY < 5) {
                         bubbleY = p.y + radius + 12;
                         tailPointsUp = true;
                     }
 
-                    // Taleboble boks
                     ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
                     ctx.strokeStyle = '#28a745';
                     ctx.lineWidth = 1.5;
@@ -347,7 +484,6 @@
                     ctx.fill();
                     ctx.stroke();
 
-                    // Taleboble hale
                     ctx.beginPath();
                     let tailTipX = Math.max(bubbleX + 10, Math.min(p.x, bubbleX + bubbleWidth - 10));
                     if (!tailPointsUp) {
@@ -364,13 +500,11 @@
                     ctx.fill();
                     ctx.stroke();
 
-                    // Tekst
                     ctx.fillStyle = '#fff';
                     ctx.textAlign = 'center';
                     for (let i = 0; i < lines.length; i++) {
                         ctx.fillText(lines[i], p.x, bubbleY + padding + (i + 1) * lineHeight - 3);
                     }
-
                     ctx.restore();
                 }
             }
