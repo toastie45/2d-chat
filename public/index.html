@@ -51,13 +51,18 @@
         #game-container {
             display: none;
             position: relative;
-            width: 100vw;
-            height: 100vh;
+            text-align: center;
         }
         canvas {
             background: #222;
             display: block;
-            margin: auto;
+            margin: 0 auto;
+            border: 2px solid #444;
+            border-radius: 5px;
+        }
+        #chat-input {
+            margin-top: 10px;
+            width: 408px;
         }
     </style>
 </head>
@@ -74,19 +79,33 @@
     <!-- SPILLET -->
     <div id="game-container">
         <canvas id="gameCanvas" width="408" height="374"></canvas>
+        <input type="text" id="chat-input" placeholder="Skriv en besked (tryk Enter)..." autocomplete="off">
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
 
+        const loginSection = document.getElementById('login-section');
+        const gameContainer = document.getElementById('game-container');
+        const usernameInput = document.getElementById('username-input');
+        const errorMsg = document.getElementById('error-msg');
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const chatInput = document.getElementById('chat-input');
+
+        let players = {};
+        let myId = null;
+        const radius = 16;
+        const speed = 3;
+        const keys = {};
+
         function joinGame() {
-            const username = document.getElementById('username-input').value.trim();
-            const errorDiv = document.getElementById('error-msg');
-            errorDiv.innerText = '';
+            const username = usernameInput.value.trim();
+            errorMsg.innerText = '';
 
             if (!username) {
-                errorDiv.innerText = 'Indtast venligst et brugernavn.';
+                errorMsg.innerText = 'Indtast venligst et brugernavn.';
                 return;
             }
 
@@ -94,13 +113,133 @@
         }
 
         socket.on('error-msg', (msg) => {
-            document.getElementById('error-msg').innerText = msg;
+            errorMsg.innerText = msg;
         });
 
-        socket.on('join-success', (players) => {
-            document.getElementById('login-section').style.display = 'none';
-            document.getElementById('game-container').style.display = 'block';
+        socket.on('join-success', (serverPlayers) => {
+            players = serverPlayers;
+            myId = socket.id;
+            loginSection.style.display = 'none';
+            gameContainer.style.display = 'block';
+            requestAnimationFrame(gameLoop);
         });
+
+        socket.on('newPlayer', (player) => {
+            players[player.id] = player;
+        });
+
+        socket.on('playerMoved', (data) => {
+            if (players[data.id]) {
+                players[data.id].x = data.x;
+                players[data.id].y = data.y;
+            }
+        });
+
+        socket.on('playerTyping', (data) => {
+            if (players[data.id]) {
+                players[data.id].typingText = data.typingText;
+                players[data.id].text = data.text;
+            }
+        });
+
+        socket.on('playerDisconnected', (id) => {
+            delete players[id];
+        });
+
+        // Styring via tastatur (Piletaster eller WASD)
+        window.addEventListener('keydown', (e) => {
+            if (document.activeElement === chatInput) return; // Bloker spil-styring hvis man skriver i chatten
+            keys[e.key] = true;
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+
+        // Chat input håndtering
+        chatInput.addEventListener('input', () => {
+            if (players[myId]) {
+                players[myId].typingText = chatInput.value;
+                socket.emit('typing', { typingText: chatInput.value, text: '' });
+            }
+        });
+
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const text = chatInput.value.trim();
+                if (players[myId]) {
+                    players[myId].text = text;
+                    players[myId].typingText = '';
+                    socket.emit('typing', { typingText: '', text: text });
+                }
+                chatInput.value = '';
+            }
+        });
+
+        function update() {
+            if (!myId || !players[myId]) return;
+
+            let p = players[myId];
+            let moved = false;
+            let newX = p.x;
+            let newY = p.y;
+
+            if (keys['ArrowUp'] || keys['w'] || keys['W']) { newY -= speed; moved = true; }
+            if (keys['ArrowDown'] || keys['s'] || keys['S']) { newY += speed; moved = true; }
+            if (keys['ArrowLeft'] || keys['a'] || keys['A']) { newX -= speed; moved = true; }
+            if (keys['ArrowRight'] || keys['d'] || keys['D']) { newX += speed; moved = true; }
+
+            if (moved) {
+                // Begræns til canvas grænser
+                newX = Math.max(radius, Math.min(canvas.width - radius, newX));
+                newY = Math.max(radius, Math.min(canvas.height - radius, newY));
+
+                if (newX !== p.x || newY !== p.y) {
+                    p.x = newX;
+                    p.y = newY;
+                    socket.emit('move', { x: p.x, y: p.y });
+                }
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Tegn alle spillere (cirkler)
+            for (let id in players) {
+                let p = players[id];
+
+                // Cirkel
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+                ctx.fillStyle = (id === myId) ? '#28a745' : '#007bff';
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#fff';
+                ctx.stroke();
+                ctx.closePath();
+
+                // Brugernavn ovenpå cirklen
+                ctx.fillStyle = '#fff';
+                ctx.font = '12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(p.name, p.x, p.y - radius - 6);
+
+                // Chat / besked eller live-skrivning
+                let displayText = p.typingText || p.text;
+                if (displayText) {
+                    ctx.fillStyle = '#ffeb3b';
+                    ctx.font = '11px Arial';
+                    ctx.fillText(displayText, p.x, p.y - radius - 20);
+                }
+            }
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
     </script>
 </body>
 </html>
