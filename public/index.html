@@ -256,7 +256,27 @@
         .side-section { padding: 17px; }
         .side-section + .side-section { border-top: 1px solid var(--line); }
         .side-title { margin: 0 0 13px; font-size: 12px; font-weight: 650; }
-        .member-list { display: grid; gap: 10px; }
+        .member-list {
+            display: grid;
+            max-height: 190px;
+            gap: 10px;
+            overflow-y: auto;
+            padding-right: 3px;
+        }
+
+        .member-search {
+            width: 100%;
+            margin: 0 0 13px;
+            padding: 8px 10px;
+            font-size: 11px;
+        }
+
+        .member-empty {
+            margin: 0;
+            color: var(--muted);
+            font-size: 11px;
+            line-height: 1.5;
+        }
 
         .member {
             display: flex;
@@ -306,11 +326,18 @@
 
         .chat-entry { margin: 0 0 8px; overflow-wrap: anywhere; }
         .chat-entry strong { color: #f2f0e9; font-weight: 600; }
+        .chat-time {
+            margin-left: 6px;
+            color: #777970;
+            font-size: 9px;
+            white-space: nowrap;
+        }
         .chat-system {
             color: var(--muted);
             font-size: 10px;
             font-style: italic;
         }
+        .chat-system .chat-time { font-style: normal; }
         .chat-empty { color: #777970; }
         .hidden { display: none !important; }
 
@@ -328,6 +355,7 @@
             .side-card { min-height: 0; }
             .chat-section { min-height: 170px; }
             .chat-log { max-height: 110px; }
+            .member-list { max-height: 130px; }
         }
 
         @media (max-width: 420px) {
@@ -388,14 +416,16 @@
                     </section>
                     <aside class="side-card">
                         <section class="side-section">
-                            <h2 class="side-title">Her lige nu</h2>
-                            <div class="member-list" id="member-list" aria-live="polite"></div>
+                            <h2 class="side-title">Her lige nu <span class="online-count" id="room-member-count"></span></h2>
+                            <input class="member-search" id="member-search" type="search" placeholder="Søg efter navn…" aria-label="Søg blandt brugere i rummet" autocomplete="off">
+                            <div class="member-list" id="member-list" role="list" aria-live="polite"></div>
+                            <p class="member-empty hidden" id="member-empty" role="status" aria-live="polite">Der er ingen brugere her endnu.</p>
                         </section>
                         <section class="side-section chat-section">
                             <h2 class="side-title">Sig noget</h2>
                             <p class="chat-hint">Skriv direkte på gulvet. Maks. 100 tegn · Render-nøgler skjules automatisk · Talebobler vises i 10 sekunder.</p>
                             <p class="chat-hint" id="message-counter" aria-live="off">0/100 tegn</p>
-                            <div class="chat-log" id="chat-log" aria-live="polite">
+                            <div class="chat-log" id="chat-log" role="log" aria-live="polite" aria-relevant="additions">
                                 <p class="chat-empty" id="chat-empty">Samtalen begynder her.</p>
                             </div>
                         </section>
@@ -434,6 +464,8 @@
             const connectionStatus = document.getElementById('connection-status');
             const connectionLabel = document.getElementById('connection-label');
             const memberList = document.getElementById('member-list');
+            const memberSearch = document.getElementById('member-search');
+            const memberEmpty = document.getElementById('member-empty');
             const messageCounter = document.getElementById('message-counter');
             const roomNotice = document.getElementById('room-notice');
             const logoutButton = document.getElementById('logout-button');
@@ -557,40 +589,62 @@
 
             function updateOnlineList() {
                 const onlinePlayers = Object.values(players);
-                document.getElementById('online-count').textContent =
-                    `${onlinePlayers.length} ${onlinePlayers.length === 1 ? 'person online' : 'personer online'}`;
+                const countLabel = `${onlinePlayers.length} ${onlinePlayers.length === 1 ? 'person' : 'personer'}`;
+                document.getElementById('online-count').textContent = `${countLabel} online`;
+                document.getElementById('room-member-count').textContent = `· ${countLabel}`;
+                const searchTerm = memberSearch.value.trim().toLocaleLowerCase('da');
+                const filteredPlayers = onlinePlayers
+                    .filter((player) => player.name.toLocaleLowerCase('da').includes(searchTerm))
+                    .sort((first, second) => first.name.localeCompare(second.name, 'da'));
                 memberList.replaceChildren();
+                memberEmpty.textContent = onlinePlayers.length
+                    ? 'Ingen brugere matcher søgningen.'
+                    : 'Der er ingen brugere her endnu.';
+                memberEmpty.classList.toggle('hidden', filteredPlayers.length > 0);
 
-                onlinePlayers
-                    .sort((first, second) => first.name.localeCompare(second.name, 'da'))
-                    .forEach((player) => {
-                        const row = document.createElement('div');
-                        row.className = 'member';
-                        const dot = document.createElement('span');
-                        dot.className = 'member-dot';
-                        dot.style.backgroundColor = colorForPlayer(player.id);
-                        const name = document.createElement('span');
-                        name.className = 'member-name';
-                        name.textContent = player.name;
-                        row.setAttribute('aria-label', player.id === myId ? `${player.name}, dig` : player.name);
-                        row.append(dot, name);
-                        if (player.id === myId) {
-                            const you = document.createElement('span');
-                            you.className = 'you-tag';
-                            you.textContent = 'dig';
-                            row.append(you);
-                        }
-                        memberList.append(row);
-                    });
+                filteredPlayers.forEach((player) => {
+                    const row = document.createElement('div');
+                    row.className = 'member';
+                    row.setAttribute('role', 'listitem');
+                    const dot = document.createElement('span');
+                    dot.className = 'member-dot';
+                    dot.style.backgroundColor = colorForPlayer(player.id);
+                    const name = document.createElement('span');
+                    name.className = 'member-name';
+                    name.textContent = player.name;
+                    row.setAttribute('aria-label', player.id === myId ? `${player.name}, dig` : player.name);
+                    row.append(dot, name);
+                    if (player.id === myId) {
+                        const you = document.createElement('span');
+                        you.className = 'you-tag';
+                        you.textContent = 'dig';
+                        row.append(you);
+                    }
+                    memberList.append(row);
+                });
             }
 
-            function addChatEntry(player, text) {
+            function addChatTime(entry, value = Date.now()) {
+                const date = new Date(value);
+                if (Number.isNaN(date.getTime())) return;
+                const time = document.createElement('time');
+                time.className = 'chat-time';
+                time.dateTime = date.toISOString();
+                time.textContent = new Intl.DateTimeFormat('da-DK', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                }).format(date);
+                entry.append(time);
+            }
+
+            function addChatEntry(player, text, createdAt) {
                 chatEmpty.classList.add('hidden');
                 const entry = document.createElement('p');
                 entry.className = 'chat-entry';
                 const sender = document.createElement('strong');
                 sender.textContent = `${player.name}: `;
                 entry.append(sender, document.createTextNode(hideSensitiveData(text)));
+                addChatTime(entry, createdAt);
                 chatLog.append(entry);
                 while (chatLog.children.length > 500) {
                     chatLog.removeChild(chatLog.firstElementChild);
@@ -603,6 +657,7 @@
                 const entry = document.createElement('p');
                 entry.className = 'chat-system';
                 entry.textContent = text;
+                addChatTime(entry);
                 chatLog.append(entry);
                 while (chatLog.children.length > 500) {
                     chatLog.removeChild(chatLog.firstElementChild);
@@ -847,6 +902,8 @@
                 showAuthMode();
             });
 
+            memberSearch.addEventListener('input', updateOnlineList);
+
             logoutButton.addEventListener('click', async () => {
                 logoutButton.disabled = true;
                 try {
@@ -1056,7 +1113,7 @@
                 if (!player) return;
                 player.text = hideSensitiveData(message.text);
                 player.messageTime = message.messageTime;
-                addChatEntry(player, player.text);
+                addChatEntry(player, player.text, message.createdAt);
             });
 
             socket.on('playerChatExpired', (message) => {
