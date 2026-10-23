@@ -10,7 +10,7 @@ app.use(express.static('public'));
 
 const AVATAR_RADIUS = 16;
 const GRID_SIZE = 48;
-const PLAY_AREA_WIDTH = 288; // 6 * 48 for et præcist 6x6 gitter
+const PLAY_AREA_WIDTH = 288; // 6 * 48
 const PLAY_AREA_HEIGHT = 288;
 const players = {};
 
@@ -25,6 +25,7 @@ function snapToDiagonalGrid(x, y) {
     let rx = dx * cos - dy * sin;
     let ry = dx * sin + dy * cos;
     
+    // Sikrer at avataren lander midt i feltet (romben) og ikke på stregen
     let snappedRx = Math.floor(rx / GRID_SIZE) * GRID_SIZE + GRID_SIZE / 2;
     let snappedRy = Math.floor(ry / GRID_SIZE) * GRID_SIZE + GRID_SIZE / 2;
     
