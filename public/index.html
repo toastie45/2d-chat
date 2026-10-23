@@ -55,10 +55,25 @@
             width: 700px;
             text-align: center;
         }
+        /* Online-tæller placeret i venstre hjørne */
+        #online-indicator {
+            position: absolute;
+            top: -25px;
+            left: 0;
+            background-color: #2a0000;
+            color: #fff;
+            padding: 4px 10px;
+            font-size: 12px;
+            font-weight: bold;
+            border: 1px solid #444;
+            border-radius: 4px;
+        }
         #main-workspace {
             display: flex;
             gap: 10px;
             justify-content: center;
+            position: relative;
+            margin-top: 5px;
         }
         canvas {
             background: #1a1a1a;
@@ -138,11 +153,13 @@
     </div>
 
     <div id="game-container">
+        <div id="online-indicator">Online: 1</div>
+
         <div id="main-workspace">
             <canvas id="gameCanvas" width="408" height="374"></canvas>
             
             <div id="right-panel">
-                <div class="panel-header" id="panel-title">Chatlog</div>
+                <div class="panel-header" id="panel-title">Tekstboks</div>
                 <div class="panel-body">
                     
                     <div class="panel-tab active" id="tab-chatlog">
@@ -155,20 +172,13 @@
                         <div id="online-users-list">Indlæser online brugere...</div>
                     </div>
 
-                    <div class="panel-tab" id="tab-search">
-                        <input type="text" id="search-input" placeholder="Skriv brugernavn..." style="margin-top: 0;">
-                        <button id="search-action-btn">Søg</button>
-                        <div id="search-results" style="margin-top: 10px; overflow-y: auto;"></div>
-                    </div>
-
                 </div>
             </div>
         </div>
 
         <div id="bottom-toolbar">
-            <button class="tool-btn active" id="btn-chat">💬 Chatlog</button>
+            <button class="tool-btn active" id="btn-chat">💬 Tekstboks</button>
             <button class="tool-btn" id="btn-online">👥 Online brugere</button>
-            <button class="tool-btn" id="btn-search">🔍 Søg</button>
         </div>
     </div>
 
@@ -184,12 +194,18 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const chatlogContent = document.getElementById('chatlog-content');
+        const onlineIndicator = document.getElementById('online-indicator');
 
         let players = {};
         let myId = null;
         const radius = 16;
         const gridSize = 48;
-        let currentTyping = ''; // Holder styr på det du selv skriver lokalt
+        let currentTyping = '';
+
+        function updateOnlineCount() {
+            const count = Object.keys(players).length;
+            onlineIndicator.innerText = `Online: ${count}`;
+        }
 
         function switchTab(tabName, titleText, btnElement) {
             document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
@@ -201,7 +217,7 @@
         }
 
         document.getElementById('btn-chat').addEventListener('click', function() {
-            switchTab('chatlog', 'Chatlog', this);
+            switchTab('chatlog', 'Tekstboks', this);
         });
 
         document.getElementById('btn-online').addEventListener('click', function() {
@@ -215,26 +231,6 @@
                 userRow.innerHTML = `👤 <b>${p.name}</b>`;
                 listDiv.appendChild(userRow);
             });
-        });
-
-        document.getElementById('btn-search').addEventListener('click', function() {
-            switchTab('search', 'Søg bruger', this);
-        });
-
-        document.getElementById('search-action-btn').addEventListener('click', () => {
-            const query = document.getElementById('search-input').value.toLowerCase().trim();
-            const resultsDiv = document.getElementById('search-results');
-            resultsDiv.innerHTML = '';
-            if (!query) return;
-
-            const matches = Object.values(players).filter(p => p.name.toLowerCase().includes(query));
-            if (matches.length === 0) {
-                resultsDiv.innerHTML = '<p style="color:#aaa;">Ingen brugere fundet.</p>';
-            } else {
-                matches.forEach(m => {
-                    resultsDiv.innerHTML += `<div style="padding:6px; border-bottom:1px solid #444;">Fandt: <b>${m.name}</b> (Online)</div>`;
-                });
-            }
         });
 
         function addChatLog(sender, text) {
@@ -266,12 +262,17 @@
         socket.on('join-success', (serverPlayers) => {
             players = serverPlayers;
             myId = socket.id;
+            updateOnlineCount();
             loginSection.style.display = 'none';
             gameContainer.style.display = 'block';
             requestAnimationFrame(gameLoop);
         });
 
-        socket.on('newPlayer', (player) => { players[player.id] = player; });
+        socket.on('newPlayer', (player) => { 
+            players[player.id] = player; 
+            updateOnlineCount();
+        });
+
         socket.on('playerMoved', (data) => {
             if (players[data.id]) {
                 players[data.id].x = data.x;
@@ -279,7 +280,6 @@
             }
         });
 
-        // Modtager endelig besked fra andre (eller dig selv) når der trykkes Enter
         socket.on('playerChatMessage', (data) => {
             if (players[data.id]) {
                 const p = players[data.id];
@@ -289,7 +289,10 @@
             }
         });
 
-        socket.on('playerDisconnected', (id) => { delete players[id]; });
+        socket.on('playerDisconnected', (id) => { 
+            delete players[id]; 
+            updateOnlineCount();
+        });
 
         function snapToDiagonalGrid(x, y) {
             let cx = canvas.width / 2;
@@ -316,11 +319,9 @@
             socket.emit('move', snapped);
         });
 
-        // Tastatur: Skrivning vises kun for dig selv indtil Enter trykkes
         window.addEventListener('keydown', (e) => {
             if (!myId || !players[myId]) return;
 
-            // Hvis man skriver i søgefeltet eller andre inputs, ignorér spillets tastatur
             if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
                 return;
             }
@@ -420,11 +421,9 @@
                 ctx.textAlign = 'center';
                 ctx.fillText(p.name, p.x, p.y - radius - 6);
 
-                // For din egen figur vises det du taster lokalt (currentTyping). For andre vises kun færdige beskeder (p.text).
                 let displayText = (id === myId && currentTyping) ? currentTyping : p.text;
                 let isMyTyping = (id === myId && currentTyping.length > 0);
 
-                // Fade-out logik for færdige beskeder efter 5 sekunder
                 if (!isMyTyping && p.text && p.messageTime) {
                     let elapsed = now - p.messageTime;
                     if (elapsed > 5000) {
@@ -437,7 +436,7 @@
                 if (displayText) {
                     ctx.save();
                     if (isMyTyping) {
-                        ctx.globalAlpha = 0.7; // Halvgennemsigtig mens du selv skriver
+                        ctx.globalAlpha = 0.7;
                     } else if (p.messageTime) {
                         let elapsed = now - p.messageTime;
                         if (elapsed > 4000) {
@@ -461,14 +460,14 @@
                     
                     let bubbleX = p.x - bubbleWidth / 2;
                     let bubbleY = p.y - radius - bubbleHeight - 12;
-                    let tailPointsUp = false;
 
+                    // Kantsikring for venstre/højre
                     if (bubbleX < 5) bubbleX = 5;
                     else if (bubbleX + bubbleWidth > canvas.width - 5) bubbleX = canvas.width - bubbleWidth - 5;
 
+                    // Sikrer at taleboblen ALTID forbliver oven over avataren (klemmer den bare til toppen hvis nødvendigt)
                     if (bubbleY < 5) {
-                        bubbleY = p.y + radius + 12;
-                        tailPointsUp = true;
+                        bubbleY = 5;
                     }
 
                     ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
@@ -483,17 +482,12 @@
                     ctx.fill();
                     ctx.stroke();
 
+                    // Taleboble hale peger altid nedad mod avataren
                     ctx.beginPath();
                     let tailTipX = Math.max(bubbleX + 10, Math.min(p.x, bubbleX + bubbleWidth - 10));
-                    if (!tailPointsUp) {
-                        ctx.moveTo(tailTipX - 6, bubbleY + bubbleHeight);
-                        ctx.lineTo(tailTipX + 6, bubbleY + bubbleHeight);
-                        ctx.lineTo(tailTipX, bubbleY + bubbleHeight + 8);
-                    } else {
-                        ctx.moveTo(tailTipX - 6, bubbleY);
-                        ctx.lineTo(tailTipX + 6, bubbleY);
-                        ctx.lineTo(tailTipX, bubbleY - 8);
-                    }
+                    ctx.moveTo(tailTipX - 6, bubbleY + bubbleHeight);
+                    ctx.lineTo(tailTipX + 6, bubbleY + bubbleHeight);
+                    ctx.lineTo(tailTipX, bubbleY + bubbleHeight + 8);
                     ctx.closePath();
                     ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
                     ctx.fill();
