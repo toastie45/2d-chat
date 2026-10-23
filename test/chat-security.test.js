@@ -43,6 +43,7 @@ test('validates and normalizes account usernames', () => {
         username: 'Tést_Name',
         normalized: 'tést_name'
     });
+    assert.equal(normalizeUsername('Tommy').normalized, normalizeUsername('tommy').normalized);
     assert.equal(normalizeUsername('ab'), null);
     assert.equal(normalizeUsername('bad name'), null);
 });

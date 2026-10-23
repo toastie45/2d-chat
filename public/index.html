@@ -487,7 +487,7 @@
                 </div>
                 <div class="room">
                     <section class="board-card" aria-label="Chatrum">
-                        <canvas id="game-canvas" width="600" height="600" tabindex="0" aria-label="Et grid med 6 gange 6 diamantformede felter. Klik på et felt for at flytte din avatar. Skriv for at chatte, og tryk Enter for at sende.">
+                        <canvas id="game-canvas" width="600" height="600" tabindex="0" aria-label="Et grid med 6 gange 6 diamantformede felter. Klik på et ledigt felt for at flytte din avatar. Brug piletasterne til at bevæge dig, og Q, E, Z eller C til at bevæge dig diagonalt. Skriv for at chatte, og tryk Enter for at sende.">
                             Dit browserprogram understøtter ikke canvas.
                         </canvas>
                         <p class="room-notice" id="room-notice" aria-live="polite"></p>
@@ -796,11 +796,6 @@
 
             function moveToCell(col, row) {
                 if (!myId || !players[myId]) return;
-                const player = players[myId];
-                player.col = col;
-                player.row = row;
-                player.position = positionFor(player);
-                player.target = player.position;
                 socket.emit('move', { col, row });
             }
 
@@ -1060,9 +1055,13 @@
                     ArrowUp: [0, -1],
                     ArrowDown: [0, 1],
                     ArrowLeft: [-1, 0],
-                    ArrowRight: [1, 0]
+                    ArrowRight: [1, 0],
+                    q: [-1, -1],
+                    e: [1, -1],
+                    z: [-1, 1],
+                    c: [1, 1]
                 };
-                const direction = directions[event.key];
+                const direction = directions[event.key] || directions[event.key.toLowerCase()];
                 if (direction) {
                     event.preventDefault();
                     const player = players[myId];
@@ -1166,10 +1165,6 @@
                 }
             });
 
-            socket.on('move-rejected', ({ message } = {}) => {
-                setRoomNotice(message || 'Den flise er allerede optaget.');
-            });
-
             socket.on('join-success', ({ players: serverPlayers }) => {
                 players = {};
                 myId = socket.id;
@@ -1206,6 +1201,10 @@
                 players[player.id].row = player.row;
                 players[player.id].position = positionFor(player);
                 players[player.id].target = players[player.id].position;
+            });
+
+            socket.on('move-rejected', ({ message } = {}) => {
+                setRoomNotice(message || 'Feltet er allerede optaget.');
             });
 
             socket.on('playerChatMessage', (message) => {
