@@ -17,6 +17,7 @@ const {
     redactSecrets,
     sanitizeChatMessage
 } = require('./lib/chat-security');
+const { isAuthorizedTabSession, isValidTabId } = require('./lib/tab-session');
 
 const GRID_COUNT = 6;
 const MESSAGE_DURATION = 10_000;
@@ -257,6 +258,7 @@ async function startServer() {
     const sessionStore = new PgSessionStore({
         pool,
         createTableIfMissing: true,
+        ttl: SESSION_MAX_AGE / 1000,
         pruneSessionInterval: 15 * 60
     });
     const sessionMiddleware = session({
@@ -269,8 +271,7 @@ async function startServer() {
         cookie: {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            maxAge: SESSION_MAX_AGE
+            sameSite: 'lax'
         }
     });
     const activeSocketIds = new Set();
@@ -327,18 +328,30 @@ async function startServer() {
         }
     };
 
-    const saveAuthenticatedSession = async (request, user) => {
+    const getRequestTabId = (request) => request.get('x-chat-tab-id');
+
+    const requireTabId = (request, response) => {
+        const tabId = getRequestTabId(request);
+        if (!isValidTabId(tabId)) {
+            response.status(400).json({ error: 'Fanens session mangler. Genindlæs siden, og prøv igen.' });
+            return null;
+        }
+        return tabId;
+    };
+
+    const saveAuthenticatedSession = async (request, user, tabId) => {
         await new Promise((resolve, reject) => {
             request.session.regenerate((error) => error ? reject(error) : resolve());
         });
         request.session.user = { id: user.id, username: user.username };
+        request.session.tabId = tabId;
         await new Promise((resolve, reject) => {
             request.session.save((error) => error ? reject(error) : resolve());
         });
     };
 
     app.get('/api/auth/me', (request, response) => {
-        if (!request.session.user) {
+        if (!isAuthorizedTabSession(request.session, getRequestTabId(request))) {
             response.status(401).json({ error: 'Log ind for at fortsætte.' });
             return;
         }
@@ -346,6 +359,8 @@ async function startServer() {
     });
 
     app.post('/api/auth/register', enforceAuthRateLimit, async (request, response, next) => {
+        const tabId = requireTabId(request, response);
+        if (!tabId) return;
         const account = normalizeUsername(request.body && request.body.username);
         const password = request.body && request.body.password;
         if (!account) {
@@ -371,7 +386,7 @@ async function startServer() {
                 [account.username, account.normalized, await bcrypt.hash(password, 12)]
             );
             const user = { id: result.rows[0].id, username: result.rows[0].username };
-            await saveAuthenticatedSession(request, user);
+            await saveAuthenticatedSession(request, user, tabId);
             response.status(201).json({ user });
         } catch (error) {
             if (error.code === '23505') {
@@ -383,6 +398,8 @@ async function startServer() {
     });
 
     app.post('/api/auth/login', enforceAuthRateLimit, async (request, response, next) => {
+        const tabId = requireTabId(request, response);
+        if (!tabId) return;
         const account = normalizeUsername(request.body && request.body.username);
         const password = request.body && request.body.password;
         if (!account || !isValidPassword(password)) {
@@ -406,7 +423,7 @@ async function startServer() {
             }
 
             const user = { id: userRecord.id, username: userRecord.username };
-            await saveAuthenticatedSession(request, user);
+            await saveAuthenticatedSession(request, user, tabId);
             await redis.del(getRateLimitKey(request));
             response.json({ user });
         } catch (error) {
@@ -415,12 +432,12 @@ async function startServer() {
     });
 
     app.post('/api/auth/logout', (request, response, next) => {
-        const sessionId = request.sessionID;
-        if (!request.session) {
-            response.clearCookie('chat.sid', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' });
-            response.status(204).end();
+        const tabId = getRequestTabId(request);
+        if (!isAuthorizedTabSession(request.session, tabId)) {
+            response.status(401).json({ error: 'Log ind for at fortsætte.' });
             return;
         }
+        const sessionId = request.sessionID;
         request.session.destroy((error) => {
             if (error) {
                 next(error);
@@ -437,7 +454,7 @@ async function startServer() {
     });
 
     app.get('/api/chat-history', async (request, response, next) => {
-        if (!request.session.user) {
+        if (!isAuthorizedTabSession(request.session, getRequestTabId(request))) {
             response.status(401).json({ error: 'Log ind for at se beskederne.' });
             return;
         }
@@ -469,12 +486,14 @@ async function startServer() {
     });
 
     io.use((socket, next) => {
-        const user = socket.request.session && socket.request.session.user;
-        if (!user) {
+        const session = socket.request.session;
+        const tabId = socket.handshake.auth && socket.handshake.auth.tabId;
+        if (!isAuthorizedTabSession(session, tabId)) {
             next(new Error('Log ind for at fortsætte.'));
             return;
         }
-        socket.data.user = user;
+        socket.data.user = session.user;
+        socket.data.tabId = tabId;
         next();
     });
 
@@ -485,7 +504,12 @@ async function startServer() {
                     continuePacket(error);
                     return;
                 }
-                if (!storedSession || !storedSession.user || storedSession.user.id !== socket.data.user.id) {
+                if (
+                    !storedSession ||
+                    !storedSession.user ||
+                    storedSession.user.id !== socket.data.user.id ||
+                    storedSession.tabId !== socket.data.tabId
+                ) {
                     socket.disconnect(true);
                     return;
                 }

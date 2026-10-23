@@ -404,7 +404,17 @@
     <script src="/socket.io/socket.io.js"></script>
     <script>
         (() => {
-            const socket = io({ autoConnect: false, transports: ['websocket'] });
+            const tabStorageKey = 'chat.tab-id';
+            let tabId = sessionStorage.getItem(tabStorageKey);
+            if (!tabId) {
+                tabId = crypto.randomUUID();
+                sessionStorage.setItem(tabStorageKey, tabId);
+            }
+            const socket = io({
+                autoConnect: false,
+                transports: ['websocket'],
+                auth: { tabId }
+            });
             const canvas = document.getElementById('game-canvas');
             const ctx = canvas.getContext('2d');
             const loginSection = document.getElementById('login-section');
@@ -440,6 +450,17 @@
             let authMode = 'login';
             let currentUser = null;
             let roomNoticeTimer = null;
+
+            function authFetch(url, options = {}) {
+                return fetch(url, {
+                    ...options,
+                    credentials: 'same-origin',
+                    headers: {
+                        ...(options.headers || {}),
+                        'X-Chat-Tab-Id': tabId
+                    }
+                });
+            }
 
             function updateDraftText(text) {
                 draftText = text.slice(0, maxMessageLength);
@@ -760,10 +781,9 @@
                 loginError.textContent = '';
                 joinButton.disabled = true;
                 try {
-                    const response = await fetch(`/api/auth/${authMode === 'register' ? 'register' : 'login'}`, {
+                    const response = await authFetch(`/api/auth/${authMode === 'register' ? 'register' : 'login'}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        credentials: 'same-origin',
                         body: JSON.stringify({
                             username: usernameInput.value,
                             password: passwordInput.value
@@ -792,9 +812,8 @@
             logoutButton.addEventListener('click', async () => {
                 logoutButton.disabled = true;
                 try {
-                    const response = await fetch('/api/auth/logout', {
+                    const response = await authFetch('/api/auth/logout', {
                         method: 'POST',
-                        credentials: 'same-origin'
                     });
                     if (!response.ok) throw new Error('Kunne ikke logge ud. Prøv igen.');
                     currentUser = null;
@@ -886,7 +905,7 @@
                 connectionStatus.classList.remove('online');
                 connectionLabel.textContent = currentUser ? 'Forbindelsen afbrudt · prøver igen…' : 'Log ind for at forbinde';
                 if (currentUser && reason === 'io server disconnect') {
-                    fetch('/api/auth/me', { credentials: 'same-origin' })
+                    authFetch('/api/auth/me')
                         .then(async (response) => {
                             if (response.status === 401) {
                                 currentUser = null;
@@ -914,7 +933,7 @@
                 connectionLabel.textContent = 'Forbinder igen…';
                 if (!currentUser) return;
                 try {
-                    const response = await fetch('/api/auth/me', { credentials: 'same-origin' });
+                    const response = await authFetch('/api/auth/me');
                     if (response.status !== 401) return;
                     currentUser = null;
                     socket.disconnect();
@@ -989,7 +1008,7 @@
                 updateOnlineList();
             });
 
-            fetch('/api/auth/me', { credentials: 'same-origin' })
+            authFetch('/api/auth/me')
                 .then(async (response) => {
                     if (response.status === 401) return;
                     const result = await response.json();

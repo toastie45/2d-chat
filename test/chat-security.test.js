@@ -6,6 +6,7 @@ const {
     redactSecrets,
     sanitizeChatMessage
 } = require('../lib/chat-security');
+const { isAuthorizedTabSession, isValidTabId } = require('../lib/tab-session');
 
 test('redacts Render and GitHub tokens before a message is stored', () => {
     const message = redactSecrets('Render rnd_exampleToken123456789 GitHub ghp_abcdefghijklmnopqrstuvwxyz');
@@ -49,4 +50,21 @@ test('accepts passwords only from 8 to 72 UTF-8 bytes', () => {
     assert.equal(isValidPassword('12345678'), true);
     assert.equal(isValidPassword('short'), false);
     assert.equal(isValidPassword('é'.repeat(37)), false);
+});
+
+test('binds an authenticated session to its browser tab', () => {
+    const tabId = '9bba85cc-775a-4a64-9cbd-e399354ee53f';
+    const session = { user: { id: '1' }, tabId };
+
+    assert.equal(isValidTabId(tabId), true);
+    assert.equal(isAuthorizedTabSession(session, tabId), true);
+    assert.equal(isAuthorizedTabSession(session, '83a4fd62-6a39-4ec0-9845-1a0ecad19e52'), false);
+    assert.equal(isAuthorizedTabSession(session, null), false);
+    assert.equal(isAuthorizedTabSession({ tabId }, tabId), false);
+});
+
+test('rejects malformed browser tab identifiers', () => {
+    assert.equal(isValidTabId(''), false);
+    assert.equal(isValidTabId('not-a-uuid'), false);
+    assert.equal(isValidTabId('9bba85cc-775a-4a64-9cbd-e399354ee53z'), false);
 });
