@@ -693,8 +693,8 @@
 
             function positionFor(player) {
                 return {
-                    x: (player.col + 0.5) * cellSize,
-                    y: (player.row + 0.5) * cellSize
+                    x: canvas.width / 2 + (player.col - player.row) * cellSize / 2,
+                    y: cellSize / 2 + (player.col + player.row) * cellSize / 2
                 };
             }
 
@@ -787,9 +787,10 @@
                 let nearestDistance = Infinity;
                 for (let row = 0; row < gridCount; row++) {
                     for (let col = 0; col < gridCount; col++) {
-                        const centerX = (col + 0.5) * cellSize;
-                        const centerY = (row + 0.5) * cellSize;
-                        const distance = Math.abs(x - centerX) + Math.abs(y - centerY);
+                        const center = positionFor({ col, row });
+                        const deltaX = x - center.x;
+                        const deltaY = y - center.y;
+                        const distance = deltaX * deltaX + deltaY * deltaY;
                         if (distance < nearestDistance) {
                             nearestDistance = distance;
                             nearestCell = { col, row };
@@ -811,14 +812,13 @@
 
                 for (let row = 0; row < gridCount; row++) {
                     for (let col = 0; col < gridCount; col++) {
-                        const centerX = (col + 0.5) * cellSize;
-                        const centerY = (row + 0.5) * cellSize;
-                        const halfDiagonal = cellSize * 0.48;
+                        const center = positionFor({ col, row });
+                        const halfDiagonal = cellSize / 2;
                         ctx.beginPath();
-                        ctx.moveTo(centerX, centerY - halfDiagonal);
-                        ctx.lineTo(centerX + halfDiagonal, centerY);
-                        ctx.lineTo(centerX, centerY + halfDiagonal);
-                        ctx.lineTo(centerX - halfDiagonal, centerY);
+                        ctx.moveTo(center.x, center.y - halfDiagonal);
+                        ctx.lineTo(center.x + halfDiagonal, center.y);
+                        ctx.lineTo(center.x, center.y + halfDiagonal);
+                        ctx.lineTo(center.x - halfDiagonal, center.y);
                         ctx.closePath();
                         ctx.fillStyle = (row + col) % 2 === 0 ? '#191c16' : '#151813';
                         ctx.fill();
