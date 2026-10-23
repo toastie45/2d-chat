@@ -189,8 +189,7 @@
         let myId = null;
         const radius = 16;
         const gridSize = 48;
-        let currentTyping = '';
-        let typingTimeout = null;
+        let currentTyping = ''; // Holder styr på det du selv skriver lokalt
 
         function switchTab(tabName, titleText, btnElement) {
             document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
@@ -280,16 +279,10 @@
             }
         });
 
-        socket.on('playerTyping', (data) => {
-            if (players[data.id]) {
-                players[data.id].typingText = data.typingText;
-            }
-        });
-
+        // Modtager endelig besked fra andre (eller dig selv) når der trykkes Enter
         socket.on('playerChatMessage', (data) => {
             if (players[data.id]) {
                 const p = players[data.id];
-                p.typingText = '';
                 p.text = data.text;
                 p.messageTime = data.messageTime;
                 addChatLog(p.name, data.text);
@@ -323,41 +316,28 @@
             socket.emit('move', snapped);
         });
 
+        // Tastatur: Skrivning vises kun for dig selv indtil Enter trykkes
         window.addEventListener('keydown', (e) => {
             if (!myId || !players[myId]) return;
 
+            // Hvis man skriver i søgefeltet eller andre inputs, ignorér spillets tastatur
             if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
                 return;
             }
 
-            let p = players[myId];
-
             if (e.key === 'Enter') {
-                clearTimeout(typingTimeout);
                 const finalMsg = currentTyping.trim();
                 currentTyping = '';
-                p.typingText = '';
                 if (finalMsg) {
                     socket.emit('chat-message', finalMsg);
                 }
             } else if (e.key === 'Backspace') {
                 currentTyping = currentTyping.slice(0, -1);
-                p.typingText = currentTyping;
-                clearTimeout(typingTimeout);
-                typingTimeout = setTimeout(() => {
-                    socket.emit('typing', { typingText: currentTyping });
-                }, 200);
             } else if (e.key.length === 1) {
                 currentTyping += e.key;
-                p.typingText = currentTyping;
-                clearTimeout(typingTimeout);
-                typingTimeout = setTimeout(() => {
-                    socket.emit('typing', { typingText: currentTyping });
-                }, 200);
             }
         });
 
-        // Forbedret getLines, der bryder ord op tegn for tegn hvis de ikke har mellemrum
         function getLines(context, text, maxWidth) {
             let words = text.split(' ');
             let lines = [];
@@ -440,10 +420,12 @@
                 ctx.textAlign = 'center';
                 ctx.fillText(p.name, p.x, p.y - radius - 6);
 
-                let displayText = p.typingText || p.text;
-                let isTyping = !!p.typingText;
+                // For din egen figur vises det du taster lokalt (currentTyping). For andre vises kun færdige beskeder (p.text).
+                let displayText = (id === myId && currentTyping) ? currentTyping : p.text;
+                let isMyTyping = (id === myId && currentTyping.length > 0);
 
-                if (!isTyping && p.text && p.messageTime) {
+                // Fade-out logik for færdige beskeder efter 5 sekunder
+                if (!isMyTyping && p.text && p.messageTime) {
                     let elapsed = now - p.messageTime;
                     if (elapsed > 5000) {
                         p.text = '';
@@ -454,8 +436,8 @@
 
                 if (displayText) {
                     ctx.save();
-                    if (isTyping) {
-                        ctx.globalAlpha = 0.7;
+                    if (isMyTyping) {
+                        ctx.globalAlpha = 0.7; // Halvgennemsigtig mens du selv skriver
                     } else if (p.messageTime) {
                         let elapsed = now - p.messageTime;
                         if (elapsed > 4000) {
