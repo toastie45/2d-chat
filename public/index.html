@@ -54,7 +54,7 @@
             text-align: center;
         }
         canvas {
-            background: #222;
+            background: #1a1a1a;
             display: block;
             margin: 0 auto;
             border: 2px solid #444;
@@ -92,6 +92,7 @@
         let players = {};
         let myId = null;
         const radius = 16;
+        const gridSize = 48;
         let currentTyping = '';
 
         function joinGame() {
@@ -141,17 +142,47 @@
             delete players[id];
         });
 
-        // Klik med musen for at flytte cirklen
+        // Snap til det diagonale (45-graders) gitter
+        function snapToDiagonalGrid(x, y) {
+            let cx = canvas.width / 2;
+            let cy = canvas.height / 2;
+
+            let dx = x - cx;
+            let dy = y - cy;
+
+            let angle = -Math.PI / 4;
+            let cos = Math.cos(angle);
+            let sin = Math.sin(angle);
+            let rx = dx * cos - dy * sin;
+            let ry = dx * sin + dy * cos;
+
+            let snappedRx = Math.round(rx / gridSize) * gridSize;
+            let snappedRy = Math.round(ry / gridSize) * gridSize;
+
+            angle = Math.PI / 4;
+            cos = Math.cos(angle);
+            sin = Math.sin(angle);
+            let finalDx = snappedRx * cos - snappedRy * sin;
+            let finalDy = snappedRx * sin + snappedRy * cos;
+
+            return {
+                x: Math.round(cx + finalDx),
+                y: Math.round(cy + finalDy)
+            };
+        }
+
+        // Musse-klik: Flyt og snap til center af diagonalt felt
         canvas.addEventListener('click', (e) => {
             if (!myId || !players[myId]) return;
             const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
 
-            socket.emit('move', { x: Math.round(x), y: Math.round(y) });
+            const snapped = snapToDiagonalGrid(clickX, clickY);
+            socket.emit('move', snapped);
         });
 
-        // Skriv direkte via tastaturet
+        // Direkte tastatur-skrivning (uden chatbar)
         window.addEventListener('keydown', (e) => {
             if (!myId || !players[myId]) return;
 
@@ -175,7 +206,6 @@
             }
         });
 
-        // Hjælpefunktion til at knække tekst i flere linjer (Word Wrap)
         function getLines(context, text, maxWidth) {
             let words = text.split(' ');
             let lines = [];
@@ -198,12 +228,34 @@
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+            // Tegn diagonalt gitter
+            ctx.save();
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.rotate(Math.PI / 4);
+            ctx.strokeStyle = '#252525';
+            ctx.lineWidth = 1;
+            let range = 500;
+            for (let x = -range; x <= range; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, -range);
+                ctx.lineTo(x, range);
+                ctx.stroke();
+            }
+            for (let y = -range; y <= range; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(-range, y);
+                ctx.lineTo(range, y);
+                ctx.stroke();
+            }
+            ctx.restore();
+
             const now = Date.now();
 
+            // Tegn spillere og avancerede tekstbobler
             for (let id in players) {
                 let p = players[id];
 
-                // 1. Grøn cirkel for spilleren
+                // Grøn cirkel centreret i feltet
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
                 ctx.fillStyle = '#28a745';
@@ -213,17 +265,16 @@
                 ctx.stroke();
                 ctx.closePath();
 
-                // 2. Brugernavn ovenpå
+                // Brugernavn
                 ctx.fillStyle = '#fff';
                 ctx.font = '12px Arial';
                 ctx.textAlign = 'center';
                 ctx.fillText(p.name, p.x, p.y - radius - 6);
 
-                // 3. Håndtering af taleboble (tekst eller live-skrivning)
                 let displayText = p.typingText || p.text;
                 let isTyping = !!p.typingText;
 
-                // Automatisk fjernelse / fade-out efter 5 sekunder for faste beskeder
+                // Fade-out logik efter 5 sekunder
                 if (!isTyping && p.text && p.messageTime) {
                     let elapsed = now - p.messageTime;
                     if (elapsed > 5000) {
@@ -236,8 +287,6 @@
                 if (displayText) {
                     ctx.save();
 
-                    // Hvis man bare er i gang med at skrive, er boblen lidt gennemsigtig. 
-                    // Hvis beskeden er sendt, tjekker vi om den skal fade ud i det sidste sekund (fra 4 til 5 sekunder).
                     if (isTyping) {
                         ctx.globalAlpha = 0.7;
                     } else if (p.messageTime) {
@@ -262,9 +311,9 @@
                     let bubbleHeight = lines.length * lineHeight + padding * 2;
                     
                     let bubbleX = p.x - bubbleWidth / 2;
-                    let bubbleY = p.y - radius - bubbleHeight - 12; // Plads til halen
+                    let bubbleY = p.y - radius - bubbleHeight - 12;
 
-                    // Tegn selve taleboblen med runde hjørner
+                    // Taleboble boks
                     ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
                     ctx.strokeStyle = '#28a745';
                     ctx.lineWidth = 1.5;
@@ -277,7 +326,7 @@
                     ctx.fill();
                     ctx.stroke();
 
-                    // Tegn lille trekantet hale der peger på cirklen
+                    // Taleboble hale (peger på cirklen)
                     ctx.beginPath();
                     ctx.moveTo(p.x - 6, bubbleY + bubbleHeight);
                     ctx.lineTo(p.x + 6, bubbleY + bubbleHeight);
@@ -287,7 +336,7 @@
                     ctx.fill();
                     ctx.stroke();
 
-                    // Skriv teksten ind linje for linje
+                    // Tekst
                     ctx.fillStyle = '#fff';
                     ctx.textAlign = 'center';
                     for (let i = 0; i < lines.length; i++) {
