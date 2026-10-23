@@ -103,6 +103,20 @@ test('allows eight rapid chat messages and blocks the ninth within ten seconds',
     assert.equal(registerChatMessage(timestamps, 1000 + CHAT_BURST_WINDOW_MS).allowed, true);
 });
 
+test('matches mentions as whole usernames without marking other recipients', () => {
+    const isMentioned = (text, username) => {
+        const escapedName = username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(
+            `(^|[^\\p{L}\\p{N}_-])${escapedName}(?=$|[^\\p{L}\\p{N}_-])`,
+            'iu'
+        ).test(text);
+    };
+
+    assert.equal(isMentioned('Tommy kom lige med et æble.', 'Tommy'), true);
+    assert.equal(isMentioned('Tommy2 kom lige med et æble.', 'Tommy'), false);
+    assert.equal(isMentioned('Tommy kom lige med et æble.', 'Nico'), false);
+});
+
 test('accepts passwords only from 8 to 72 UTF-8 bytes', () => {
     assert.equal(isValidPassword('12345678'), true);
     assert.equal(isValidPassword('short'), false);

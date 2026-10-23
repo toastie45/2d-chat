@@ -1028,7 +1028,15 @@
                 const sender = document.createElement('strong');
                 sender.textContent = `${player.name}: `;
                 entry.append(sender);
-                appendTextWithMentions(entry, hideSensitiveData(text));
+                const cleanText = hideSensitiveData(text);
+                if (isMentionedByMessage(text)) {
+                    const messageText = document.createElement('mark');
+                    messageText.className = 'chat-mention';
+                    messageText.textContent = cleanText;
+                    entry.append(messageText);
+                } else {
+                    entry.append(document.createTextNode(cleanText));
+                }
                 addChatTime(entry, createdAt);
                 chatLog.append(entry);
                 while (chatLog.children.length > 500) {
@@ -1037,31 +1045,15 @@
                 chatLog.scrollTop = chatLog.scrollHeight;
             }
 
-            function appendTextWithMentions(parent, text) {
-                const names = [...new Set(Object.values(players).map((player) => player.name))]
-                    .filter(Boolean)
-                    .sort((first, second) => second.length - first.length);
-                if (!names.length) {
-                    parent.append(document.createTextNode(text));
-                    return;
-                }
-
-                const escapedNames = names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+            function isMentionedByMessage(text) {
+                if (!myId || !players[myId]) return false;
+                const ownName = players[myId].name;
+                const escapedName = ownName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 const mentionPattern = new RegExp(
-                    `(^|[^\\p{L}\\p{N}_.-])(${escapedNames.join('|')})(?=$|[^\\p{L}\\p{N}_.-])`,
-                    'giu'
+                    `(^|[^\\p{L}\\p{N}_-])${escapedName}(?=$|[^\\p{L}\\p{N}_-])`,
+                    'iu'
                 );
-                let lastIndex = 0;
-                for (const match of text.matchAll(mentionPattern)) {
-                    const mentionIndex = match.index + match[1].length;
-                    parent.append(document.createTextNode(text.slice(lastIndex, mentionIndex)));
-                    const mention = document.createElement('mark');
-                    mention.className = 'chat-mention';
-                    mention.textContent = match[2];
-                    parent.append(mention);
-                    lastIndex = mentionIndex + match[2].length;
-                }
-                parent.append(document.createTextNode(text.slice(lastIndex)));
+                return mentionPattern.test(text);
             }
 
             function addChatSystemEntry(text) {
