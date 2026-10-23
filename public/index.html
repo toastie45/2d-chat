@@ -38,44 +38,26 @@
             flex-direction: column;
         }
 
+        .page.has-session .topbar { display: none; }
+        .page.has-session main {
+            place-items: start center;
+            padding: 0 0 28px;
+        }
+
         .topbar {
-            min-height: 82px;
+            min-height: 52px;
             display: flex;
             align-items: center;
-            justify-content: space-between;
+            justify-content: flex-end;
             gap: 20px;
             border-bottom: 1px solid var(--line);
         }
 
-        .brand {
+        .topbar-actions {
             display: flex;
             align-items: center;
-            gap: 11px;
-            font-size: 14px;
-            font-weight: 650;
-            letter-spacing: -.02em;
+            gap: 8px;
         }
-
-        .brand-mark {
-            display: grid;
-            width: 36px;
-            height: 36px;
-            place-items: center;
-            border: 1px solid #d4ff8b55;
-            border-radius: 12px;
-            background: var(--accent);
-            color: #17200e;
-            font-size: 16px;
-            box-shadow: 0 5px 18px #c1f07822;
-        }
-
-        .topbar-right, .topbar-actions {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .topbar-actions { gap: 8px; }
 
         .topbar-button {
             min-height: 38px;
@@ -108,26 +90,17 @@
 
         .room-strip {
             display: flex;
-            min-height: 52px;
+            min-height: 46px;
             align-items: center;
             gap: 12px;
-            margin-top: 16px;
-            padding: 0 16px;
+            margin-top: 0;
+            padding: 0 14px;
             border: 1px solid #292b26;
             border-radius: 13px;
             background: linear-gradient(110deg, #191b16, #141512);
             box-shadow: inset 0 1px #ffffff08, 0 8px 24px #0002;
             color: var(--muted);
             font-size: 11px;
-        }
-
-        .room-indicator {
-            width: 8px;
-            height: 8px;
-            flex: 0 0 8px;
-            border-radius: 50%;
-            background: var(--accent);
-            box-shadow: 0 0 12px #c1f07866;
         }
 
         .room-strip-name { color: #f2f0e9; font-weight: 650; }
@@ -161,27 +134,6 @@
         }
         .room-strip-logout:hover { border-color: #55584e; background: #292b25; color: #fff; }
         .room-strip-logout:disabled { cursor: wait; opacity: .55; }
-
-        .connection {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            color: var(--muted);
-            font-size: 12px;
-            white-space: nowrap;
-        }
-
-        .connection-dot {
-            width: 7px;
-            height: 7px;
-            border-radius: 50%;
-            background: #74766f;
-        }
-
-        .connection.online .connection-dot {
-            background: var(--accent);
-            box-shadow: 0 0 12px #c1f07880;
-        }
 
         main {
             flex: 1;
@@ -274,15 +226,6 @@
             margin: 0 auto;
         }
 
-        .game-heading {
-            display: flex;
-            align-items: end;
-            justify-content: space-between;
-            gap: 16px;
-            margin-bottom: 19px;
-        }
-
-        .game-heading h1 { margin-bottom: 0; font-size: 22px; letter-spacing: -.04em; }
         .room-notice {
             min-height: 16px;
             margin: 9px 2px 0;
@@ -497,9 +440,8 @@
             .chat-section { min-height: 170px; }
             .chat-log { max-height: 110px; }
             .member-list { max-height: 130px; }
-            .topbar { min-height: 72px; }
-            .connection { display: none; }
-            .room-strip { min-height: 40px; margin-top: 12px; padding: 0 11px; }
+            .topbar { min-height: 48px; }
+            .room-strip { min-height: 40px; padding: 0 11px; }
             .room-strip-user { max-width: 90px; }
             .bottom-toolbar {
                 width: calc(100% + 18px);
@@ -511,14 +453,10 @@
         @media (max-width: 420px) {
             .page { width: min(100% - 20px, 390px); }
             .login-card { padding: 25px 20px; }
-            .game-heading h1 { font-size: 19px; }
             .board-card { padding: 9px; }
             .board-hint { margin: 9px 2px 1px; }
-            .topbar-right { gap: 5px; }
             .topbar-actions { gap: 3px; }
             .topbar-button { min-height: 35px; padding: 0 9px; font-size: 11px; }
-            .brand { gap: 8px; font-size: 12px; }
-            .brand-mark { width: 32px; height: 32px; }
         }
 
         @media (prefers-reduced-motion: reduce) {
@@ -529,17 +467,10 @@
 <body>
     <div class="page">
         <header class="topbar">
-            <div class="brand"><span class="brand-mark" aria-hidden="true">↗</span> Rundt om bordet</div>
-            <div class="topbar-right">
-                <div class="connection" id="connection-status" aria-live="polite">
-                    <span class="connection-dot" aria-hidden="true"></span>
-                    <span id="connection-label">Log ind for at forbinde</span>
-                </div>
-                <nav class="topbar-actions" id="guest-actions" aria-label="Konto">
-                    <button class="topbar-button primary" id="login-nav-button" type="button" aria-pressed="true">Log ind</button>
-                    <button class="topbar-button" id="register-nav-button" type="button" aria-pressed="false">Opret konto</button>
-                </nav>
-            </div>
+            <nav class="topbar-actions" id="guest-actions" aria-label="Konto">
+                <button class="topbar-button primary" id="login-nav-button" type="button" aria-pressed="true">Log ind</button>
+                <button class="topbar-button" id="register-nav-button" type="button" aria-pressed="false">Opret konto</button>
+            </nav>
         </header>
 
         <main>
@@ -557,7 +488,6 @@
 
             <section class="game hidden" id="game-section">
                 <div class="room-strip hidden" id="room-strip" aria-label="Rummets status">
-                    <span class="room-indicator" aria-hidden="true"></span>
                     <span class="room-strip-name">Fællesrum</span>
                     <span class="room-strip-divider" aria-hidden="true"></span>
                     <span>Det åbne gulv</span>
@@ -568,11 +498,6 @@
                         <span class="room-strip-user" id="room-strip-user"></span>
                     </span>
                     <button class="room-strip-logout hidden" id="logout-button" type="button">Log ud</button>
-                </div>
-                <div class="game-heading">
-                    <div>
-                        <h1>Vælg en flise. Find din plads.</h1>
-                    </div>
                 </div>
                 <div class="room">
                     <section class="board-card" aria-label="Chatrum">
@@ -646,8 +571,6 @@
             const refreshNavButton = document.getElementById('refresh-nav-button');
             const membersNavButton = document.getElementById('members-nav-button');
             const chatNavButton = document.getElementById('chat-nav-button');
-            const connectionStatus = document.getElementById('connection-status');
-            const connectionLabel = document.getElementById('connection-label');
             const memberList = document.getElementById('member-list');
             const memberSearch = document.getElementById('member-search');
             const memberEmpty = document.getElementById('member-empty');
@@ -760,11 +683,6 @@
                 usernameInput.disabled = false;
                 passwordInput.disabled = false;
                 showAuthMode();
-            }
-
-            function setConnectionLabel(message, online = false) {
-                connectionStatus.classList.toggle('online', online);
-                connectionLabel.textContent = message;
             }
 
             function setRoomNotice(message) {
@@ -1106,7 +1024,6 @@
                     usernameInput.disabled = true;
                     passwordInput.disabled = true;
                     joinButton.textContent = 'Forbinder…';
-                    setConnectionLabel('Logger ind · forbinder til chatten…');
                     socket.connect();
                 } catch (error) {
                     loginError.textContent = error.message || 'Kunne ikke forbinde. Prøv igen.';
@@ -1142,7 +1059,6 @@
                     authMode = 'login';
                     resetPendingAuthentication();
                     setRoomNotice('');
-                    setConnectionLabel('Log ind for at forbinde');
                     updateDraftText('');
                 } catch (error) {
                     setRoomNotice(error.message || 'Kunne ikke logge ud. Prøv igen.');
@@ -1212,15 +1128,11 @@
 
             socket.on('connect', () => {
                 if (currentUser) {
-                    setConnectionLabel('Forbundet · går ind i chatten…', true);
                     socket.emit('join');
-                } else {
-                    setConnectionLabel('Forbundet', true);
                 }
             });
 
             socket.on('disconnect', (reason) => {
-                setConnectionLabel(currentUser ? 'Forbindelsen afbrudt · prøver igen…' : 'Log ind for at forbinde');
                 if (currentUser && reason === 'io server disconnect') {
                     authFetch('/api/auth/me')
                         .then(async (response) => {
@@ -1229,7 +1141,6 @@
                                 gameSection.classList.add('hidden');
                                 loginSection.classList.remove('hidden');
                                 loginError.textContent = 'Din session er udløbet. Log ind igen.';
-                                setConnectionLabel('Log ind for at forbinde');
                                 return;
                             }
                             if (!response.ok) throw new Error('Kunne ikke kontrollere din session.');
@@ -1250,7 +1161,6 @@
             });
 
             socket.on('connect_error', async () => {
-                setConnectionLabel(currentUser ? 'Forbindelsen afbrudt · prøver igen…' : 'Kunne ikke forbinde');
                 if (!currentUser) return;
                 try {
                     const response = await authFetch('/api/auth/me');
@@ -1260,7 +1170,6 @@
                         gameSection.classList.add('hidden');
                         loginSection.classList.remove('hidden');
                         loginError.textContent = 'Din session er udløbet. Log ind igen.';
-                        setConnectionLabel('Log ind for at forbinde');
                         return;
                     }
                     if (!response.ok) throw new Error('Kunne ikke kontrollere din session.');
@@ -1305,7 +1214,6 @@
                 gameSection.classList.remove('hidden');
                 updateAccountActions();
                 loginError.textContent = '';
-                setConnectionLabel('Forbundet', true);
                 setRoomNotice('');
                 if (animationFrame === null) {
                     lastFrameTime = 0;
@@ -1362,7 +1270,6 @@
                 })
                 .catch((error) => {
                     loginError.textContent = error.message || 'Kunne ikke forbinde. Prøv igen.';
-                    setConnectionLabel('Kunne ikke kontrollere login');
                     joinButton.disabled = false;
                 });
         })();
