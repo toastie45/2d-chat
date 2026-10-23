@@ -380,21 +380,52 @@
         .you-tag { margin-left: auto; color: var(--muted); font-size: 10px; }
 
         .profile-panel { overflow-y: auto; }
-        .profile-form { display: grid; gap: 13px; }
-        .profile-field { display: grid; gap: 6px; color: #d9d8d1; font-size: 11px; font-weight: 600; }
+        .profile-section-title {
+            margin: 0 -17px 14px;
+            padding: 8px 17px;
+            border-top: 1px solid #353943;
+            border-bottom: 1px solid #353943;
+            background: #282b32;
+            color: #f0f1f3;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        .profile-hint { margin: 0 0 12px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+        .profile-form { display: grid; gap: 12px; }
+        .profile-facts {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+        .profile-field { display: grid; min-width: 0; align-content: start; gap: 5px; color: #d9d8d1; font-size: 10px; font-weight: 650; }
         .profile-field input, .profile-field textarea {
             width: 100%;
-            padding: 9px 10px;
-            border: 1px solid #363831;
-            border-radius: 8px;
-            background: #10110f;
+            min-height: 34px;
+            padding: 7px 9px;
+            border: 1px solid #3a3d44;
+            border-radius: 5px;
+            outline: none;
+            background: #202228;
             color: #f2f0e9;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 400;
         }
-        .profile-field textarea { min-height: 150px; resize: vertical; white-space: pre-wrap; }
-        .profile-hint, .profile-value { color: var(--muted); font-size: 11px; line-height: 1.6; }
-        .profile-value { margin: 0 0 18px; color: #e4e3dc; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .profile-field input:focus, .profile-field textarea:focus { border-color: #9fc65f; box-shadow: 0 0 0 2px #c1f0781a; }
+        .profile-field textarea { min-height: 110px; resize: vertical; white-space: pre-wrap; }
+        .profile-field-wide { grid-column: 1 / -1; }
+        .profile-facts-view {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            overflow: hidden;
+            border: 1px solid #363941;
+            border-radius: 7px;
+            background: #22242a;
+        }
+        .profile-fact { min-width: 0; padding: 10px 11px; border-bottom: 1px solid #383b42; }
+        .profile-fact:nth-child(odd) { border-right: 1px solid #383b42; }
+        .profile-fact dt { margin-bottom: 4px; color: #aeb2ba; font-size: 10px; font-weight: 650; }
+        .profile-fact dd { margin: 0; color: #f0f1f3; font-size: 11px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .profile-fact-wide { grid-column: 1 / -1; border-right: 0 !important; }
         .profile-status { min-height: 16px; margin: 0; color: var(--muted); font-size: 11px; }
         .profile-save {
             min-height: 36px;
@@ -575,42 +606,42 @@
                         </section>
                         <section class="side-panel profile-panel" id="profile-editor-panel" aria-labelledby="profile-editor-title" hidden>
                             <h2 class="side-title" id="profile-editor-title">Min profil</h2>
-                            <p class="profile-hint">Avatarnavn: <strong id="profile-avatar-name"></strong></p>
+                            <p class="profile-section-title">Profiloplysninger · <span id="profile-avatar-name"></span></p>
+                            <p class="profile-hint">Udfyld de felter, du har lyst til. De udfyldte oplysninger er synlige for andre.</p>
                             <form class="profile-form" id="profile-form">
-                                <label class="profile-field" for="profile-real-name">
-                                    Rigtigt navn <span class="profile-hint">Valgfrit — synligt for andre</span>
-                                    <input id="profile-real-name" name="realName" maxlength="80" autocomplete="name">
-                                </label>
-                                <label class="profile-field" for="profile-discord-name">
-                                    Discord-navn <span class="profile-hint">Valgfrit — højst 64 tegn</span>
-                                    <input id="profile-discord-name" name="discordName" maxlength="64" autocomplete="off">
-                                </label>
-                                <label class="profile-field" for="profile-interests">
-                                    Interesser <span class="profile-hint">Valgfrit — højst 160 tegn</span>
-                                    <input id="profile-interests" name="interests" maxlength="160" autocomplete="off">
-                                </label>
-                                <label class="profile-field" for="profile-text">
-                                    Profiltekst <span class="profile-hint">Valgfrit — højst 500 tegn</span>
-                                    <textarea id="profile-text" name="profileText" maxlength="500"></textarea>
-                                </label>
+                                <div class="profile-facts">
+                                    <label class="profile-field" for="profile-real-name">
+                                        Rigtigt navn
+                                        <input id="profile-real-name" name="realName" maxlength="80" autocomplete="name">
+                                    </label>
+                                    <label class="profile-field" for="profile-discord-name">
+                                        Discord
+                                        <input id="profile-discord-name" name="discordName" maxlength="64" autocomplete="off">
+                                    </label>
+                                    <label class="profile-field profile-field-wide" for="profile-interests">
+                                        Interesser
+                                        <input id="profile-interests" name="interests" maxlength="160" autocomplete="off">
+                                    </label>
+                                    <label class="profile-field profile-field-wide" for="profile-text">
+                                        Profiltekst
+                                        <textarea id="profile-text" name="profileText" maxlength="500"></textarea>
+                                    </label>
+                                </div>
                                 <button class="profile-save" id="profile-save-button" type="submit">Gem profil</button>
                                 <p class="profile-status" id="profile-status" aria-live="polite"></p>
                             </form>
                         </section>
                         <section class="side-panel profile-panel" id="profile-view-panel" aria-labelledby="profile-view-title" hidden>
                             <h2 class="side-title" id="profile-view-title">Profil</h2>
-                            <p class="profile-hint">Avatarnavn</p>
-                            <p class="profile-value" id="view-profile-avatar"></p>
-                            <p class="profile-hint">Rum</p>
-                            <p class="profile-value" id="view-profile-room"></p>
-                            <p class="profile-hint">Rigtigt navn</p>
-                            <p class="profile-value" id="view-profile-real-name"></p>
-                            <p class="profile-hint">Discord</p>
-                            <p class="profile-value" id="view-profile-discord"></p>
-                            <p class="profile-hint">Interesser</p>
-                            <p class="profile-value" id="view-profile-interests"></p>
-                            <p class="profile-hint">Profiltekst</p>
-                            <p class="profile-value" id="view-profile-text"></p>
+                            <p class="profile-section-title">Facts</p>
+                            <dl class="profile-facts-view">
+                                <div class="profile-fact"><dt>Avatarnavn</dt><dd id="view-profile-avatar"></dd></div>
+                                <div class="profile-fact"><dt>Rum</dt><dd id="view-profile-room"></dd></div>
+                                <div class="profile-fact"><dt>Rigtigt navn</dt><dd id="view-profile-real-name"></dd></div>
+                                <div class="profile-fact"><dt>Discord</dt><dd id="view-profile-discord"></dd></div>
+                                <div class="profile-fact profile-fact-wide"><dt>Interesser</dt><dd id="view-profile-interests"></dd></div>
+                                <div class="profile-fact profile-fact-wide"><dt>Profiltekst</dt><dd id="view-profile-text"></dd></div>
+                            </dl>
                         </section>
                     </aside>
                 </div>
