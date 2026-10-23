@@ -146,9 +146,8 @@
             delete players[id];
         });
 
-        // Styring via tastatur (Piletaster eller WASD)
         window.addEventListener('keydown', (e) => {
-            if (document.activeElement === chatInput) return; // Bloker spil-styring hvis man skriver i chatten
+            if (document.activeElement === chatInput) return;
             keys[e.key] = true;
         });
 
@@ -156,7 +155,6 @@
             keys[e.key] = false;
         });
 
-        // Chat input håndtering
         chatInput.addEventListener('input', () => {
             if (players[myId]) {
                 players[myId].typingText = chatInput.value;
@@ -190,7 +188,6 @@
             if (keys['ArrowRight'] || keys['d'] || keys['D']) { newX += speed; moved = true; }
 
             if (moved) {
-                // Begræns til canvas grænser
                 newX = Math.max(radius, Math.min(canvas.width - radius, newX));
                 newY = Math.max(radius, Math.min(canvas.height - radius, newY));
 
@@ -205,32 +202,52 @@
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Tegn alle spillere (cirkler)
             for (let id in players) {
                 let p = players[id];
 
-                // Cirkel
+                // 1. KUN GRØNNE CIRKLER FOR ALLE SPILLERE
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
-                ctx.fillStyle = (id === myId) ? '#28a745' : '#007bff';
+                ctx.fillStyle = '#28a745';
                 ctx.fill();
                 ctx.lineWidth = 2;
                 ctx.strokeStyle = '#fff';
                 ctx.stroke();
                 ctx.closePath();
 
-                // Brugernavn ovenpå cirklen
+                // 2. Brugernavn ovenpå cirklen
                 ctx.fillStyle = '#fff';
                 ctx.font = '12px Arial';
                 ctx.textAlign = 'center';
                 ctx.fillText(p.name, p.x, p.y - radius - 6);
 
-                // Chat / besked eller live-skrivning
+                // 3. Tekstboble til chat / live-skrivning
                 let displayText = p.typingText || p.text;
                 if (displayText) {
-                    ctx.fillStyle = '#ffeb3b';
-                    ctx.font = '11px Arial';
-                    ctx.fillText(displayText, p.x, p.y - radius - 20);
+                    ctx.font = '12px Arial';
+                    let textWidth = ctx.measureText(displayText).width;
+                    let bubbleWidth = Math.max(textWidth + 16, 30);
+                    let bubbleHeight = 22;
+                    let bubbleX = p.x - bubbleWidth / 2;
+                    let bubbleY = p.y - radius - 35;
+
+                    // Tegn selve tekstboblen (baggrund og kant)
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+                    ctx.strokeStyle = '#28a745';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    if (ctx.roundRect) {
+                        ctx.roundRect(bubbleX, bubbleY, bubbleWidth, bubbleHeight, 5);
+                    } else {
+                        ctx.rect(bubbleX, bubbleY, bubbleWidth, bubbleHeight);
+                    }
+                    ctx.fill();
+                    ctx.stroke();
+
+                    // Tekst inde i boblen
+                    ctx.fillStyle = '#fff';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(displayText, p.x, bubbleY + 15);
                 }
             }
         }
