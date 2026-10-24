@@ -108,10 +108,10 @@
         }
         .friend-menu[hidden] { display: none; }
         .friend-menu-title { margin: 0 0 5px; color: #f2f0e9; font-size: 11px; font-weight: 650; }
-        .friend-menu-hint, .friend-menu-empty { margin: 0 0 8px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+        .friend-menu-empty { margin: 0 0 8px; color: var(--muted); font-size: 10px; line-height: 1.45; }
         .friend-menu-list { display: grid; max-height: 220px; gap: 5px; overflow-y: auto; }
-        .friend-menu-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
-        .friend-menu-name, .friend-menu-mute {
+        .friend-menu-row { display: flex; min-width: 0; }
+        .friend-menu-name {
             min-height: 30px;
             border: 1px solid #393b33;
             border-radius: 5px;
@@ -122,9 +122,8 @@
             cursor: pointer;
         }
         .friend-menu-name { flex: 1; min-width: 0; overflow: hidden; padding: 0 7px; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
-        .friend-menu-mute { flex: 0 0 auto; padding: 0 7px; }
-        .friend-menu-name:hover, .friend-menu-mute:hover { border-color: #758c4d; background: #2c3027; }
-        .friend-menu-name[disabled], .friend-menu-mute[disabled] { cursor: wait; opacity: .55; }
+        .friend-menu-name:hover { border-color: #758c4d; background: #2c3027; }
+        .friend-menu-name[disabled] { cursor: wait; opacity: .55; }
         .room-strip-count { font-variant-numeric: tabular-nums; white-space: nowrap; }
         .room-strip-logout {
             min-height: 32px;
@@ -427,24 +426,8 @@
         }
         .profile-form { display: grid; gap: 12px; }
         .profile-management { display: grid; gap: 10px; margin-bottom: 16px; }
-        .profile-management-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
-        .profile-management-tab {
-            min-height: 32px;
-            padding: 5px 6px;
-            border: 1px solid #3a3d44;
-            border-radius: 5px;
-            background: #202228;
-            color: #c9cbd0;
-            font: inherit;
-            font-size: 10px;
-            cursor: pointer;
-        }
-        .profile-management-tab:hover, .profile-management-tab[aria-selected="true"] {
-            border-color: #829e52;
-            background: #303729;
-            color: #f2f0e9;
-        }
-        .profile-management-tab:focus-visible, .profile-manage-action:focus-visible, .profile-details summary:focus-visible {
+        .profile-management-select { margin: 0; }
+        .profile-management-select:focus-visible, .profile-manage-action:focus-visible, .profile-details summary:focus-visible {
             outline: 2px solid var(--accent);
             outline-offset: 2px;
         }
@@ -625,6 +608,8 @@
             cursor: pointer;
         }
         .avatar-context-action:hover { background: #292b26; color: #fff; }
+        .avatar-context-action[hidden] { display: none; }
+        .avatar-context-action:disabled { cursor: wait; opacity: .55; }
 
         .chat-section {
             display: flex;
@@ -780,20 +765,21 @@
                             <h2 class="side-title" id="profile-editor-title">Min profil</h2>
                             <p class="profile-section-title">Profiloplysninger · <span id="profile-avatar-name"></span></p>
                             <div class="profile-management">
-                                <div class="profile-management-tabs" role="tablist" aria-label="Administrer profil">
-                                    <button class="profile-management-tab" id="manage-friends-tab" type="button" role="tab" aria-selected="true" aria-controls="manage-friends-panel">Venner</button>
-                                    <button class="profile-management-tab" id="manage-enemies-tab" type="button" role="tab" aria-selected="false" aria-controls="manage-enemies-panel" tabindex="-1">Fjender</button>
-                                    <button class="profile-management-tab" id="manage-guestbook-tab" type="button" role="tab" aria-selected="false" aria-controls="manage-guestbook-panel" tabindex="-1">Gæstebog</button>
-                                </div>
-                                <section class="profile-management-panel" id="manage-friends-panel" role="tabpanel" aria-labelledby="manage-friends-tab">
+                                <label class="visually-hidden" for="profile-management-select">Vælg liste, du vil administrere</label>
+                                <select class="profile-page-select profile-management-select" id="profile-management-select">
+                                    <option value="friends">Administrer venneliste</option>
+                                    <option value="enemies">Administrer fjendeliste</option>
+                                    <option value="guestbook">Administrer gæstebog</option>
+                                </select>
+                                <section class="profile-management-panel" id="manage-friends-panel">
                                     <div class="profile-management-list" id="manage-friends-list" role="list"></div>
                                     <p class="profile-management-empty" id="manage-friends-empty">Hent venneliste…</p>
                                 </section>
-                                <section class="profile-management-panel" id="manage-enemies-panel" role="tabpanel" aria-labelledby="manage-enemies-tab" hidden>
+                                <section class="profile-management-panel" id="manage-enemies-panel" hidden>
                                     <div class="profile-management-list" id="manage-enemies-list" role="list"></div>
                                     <p class="profile-management-empty" id="manage-enemies-empty">Ingen på fjendelisten.</p>
                                 </section>
-                                <section class="profile-management-panel" id="manage-guestbook-panel" role="tabpanel" aria-labelledby="manage-guestbook-tab" hidden>
+                                <section class="profile-management-panel" id="manage-guestbook-panel" hidden>
                                     <div class="profile-management-list" id="manage-guestbook-list" role="list"></div>
                                     <p class="profile-management-empty" id="manage-guestbook-empty">Ingen hilsner i gæstebogen endnu.</p>
                                 </section>
@@ -835,7 +821,6 @@
                             <div class="profile-actions" aria-label="Profilhandlinger">
                                 <button class="profile-action" id="profile-friend-button" type="button" aria-label="Tilføj til venneliste" title="Tilføj til venneliste" aria-pressed="false">🫂</button>
                                 <button class="profile-action" id="profile-enemy-button" type="button" aria-label="Tilføj til fjendeliste" title="Tilføj til fjendeliste" aria-pressed="false">⚔️</button>
-                                <button class="profile-action" id="profile-guestbook-button" type="button" aria-label="Åbn gæstebog" title="Åbn gæstebog">📖</button>
                             </div>
                             <label class="visually-hidden" for="profile-page-select">Vælg infoside</label>
                             <select class="profile-page-select" id="profile-page-select">
@@ -874,6 +859,7 @@
             <p class="avatar-context-name" id="avatar-context-name"></p>
             <p class="avatar-context-room">Fællesrum</p>
             <button class="avatar-context-action" id="avatar-context-profile" type="button" role="menuitem">Se profilinfo</button>
+            <button class="avatar-context-action" id="avatar-context-mute" type="button" role="menuitem" hidden></button>
         </div>
     </div>
     <script src="/socket.io/socket.io.js"></script>
@@ -931,11 +917,7 @@
             const profileSaveButton = document.getElementById('profile-save-button');
             const profileStatus = document.getElementById('profile-status');
             const profileManagementStatus = document.getElementById('profile-management-status');
-            const managementTabs = {
-                friends: document.getElementById('manage-friends-tab'),
-                enemies: document.getElementById('manage-enemies-tab'),
-                guestbook: document.getElementById('manage-guestbook-tab')
-            };
+            const managementSelect = document.getElementById('profile-management-select');
             const managementPanels = {
                 friends: document.getElementById('manage-friends-panel'),
                 enemies: document.getElementById('manage-enemies-panel'),
@@ -963,7 +945,6 @@
             const viewProfileText = document.getElementById('view-profile-text');
             const profileFriendButton = document.getElementById('profile-friend-button');
             const profileEnemyButton = document.getElementById('profile-enemy-button');
-            const profileGuestbookButton = document.getElementById('profile-guestbook-button');
             const profilePageSelect = document.getElementById('profile-page-select');
             const profileInfoPage = document.getElementById('profile-info-page');
             const guestbookPage = document.getElementById('guestbook-page');
@@ -976,6 +957,7 @@
             const avatarContextMenu = document.getElementById('avatar-context-menu');
             const avatarContextName = document.getElementById('avatar-context-name');
             const avatarContextProfile = document.getElementById('avatar-context-profile');
+            const avatarContextMute = document.getElementById('avatar-context-mute');
             const roomNotice = document.getElementById('room-notice');
             const logoutButton = document.getElementById('logout-button');
             const chatLog = document.getElementById('chat-log');
@@ -1159,12 +1141,11 @@
                 if (open) requestProfileManagement();
             }
 
-            function selectManagementTab(name) {
-                Object.entries(managementTabs).forEach(([tabName, tab]) => {
-                    const selected = tabName === name;
-                    tab.setAttribute('aria-selected', String(selected));
-                    tab.tabIndex = selected ? 0 : -1;
-                    managementPanels[tabName].hidden = !selected;
+            function selectManagementPage(name) {
+                const selectedPage = Object.prototype.hasOwnProperty.call(managementPanels, name) ? name : 'friends';
+                managementSelect.value = selectedPage;
+                Object.entries(managementPanels).forEach(([pageName, panel]) => {
+                    panel.hidden = pageName !== selectedPage;
                 });
             }
 
@@ -1175,6 +1156,23 @@
                     relation.muted &&
                     relation.username.toLocaleLowerCase('en-US') === playerName
                 );
+            }
+
+            function relationshipForPlayer(playerId) {
+                const player = players[playerId];
+                if (!player) return null;
+                return profileManagement.relations.find((relation) =>
+                    relation.username.toLocaleLowerCase('en-US') === player.name.toLocaleLowerCase('en-US')
+                ) || null;
+            }
+
+            function updateAvatarContextMute() {
+                const relation = contextPlayerId ? relationshipForPlayer(contextPlayerId) : null;
+                avatarContextMute.hidden = !relation || relation.relationship !== 'friend';
+                avatarContextMute.disabled = false;
+                if (relation && relation.relationship === 'friend') {
+                    avatarContextMute.textContent = relation.muted ? 'Slå mute fra' : 'Mute';
+                }
             }
 
             function renderFriendMenu() {
@@ -1205,16 +1203,7 @@
                             showPublicProfile(player.id);
                         }
                     });
-                    const mute = document.createElement('button');
-                    mute.className = 'friend-menu-mute';
-                    mute.type = 'button';
-                    mute.textContent = friend.muted ? 'Unmute' : 'Mute';
-                    mute.setAttribute('aria-label', `${friend.muted ? 'Slå mute fra for' : 'Mute'} ${friend.username}`);
-                    mute.addEventListener('click', () => {
-                        mute.disabled = true;
-                        socket.emit('profile-mute-toggle', { targetUserId: friend.targetUserId });
-                    });
-                    row.append(name, mute);
+                    row.append(name);
                     friendMenuList.append(row);
                 });
             }
@@ -1777,21 +1766,15 @@
             friendMenuTrigger.addEventListener('click', () => {
                 setFriendMenuOpen(friendMenu.hidden);
             });
-            Object.entries(managementTabs).forEach(([name, tab]) => {
-                tab.addEventListener('click', () => selectManagementTab(name));
-                tab.addEventListener('keydown', (event) => {
-                    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-                    event.preventDefault();
-                    const names = Object.keys(managementTabs);
-                    const currentIndex = names.indexOf(name);
-                    const offset = event.key === 'ArrowRight' ? 1 : -1;
-                    const nextName = names[(currentIndex + offset + names.length) % names.length];
-                    selectManagementTab(nextName);
-                    managementTabs[nextName].focus();
-                });
-            });
             avatarContextProfile.addEventListener('click', () => {
                 if (contextPlayerId) showPublicProfile(contextPlayerId);
+            });
+            avatarContextMute.addEventListener('click', () => {
+                const relation = contextPlayerId ? relationshipForPlayer(contextPlayerId) : null;
+                if (!relation || relation.relationship !== 'friend') return;
+                avatarContextMute.disabled = true;
+                socket.emit('profile-mute-toggle', { targetUserId: relation.targetUserId });
+                closeAvatarContextMenu();
             });
             profileFriendButton.addEventListener('click', () => {
                 if (viewingProfilePlayerId && !viewingOwnProfile) {
@@ -1809,9 +1792,11 @@
                     });
                 }
             });
-            profileGuestbookButton.addEventListener('click', () => selectProfilePage('guestbook'));
             profilePageSelect.addEventListener('change', () => {
                 selectProfilePage(profilePageSelect.value || 'info');
+            });
+            managementSelect.addEventListener('change', () => {
+                selectManagementPage(managementSelect.value);
             });
             guestbookForm.addEventListener('submit', (event) => {
                 event.preventDefault();
@@ -1904,6 +1889,7 @@
                 }
                 contextPlayerId = target.id;
                 avatarContextName.textContent = target.name;
+                updateAvatarContextMute();
                 avatarContextMenu.classList.remove('hidden');
                 avatarContextMenu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - avatarContextMenu.offsetWidth - 8))}px`;
                 avatarContextMenu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - avatarContextMenu.offsetHeight - 8))}px`;
@@ -2117,6 +2103,7 @@
                 if (!Array.isArray(relations) || !Array.isArray(guestbookEntries)) return;
                 profileManagement = { relations, guestbookEntries };
                 renderProfileManagement();
+                updateAvatarContextMute();
                 Object.values(players).forEach((player) => {
                     if (isMutedPlayer(player)) {
                         player.text = '';
@@ -2156,6 +2143,7 @@
             socket.on('profile-management-error', ({ message } = {}) => {
                 profileManagementStatus.textContent = message || 'Listen kunne ikke opdateres. Prøv igen.';
                 renderProfileManagement();
+                updateAvatarContextMute();
             });
 
             socket.on('guestbook-info', ({ playerId, entries } = {}) => {
