@@ -370,6 +370,15 @@ async function startServer() {
         )
     `);
     await pool.query(`
+        CREATE TABLE IF NOT EXISTS chat_profile_mutes (
+            user_id BIGINT NOT NULL REFERENCES chat_users(id) ON DELETE CASCADE,
+            target_user_id BIGINT NOT NULL REFERENCES chat_users(id) ON DELETE CASCADE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (user_id, target_user_id),
+            CHECK (user_id <> target_user_id)
+        )
+    `);
+    await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_guestbook_entries (
             id BIGSERIAL PRIMARY KEY,
             profile_user_id BIGINT NOT NULL REFERENCES chat_users(id) ON DELETE CASCADE,
@@ -951,6 +960,12 @@ async function startServer() {
                         `, [socket.data.user.id, target.profile.id, relationship]);
                         nextRelationship = relationship;
                     }
+                    if (nextRelationship !== 'friend') {
+                        await client.query(
+                            'DELETE FROM chat_profile_mutes WHERE user_id = $1 AND target_user_id = $2',
+                            [socket.data.user.id, target.profile.id]
+                        );
+                    }
                     await client.query('COMMIT');
                 } catch (error) {
                     await client.query('ROLLBACK');
@@ -965,6 +980,156 @@ async function startServer() {
                     playerId,
                     error: 'Listen kunne ikke opdateres. Prøv igen.'
                 });
+            }
+        });
+
+        socket.on('profile-management-request', async () => {
+            if (!activeSocketIds.has(socket.id)) return;
+            try {
+                const userId = socket.data.user.id;
+                const [{ rows: relations }, { rows: entries }] = await Promise.all([
+                    pool.query(`
+                        SELECT relation.target_user_id, target.username, relation.relationship,
+                               (mute.target_user_id IS NOT NULL) AS muted
+                        FROM chat_profile_relationships relation
+                        JOIN chat_users target ON target.id = relation.target_user_id
+                        LEFT JOIN chat_profile_mutes mute
+                            ON mute.user_id = relation.user_id
+                            AND mute.target_user_id = relation.target_user_id
+                        WHERE relation.user_id = $1
+                        ORDER BY target.username_normalized
+                    `, [userId]),
+                    pool.query(`
+                        SELECT entry.id, author.username AS author_name, entry.message, entry.created_at
+                        FROM chat_guestbook_entries entry
+                        JOIN chat_users author ON author.id = entry.author_user_id
+                        WHERE entry.profile_user_id = $1
+                        ORDER BY entry.id DESC
+                        LIMIT 50
+                    `, [userId])
+                ]);
+                socket.emit('profile-management-info', {
+                    relations: relations.map((relation) => ({
+                        targetUserId: String(relation.target_user_id),
+                        username: relation.username,
+                        relationship: relation.relationship,
+                        muted: relation.muted
+                    })),
+                    guestbookEntries: entries.reverse().map((entry) => ({
+                        id: String(entry.id),
+                        authorName: entry.author_name,
+                        message: entry.message,
+                        createdAt: entry.created_at
+                    }))
+                });
+            } catch (error) {
+                console.error('Could not load profile management data:', getSafeErrorCode(error));
+                socket.emit('profile-management-error', {
+                    message: 'Dine lister og gæstebog kunne ikke indlæses. Prøv igen.'
+                });
+            }
+        });
+
+        socket.on('profile-relationship-remove', async (payload) => {
+            const targetUserId = payload && payload.targetUserId;
+            if (
+                !activeSocketIds.has(socket.id) ||
+                !/^[1-9]\d{0,18}$/.test(String(targetUserId || '')) ||
+                String(targetUserId) === String(socket.data.user.id)
+            ) return;
+            try {
+                const client = await pool.connect();
+                try {
+                    await client.query('BEGIN');
+                    await client.query(
+                        'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+                        [`profile-relationship:${socket.data.user.id}:${targetUserId}`]
+                    );
+                    const { rowCount } = await client.query(
+                        'DELETE FROM chat_profile_relationships WHERE user_id = $1 AND target_user_id = $2',
+                        [socket.data.user.id, targetUserId]
+                    );
+                    if (!rowCount) {
+                        await client.query('ROLLBACK');
+                        socket.emit('profile-management-error', { message: 'Personen er ikke længere på din liste.' });
+                        return;
+                    }
+                    await client.query(
+                        'DELETE FROM chat_profile_mutes WHERE user_id = $1 AND target_user_id = $2',
+                        [socket.data.user.id, targetUserId]
+                    );
+                    await client.query('COMMIT');
+                } catch (error) {
+                    await client.query('ROLLBACK');
+                    throw error;
+                } finally {
+                    client.release();
+                }
+                socket.emit('profile-management-updated', {
+                    targetUserId: String(targetUserId),
+                    relationshipRemoved: true,
+                    message: 'Personen er fjernet fra listen.'
+                });
+            } catch (error) {
+                console.error('Could not remove profile relationship:', getSafeErrorCode(error));
+                socket.emit('profile-management-error', { message: 'Personen kunne ikke fjernes. Prøv igen.' });
+            }
+        });
+
+        socket.on('profile-mute-toggle', async (payload) => {
+            const targetUserId = payload && payload.targetUserId;
+            if (
+                !activeSocketIds.has(socket.id) ||
+                !/^[1-9]\d{0,18}$/.test(String(targetUserId || '')) ||
+                String(targetUserId) === String(socket.data.user.id)
+            ) return;
+            let client;
+            try {
+                client = await pool.connect();
+                await client.query('BEGIN');
+                await client.query(
+                    'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+                    [`profile-relationship:${socket.data.user.id}:${targetUserId}`]
+                );
+                const { rows: [friend] } = await client.query(
+                    `SELECT 1 FROM chat_profile_relationships
+                     WHERE user_id = $1 AND target_user_id = $2 AND relationship = 'friend'`,
+                    [socket.data.user.id, targetUserId]
+                );
+                if (!friend) {
+                    await client.query('ROLLBACK');
+                    socket.emit('profile-management-error', {
+                        message: 'Mute kan kun ændres for personer på din venneliste.'
+                    });
+                    return;
+                }
+                const { rows: [mute] } = await client.query(
+                    'SELECT 1 FROM chat_profile_mutes WHERE user_id = $1 AND target_user_id = $2 FOR UPDATE',
+                    [socket.data.user.id, targetUserId]
+                );
+                if (mute) {
+                    await client.query(
+                        'DELETE FROM chat_profile_mutes WHERE user_id = $1 AND target_user_id = $2',
+                        [socket.data.user.id, targetUserId]
+                    );
+                } else {
+                    await client.query(
+                        'INSERT INTO chat_profile_mutes (user_id, target_user_id) VALUES ($1, $2)',
+                        [socket.data.user.id, targetUserId]
+                    );
+                }
+                await client.query('COMMIT');
+                socket.emit('profile-management-updated', {
+                    targetUserId: String(targetUserId),
+                    muted: !mute,
+                    message: mute ? 'Mute er slået fra.' : 'Vennen er muted.'
+                });
+            } catch (error) {
+                if (client) await client.query('ROLLBACK');
+                console.error('Could not update profile mute:', getSafeErrorCode(error));
+                socket.emit('profile-management-error', { message: 'Mute kunne ikke ændres. Prøv igen.' });
+            } finally {
+                if (client) client.release();
             }
         });
 
