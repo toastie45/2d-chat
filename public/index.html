@@ -719,7 +719,6 @@
                             <button class="friend-menu-trigger" id="friend-menu-trigger" type="button" aria-expanded="false" aria-controls="friend-menu">🤝 <span>Venner</span>⌄</button>
                             <div class="friend-menu" id="friend-menu" role="region" aria-label="Venneliste" hidden>
                                 <p class="friend-menu-title">Venneliste</p>
-                                <p class="friend-menu-hint">Mute skjuler vennens chatbeskeder og talebobler for dig.</p>
                                 <div class="friend-menu-list" id="friend-menu-list" role="list"></div>
                                 <p class="friend-menu-empty" id="friend-menu-empty">Hent venneliste…</p>
                             </div>
@@ -769,7 +768,6 @@
                                 <select class="profile-page-select profile-management-select" id="profile-management-select">
                                     <option value="friends">Administrer venneliste</option>
                                     <option value="enemies">Administrer fjendeliste</option>
-                                    <option value="guestbook">Administrer gæstebog</option>
                                 </select>
                                 <section class="profile-management-panel" id="manage-friends-panel">
                                     <div class="profile-management-list" id="manage-friends-list" role="list"></div>
@@ -778,10 +776,6 @@
                                 <section class="profile-management-panel" id="manage-enemies-panel" hidden>
                                     <div class="profile-management-list" id="manage-enemies-list" role="list"></div>
                                     <p class="profile-management-empty" id="manage-enemies-empty">Ingen på fjendelisten.</p>
-                                </section>
-                                <section class="profile-management-panel" id="manage-guestbook-panel" hidden>
-                                    <div class="profile-management-list" id="manage-guestbook-list" role="list"></div>
-                                    <p class="profile-management-empty" id="manage-guestbook-empty">Ingen hilsner i gæstebogen endnu.</p>
                                 </section>
                                 <p class="profile-management-status" id="profile-management-status" aria-live="polite"></p>
                             </div>
@@ -920,18 +914,15 @@
             const managementSelect = document.getElementById('profile-management-select');
             const managementPanels = {
                 friends: document.getElementById('manage-friends-panel'),
-                enemies: document.getElementById('manage-enemies-panel'),
-                guestbook: document.getElementById('manage-guestbook-panel')
+                enemies: document.getElementById('manage-enemies-panel')
             };
             const managementLists = {
                 friends: document.getElementById('manage-friends-list'),
-                enemies: document.getElementById('manage-enemies-list'),
-                guestbook: document.getElementById('manage-guestbook-list')
+                enemies: document.getElementById('manage-enemies-list')
             };
             const managementEmpty = {
                 friends: document.getElementById('manage-friends-empty'),
-                enemies: document.getElementById('manage-enemies-empty'),
-                guestbook: document.getElementById('manage-guestbook-empty')
+                enemies: document.getElementById('manage-enemies-empty')
             };
             const profileCreatedAt = document.getElementById('profile-created-at');
             const profileOnlineDuration = document.getElementById('profile-online-duration');
@@ -981,7 +972,8 @@
             let viewingProfilePlayerId = null;
             let sessionKickMessage = '';
             let viewingOwnProfile = false;
-            let profileManagement = { relations: [], guestbookEntries: [] };
+            let profileManagement = { relations: [] };
+            let mutedUsernames = new Set();
 
             function authFetch(url, options = {}) {
                 return fetch(url, {
@@ -1151,7 +1143,7 @@
 
             function isMutedPlayer(player) {
                 const playerName = player.name.toLocaleLowerCase('en-US');
-                return profileManagement.relations.some((relation) =>
+                return mutedUsernames.has(playerName) || profileManagement.relations.some((relation) =>
                     relation.relationship === 'friend' &&
                     relation.muted &&
                     relation.username.toLocaleLowerCase('en-US') === playerName
@@ -1240,43 +1232,10 @@
                 });
             }
 
-            function renderManagedGuestbook() {
-                const entries = profileManagement.guestbookEntries;
-                managementLists.guestbook.replaceChildren();
-                managementEmpty.guestbook.classList.toggle('hidden', entries.length > 0);
-                managementEmpty.guestbook.textContent = entries.length ? '' : 'Ingen hilsner i gæstebogen endnu.';
-                entries.forEach((entry) => {
-                    const row = document.createElement('article');
-                    row.className = 'guestbook-entry';
-                    row.setAttribute('role', 'listitem');
-                    const header = document.createElement('div');
-                    header.className = 'guestbook-entry-header';
-                    const author = document.createElement('span');
-                    author.className = 'guestbook-author';
-                    author.textContent = entry.authorName;
-                    const remove = document.createElement('button');
-                    remove.className = 'guestbook-delete';
-                    remove.type = 'button';
-                    remove.textContent = 'Slet';
-                    remove.setAttribute('aria-label', `Slet hilsen fra ${entry.authorName}`);
-                    remove.addEventListener('click', () => {
-                        remove.disabled = true;
-                        socket.emit('guestbook-delete', { playerId: myId, entryId: entry.id });
-                    });
-                    header.append(author, remove);
-                    const message = document.createElement('p');
-                    message.className = 'guestbook-message';
-                    message.textContent = entry.message;
-                    row.append(header, message);
-                    managementLists.guestbook.append(row);
-                });
-            }
-
             function renderProfileManagement() {
                 renderFriendMenu();
                 renderRelationshipManagement('friend');
                 renderRelationshipManagement('enemy');
-                renderManagedGuestbook();
             }
 
             function selectProfilePage(page) {
@@ -1394,7 +1353,8 @@
 
             function resetPendingAuthentication() {
                 currentUser = null;
-                profileManagement = { relations: [], guestbookEntries: [] };
+                profileManagement = { relations: [] };
+                mutedUsernames = new Set();
                 renderProfileManagement();
                 updateAccountActions();
                 joinButton.disabled = false;
@@ -1492,6 +1452,7 @@
                 chatEmpty.classList.add('hidden');
                 const entry = document.createElement('p');
                 entry.className = 'chat-entry';
+                entry.dataset.playerId = player.id;
                 const sender = document.createElement('strong');
                 sender.textContent = `${player.name}: `;
                 entry.append(sender);
@@ -1510,6 +1471,12 @@
                     chatLog.removeChild(chatLog.firstElementChild);
                 }
                 chatLog.scrollTop = chatLog.scrollHeight;
+            }
+
+            function removePlayerChatMessages(playerId) {
+                chatLog.querySelectorAll('.chat-entry').forEach((entry) => {
+                    if (entry.dataset.playerId === playerId) entry.remove();
+                });
             }
 
             function isMentionedByMessage(text) {
@@ -1588,8 +1555,9 @@
                     const position = player.position || player.target || positionFor(player);
                     if (!position) continue;
                     const color = colorForPlayer(player.id);
-                    const isTyping = player.id === myId && draftText.trim().length > 0;
-                    const bubbleText = isTyping ? hideSensitiveData(draftText.trim()) : player.text;
+                    const muted = isMutedPlayer(player);
+                    const isTyping = !muted && player.id === myId && draftText.trim().length > 0;
+                    const bubbleText = muted ? '' : isTyping ? hideSensitiveData(draftText.trim()) : player.text;
                     const expiresAt = player.messageTime ? player.messageTime + messageDuration : 0;
                     const remaining = expiresAt - now;
 
@@ -1663,6 +1631,23 @@
                     ctx.beginPath();
                     ctx.arc(position.x, position.y + 2, 5, .2, Math.PI - .2);
                     ctx.stroke();
+
+                    if (muted) {
+                        ctx.save();
+                        ctx.lineCap = 'round';
+                        ctx.lineWidth = 9;
+                        ctx.strokeStyle = '#390808';
+                        ctx.beginPath();
+                        ctx.moveTo(position.x - 12, position.y - 12);
+                        ctx.lineTo(position.x + 12, position.y + 12);
+                        ctx.moveTo(position.x + 12, position.y - 12);
+                        ctx.lineTo(position.x - 12, position.y + 12);
+                        ctx.stroke();
+                        ctx.lineWidth = 6;
+                        ctx.strokeStyle = '#f04444';
+                        ctx.stroke();
+                        ctx.restore();
+                    }
 
                     ctx.font = '11px Inter, system-ui, sans-serif';
                     ctx.textAlign = 'center';
@@ -1890,6 +1875,7 @@
                 contextPlayerId = target.id;
                 avatarContextName.textContent = target.name;
                 updateAvatarContextMute();
+                if (!relationshipForPlayer(target.id)) requestProfileManagement();
                 avatarContextMenu.classList.remove('hidden');
                 avatarContextMenu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - avatarContextMenu.offsetWidth - 8))}px`;
                 avatarContextMenu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - avatarContextMenu.offsetHeight - 8))}px`;
@@ -2030,9 +2016,11 @@
                 socket.disconnect();
             });
 
-            socket.on('join-success', ({ players: serverPlayers }) => {
+            socket.on('join-success', ({ players: serverPlayers, mutedUsernames: initialMutedUsernames = [] }) => {
                 players = {};
                 myId = socket.id;
+                profileManagement = { relations: [] };
+                mutedUsernames = new Set(initialMutedUsernames.map((username) => username.toLocaleLowerCase('en-US')));
                 sessionKickMessage = '';
                 joinButton.disabled = false;
                 for (const player of Object.values(serverPlayers)) {
@@ -2097,17 +2085,24 @@
                     return;
                 }
                 updateProfileRelationship(relationship);
+                if (relationship !== 'friend' && players[playerId]) {
+                    mutedUsernames.delete(players[playerId].name.toLocaleLowerCase('en-US'));
+                }
             });
 
-            socket.on('profile-management-info', ({ relations, guestbookEntries } = {}) => {
-                if (!Array.isArray(relations) || !Array.isArray(guestbookEntries)) return;
-                profileManagement = { relations, guestbookEntries };
+            socket.on('profile-management-info', ({ relations } = {}) => {
+                if (!Array.isArray(relations)) return;
+                profileManagement = { relations };
+                mutedUsernames = new Set(relations
+                    .filter((relation) => relation.relationship === 'friend' && relation.muted)
+                    .map((relation) => relation.username.toLocaleLowerCase('en-US')));
                 renderProfileManagement();
                 updateAvatarContextMute();
                 Object.values(players).forEach((player) => {
                     if (isMutedPlayer(player)) {
                         player.text = '';
                         player.messageTime = null;
+                        removePlayerChatMessages(player.id);
                     }
                 });
             });
@@ -2115,14 +2110,25 @@
             socket.on('profile-management-updated', ({ message, targetUserId, relationshipRemoved, muted } = {}) => {
                 profileManagementStatus.textContent = message || '';
                 if (targetUserId) {
+                    const previousRelation = profileManagement.relations.find((item) =>
+                        item.targetUserId === String(targetUserId)
+                    );
                     if (relationshipRemoved) {
                         profileManagement.relations = profileManagement.relations
                             .filter((relation) => relation.targetUserId !== String(targetUserId));
+                        if (previousRelation) {
+                            mutedUsernames.delete(previousRelation.username.toLocaleLowerCase('en-US'));
+                        }
                     } else if (typeof muted === 'boolean') {
                         const relation = profileManagement.relations.find((item) =>
                             item.targetUserId === String(targetUserId)
                         );
-                        if (relation) relation.muted = muted;
+                        if (relation) {
+                            relation.muted = muted;
+                            const normalizedName = relation.username.toLocaleLowerCase('en-US');
+                            if (muted) mutedUsernames.add(normalizedName);
+                            else mutedUsernames.delete(normalizedName);
+                        }
                     }
                     renderProfileManagement();
                     if (muted) {
@@ -2130,6 +2136,7 @@
                             if (isMutedPlayer(player)) {
                                 player.text = '';
                                 player.messageTime = null;
+                                removePlayerChatMessages(player.id);
                             }
                         });
                     }
@@ -2201,6 +2208,7 @@
                 if (isMutedPlayer(player)) {
                     player.text = '';
                     player.messageTime = null;
+                    removePlayerChatMessages(player.id);
                     return;
                 }
                 player.text = hideSensitiveData(message.text);

@@ -987,45 +987,29 @@ async function startServer() {
             if (!activeSocketIds.has(socket.id)) return;
             try {
                 const userId = socket.data.user.id;
-                const [{ rows: relations }, { rows: entries }] = await Promise.all([
-                    pool.query(`
-                        SELECT relation.target_user_id, target.username, relation.relationship,
-                               (mute.target_user_id IS NOT NULL) AS muted
-                        FROM chat_profile_relationships relation
-                        JOIN chat_users target ON target.id = relation.target_user_id
-                        LEFT JOIN chat_profile_mutes mute
-                            ON mute.user_id = relation.user_id
-                            AND mute.target_user_id = relation.target_user_id
-                        WHERE relation.user_id = $1
-                        ORDER BY target.username_normalized
-                    `, [userId]),
-                    pool.query(`
-                        SELECT entry.id, author.username AS author_name, entry.message, entry.created_at
-                        FROM chat_guestbook_entries entry
-                        JOIN chat_users author ON author.id = entry.author_user_id
-                        WHERE entry.profile_user_id = $1
-                        ORDER BY entry.id DESC
-                        LIMIT 50
-                    `, [userId])
-                ]);
+                const { rows: relations } = await pool.query(`
+                    SELECT relation.target_user_id, target.username, relation.relationship,
+                           (mute.target_user_id IS NOT NULL) AS muted
+                    FROM chat_profile_relationships relation
+                    JOIN chat_users target ON target.id = relation.target_user_id
+                    LEFT JOIN chat_profile_mutes mute
+                        ON mute.user_id = relation.user_id
+                        AND mute.target_user_id = relation.target_user_id
+                    WHERE relation.user_id = $1
+                    ORDER BY target.username_normalized
+                `, [userId]);
                 socket.emit('profile-management-info', {
                     relations: relations.map((relation) => ({
                         targetUserId: String(relation.target_user_id),
                         username: relation.username,
                         relationship: relation.relationship,
                         muted: relation.muted
-                    })),
-                    guestbookEntries: entries.reverse().map((entry) => ({
-                        id: String(entry.id),
-                        authorName: entry.author_name,
-                        message: entry.message,
-                        createdAt: entry.created_at
                     }))
                 });
             } catch (error) {
                 console.error('Could not load profile management data:', getSafeErrorCode(error));
                 socket.emit('profile-management-error', {
-                    message: 'Dine lister og gæstebog kunne ikke indlæses. Prøv igen.'
+                    message: 'Dine lister kunne ikke indlæses. Prøv igen.'
                 });
             }
         });
@@ -1232,6 +1216,12 @@ async function startServer() {
             if (activeSocketIds.has(socket.id)) return;
             try {
                 await cleanupStalePlayers();
+                const { rows: mutedUsers } = await pool.query(`
+                    SELECT target.username
+                    FROM chat_profile_mutes mute
+                    JOIN chat_users target ON target.id = mute.target_user_id
+                    WHERE mute.user_id = $1
+                `, [socket.data.user.id]);
                 const joinArguments = [
                     socket.id,
                     socket.data.user.username,
@@ -1272,7 +1262,10 @@ async function startServer() {
                     player.text = '';
                     player.messageTime = 0;
                 }
-                socket.emit('join-success', { players: currentPlayers });
+                socket.emit('join-success', {
+                    players: currentPlayers,
+                    mutedUsernames: mutedUsers.map((mutedUser) => mutedUser.username)
+                });
                 socket.broadcast.emit('newPlayer', player);
             } catch (error) {
                 console.error('Could not add chat participant:', getSafeErrorCode(error));
