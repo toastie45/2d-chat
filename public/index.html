@@ -841,7 +841,7 @@
                 </div>
                 <div class="room">
                     <section class="board-card" aria-label="Chatrum">
-                        <canvas id="game-canvas" width="400" height="320" tabindex="0" aria-label="Et diamantgrid med 20 primære felter og 12 mellemliggende felter. Klik på et felt for at flytte din avatar. Højreklik på en anden avatar for at se profilen. Skriv for at chatte, og tryk Enter for at sende.">
+                        <canvas id="game-canvas" width="408" height="373" tabindex="0" aria-label="Et diamantgrid med 73 felter. Klik på et felt for at flytte din avatar. Højreklik på en anden avatar for at se profilen. Skriv for at chatte, og tryk Enter for at sende.">
                             Dit browserprogram understøtter ikke canvas.
                         </canvas>
                         <p class="room-notice" id="room-notice" aria-live="polite"></p>
@@ -1164,7 +1164,12 @@
             const logoutButton = document.getElementById('logout-button');
             const chatLog = document.getElementById('chat-log');
             const chatEmpty = document.getElementById('chat-empty');
-            const cellSize = 80;
+            const cellSize = 40;
+            const gridRows = Math.floor(canvas.height / cellSize);
+            const gridColumns = Math.floor(Math.min(canvas.width, canvas.height) / cellSize);
+            const gridTop = (canvas.height - gridRows * cellSize) / 2;
+            const gridRowCounts = Array.from({ length: gridRows }, (_, row) =>
+                gridColumns - 1 + (row === Math.floor(gridRows / 2) ? 1 : 0));
             const avatarRadius = 19;
             const messageDuration = 10000;
             const maxMessageLength = 100;
@@ -1775,13 +1780,13 @@
             function positionFor(player) {
                 return {
                     x: canvas.width / 2 + (player.col - player.row) * cellSize / 2,
-                    y: cellSize / 2 + (player.col + player.row) * cellSize / 2
+                    y: gridTop + cellSize / 2 + (player.col + player.row) * cellSize / 2
                 };
             }
 
             function coordinateForGridCenter(x, y) {
                 const offsetX = x - canvas.width / 2;
-                const offsetY = y - cellSize / 2;
+                const offsetY = y - gridTop - cellSize / 2;
                 return {
                     col: Math.round((offsetX + offsetY) / cellSize),
                     row: Math.round((offsetY - offsetX) / cellSize)
@@ -1789,18 +1794,17 @@
             }
 
             const gridCells = [];
-            for (let row = 0; row < 4; row++) {
-                for (let col = 0; col < 5; col++) {
-                    const x = cellSize / 2 + col * cellSize;
-                    const y = cellSize / 2 + row * cellSize;
-                    gridCells.push({ ...coordinateForGridCenter(x, y), x, y, kind: 'primary' });
-                }
-            }
-            for (let row = 0; row < 3; row++) {
-                for (let col = 0; col < 4; col++) {
-                    const x = cellSize + col * cellSize;
-                    const y = cellSize + row * cellSize;
-                    gridCells.push({ ...coordinateForGridCenter(x, y), x, y, kind: 'intermediate' });
+            for (let row = 0; row < gridRows; row++) {
+                const rowCount = gridRowCounts[row];
+                for (let col = 0; col < rowCount; col++) {
+                    const x = canvas.width / 2 + (col - (rowCount - 1) / 2) * cellSize;
+                    const y = gridTop + cellSize / 2 + row * cellSize;
+                    gridCells.push({
+                        ...coordinateForGridCenter(x, y),
+                        x,
+                        y,
+                        kind: row % 2 === 0 ? 'primary' : 'intermediate'
+                    });
                 }
             }
 
