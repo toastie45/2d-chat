@@ -14,7 +14,7 @@ const {
     renameSessionSetCookie
 } = require('../lib/tab-session');
 const { hashRegistrationIp, MAX_ACCOUNTS_PER_IP } = require('../lib/account-ip-limit');
-const { normalizePublicProfile } = require('../lib/public-profile');
+const { calculateAge, getPostalTown, normalizePublicProfile } = require('../lib/public-profile');
 const { CHAT_BURST_LIMIT, CHAT_BURST_WINDOW_MS, registerChatMessage } = require('../lib/chat-rate-limit');
 const { GUESTBOOK_MESSAGE_MAX_LENGTH, normalizeGuestbookMessage } = require('../lib/guestbook');
 const { USER_SEARCH_RESULT_LIMIT, getUserSearchPatterns } = require('../lib/user-search');
@@ -58,39 +58,56 @@ test('validates and normalizes account usernames', () => {
     assert.equal(normalizeUsername('bad name'), null);
 });
 
+const EMPTY_PROFILE = {
+    realName: '', profileText: '', discordName: '', interests: '',
+    steamName: '', facebookName: '', birthDate: '', postalCode: ''
+};
+
 test('normalizes optional public profile fields and enforces safe limits', () => {
     assert.deepEqual(normalizePublicProfile({
         realName: '  Ada Lovelace ',
         profileText: '  Hej\nmed dig  ',
         discordName: '  ada#1234 ',
-        interests: '  programmering, bøger  '
+        interests: '  programmering, bøger  ',
+        steamName: ' ada_steam ',
+        facebookName: ' Ada L ',
+        birthDate: '2006-07-08',
+        postalCode: ' 7560 '
     }), {
         realName: 'Ada Lovelace',
         profileText: 'Hej\nmed dig',
         discordName: 'ada#1234',
-        interests: 'programmering, bøger'
+        interests: 'programmering, bøger',
+        steamName: 'ada_steam',
+        facebookName: 'Ada L',
+        birthDate: '2006-07-08',
+        postalCode: '7560'
     });
-    assert.deepEqual(normalizePublicProfile({ realName: '', profileText: '', discordName: '', interests: '' }), {
-        realName: '',
-        profileText: '',
-        discordName: '',
-        interests: ''
-    });
-    assert.equal(normalizePublicProfile({
-        realName: 'A'.repeat(81), profileText: '', discordName: '', interests: ''
-    }), null);
-    assert.equal(normalizePublicProfile({
-        realName: '', profileText: 'A'.repeat(501), discordName: '', interests: ''
-    }), null);
-    assert.equal(normalizePublicProfile({
-        realName: '', profileText: '', discordName: 'd'.repeat(65), interests: ''
-    }), null);
-    assert.equal(normalizePublicProfile({
-        realName: '', profileText: '', discordName: '', interests: 'i'.repeat(161)
-    }), null);
-    assert.equal(normalizePublicProfile({
-        realName: 'Ada\u0000', profileText: '', discordName: '', interests: ''
-    }), null);
+    assert.deepEqual(normalizePublicProfile(EMPTY_PROFILE), EMPTY_PROFILE);
+    assert.equal(normalizePublicProfile({ ...EMPTY_PROFILE, realName: 'A'.repeat(81) }), null);
+    assert.equal(normalizePublicProfile({ ...EMPTY_PROFILE, profileText: 'A'.repeat(501) }), null);
+    assert.equal(normalizePublicProfile({ ...EMPTY_PROFILE, discordName: 'd'.repeat(65) }), null);
+    assert.equal(normalizePublicProfile({ ...EMPTY_PROFILE, interests: 'i'.repeat(161) }), null);
+    assert.equal(normalizePublicProfile({ ...EMPTY_PROFILE, steamName: 's'.repeat(65) }), null);
+    assert.equal(normalizePublicProfile({ ...EMPTY_PROFILE, facebookName: 'f'.repeat(81) }), null);
+    assert.equal(normalizePublicProfile({ ...EMPTY_PROFILE, realName: 'Ada\u0000' }), null);
+    assert.equal(normalizePublicProfile({ ...EMPTY_PROFILE, birthDate: '2006-02-30' }), null);
+    assert.equal(normalizePublicProfile({ ...EMPTY_PROFILE, birthDate: '1899-12-31' }), null);
+    assert.equal(normalizePublicProfile({ ...EMPTY_PROFILE, birthDate: '2099-01-01' }), null);
+    assert.equal(normalizePublicProfile({ ...EMPTY_PROFILE, postalCode: '0000' }), null);
+    assert.equal(normalizePublicProfile({ ...EMPTY_PROFILE, postalCode: 'abcd' }), null);
+    assert.equal(normalizePublicProfile({ realName: '', profileText: '', discordName: '', interests: '' }), null);
+});
+
+test('derives age and town from birth date and postal code', () => {
+    const now = new Date(2026, 9, 25);
+    assert.equal(calculateAge('2006-07-08', now), 20);
+    assert.equal(calculateAge('2006-10-25', now), 20);
+    assert.equal(calculateAge('2006-10-26', now), 19);
+    assert.equal(calculateAge(null, now), null);
+    assert.equal(getPostalTown('7560'), 'Hjerm');
+    assert.equal(getPostalTown('8000'), 'Aarhus C');
+    assert.equal(getPostalTown('constructor'), null);
 });
 
 test('allows eight rapid chat messages and blocks the ninth within ten seconds', () => {

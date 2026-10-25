@@ -24,7 +24,7 @@ const {
     renameSessionSetCookie
 } = require('./lib/tab-session');
 const { hashRegistrationIp, MAX_ACCOUNTS_PER_IP } = require('./lib/account-ip-limit');
-const { normalizePublicProfile } = require('./lib/public-profile');
+const { calculateAge, getPostalTown, normalizePublicProfile } = require('./lib/public-profile');
 const { registerChatMessage } = require('./lib/chat-rate-limit');
 const { GUESTBOOK_MESSAGE_MAX_LENGTH, normalizeGuestbookMessage } = require('./lib/guestbook');
 const { USER_SEARCH_RESULT_LIMIT, getUserSearchPatterns } = require('./lib/user-search');
@@ -355,6 +355,11 @@ async function startServer() {
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS interests VARCHAR(160)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS registration_ip_hash TEXT');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS total_online_ms BIGINT NOT NULL DEFAULT 0');
+    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS steam_name VARCHAR(64)');
+    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS facebook_name VARCHAR(80)');
+    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS birth_date DATE');
+    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS postal_code VARCHAR(4)');
+    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ');
     await pool.query('CREATE INDEX IF NOT EXISTS chat_users_registration_ip_hash_idx ON chat_users (registration_ip_hash) WHERE registration_ip_hash IS NOT NULL');
     await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_online_sessions (
@@ -524,6 +529,22 @@ async function startServer() {
         response.json({ user: request.session.user });
     });
 
+    const OWN_PROFILE_COLUMNS = 'real_name, profile_text, discord_name, interests, steam_name, facebook_name, birth_date::text AS birth_date, postal_code';
+
+    function serializeOwnProfile(row) {
+        return {
+            realName: row.real_name || '',
+            profileText: row.profile_text || '',
+            discordName: row.discord_name || '',
+            interests: row.interests || '',
+            steamName: row.steam_name || '',
+            facebookName: row.facebook_name || '',
+            birthDate: row.birth_date || '',
+            postalCode: row.postal_code || '',
+            postalTown: getPostalTown(row.postal_code) || ''
+        };
+    }
+
     app.get('/api/profile', async (request, response, next) => {
         if (!isAuthorizedTabSession(request.session, getRequestTabId(request))) {
             response.status(401).json({ error: 'Log ind for at fortsætte.' });
@@ -531,7 +552,7 @@ async function startServer() {
         }
         try {
             const { rows: [profile] } = await pool.query(
-                'SELECT real_name, profile_text, discord_name, interests, created_at FROM chat_users WHERE id = $1',
+                `SELECT ${OWN_PROFILE_COLUMNS}, created_at, last_login_at FROM chat_users WHERE id = $1`,
                 [request.session.user.id]
             );
             if (!profile) {
@@ -539,11 +560,9 @@ async function startServer() {
                 return;
             }
             response.json({
-                realName: profile.real_name || '',
-                profileText: profile.profile_text || '',
-                discordName: profile.discord_name || '',
-                interests: profile.interests || '',
+                ...serializeOwnProfile(profile),
                 createdAt: profile.created_at,
+                lastLoginAt: profile.last_login_at,
                 totalOnlineMs: await getTotalOnlineMs(request.session.user.id)
             });
         } catch (error) {
@@ -556,6 +575,11 @@ async function startServer() {
             response.status(401).json({ error: 'Log ind for at fortsætte.' });
             return;
         }
+        const requestedPostalCode = request.body && typeof request.body.postalCode === 'string' ? request.body.postalCode.trim() : '';
+        if (requestedPostalCode && !getPostalTown(requestedPostalCode)) {
+            response.status(400).json({ error: 'Postnummeret findes ikke i Danmark.' });
+            return;
+        }
         const profile = normalizePublicProfile(request.body);
         if (!profile) {
             response.status(400).json({ error: 'Profilen indeholder ugyldige felter eller overskrider tegnbegrænsningen.' });
@@ -563,12 +587,20 @@ async function startServer() {
         }
         try {
             const result = await pool.query(
-                'UPDATE chat_users SET real_name = $1, profile_text = $2, discord_name = $3, interests = $4 WHERE id = $5 RETURNING real_name, profile_text, discord_name, interests',
+                `UPDATE chat_users
+                 SET real_name = $1, profile_text = $2, discord_name = $3, interests = $4,
+                     steam_name = $5, facebook_name = $6, birth_date = $7, postal_code = $8
+                 WHERE id = $9
+                 RETURNING ${OWN_PROFILE_COLUMNS}`,
                 [
                     profile.realName || null,
                     profile.profileText || null,
                     profile.discordName || null,
                     profile.interests || null,
+                    profile.steamName || null,
+                    profile.facebookName || null,
+                    profile.birthDate || null,
+                    profile.postalCode || null,
                     request.session.user.id
                 ]
             );
@@ -576,12 +608,7 @@ async function startServer() {
                 response.status(404).json({ error: 'Profilen blev ikke fundet.' });
                 return;
             }
-            response.json({
-                realName: result.rows[0].real_name || '',
-                profileText: result.rows[0].profile_text || '',
-                discordName: result.rows[0].discord_name || '',
-                interests: result.rows[0].interests || ''
-            });
+            response.json(serializeOwnProfile(result.rows[0]));
         } catch (error) {
             next(error);
         }
@@ -632,7 +659,7 @@ async function startServer() {
                     return;
                 }
                 const result = await client.query(
-                    'INSERT INTO chat_users (username, username_normalized, password_hash, registration_ip_hash) VALUES ($1, $2, $3, $4) RETURNING id, username',
+                    'INSERT INTO chat_users (username, username_normalized, password_hash, registration_ip_hash, last_login_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING id, username',
                     [account.username, account.normalized, passwordHash, registrationIpHash]
                 );
                 await client.query('COMMIT');
@@ -681,6 +708,7 @@ async function startServer() {
 
             const user = { id: userRecord.id, username: userRecord.username };
             await saveAuthenticatedSession(request, user, tabId);
+            await pool.query('UPDATE chat_users SET last_login_at = NOW() WHERE id = $1', [user.id]);
             await redis.del(getRateLimitKey(request));
             response.json({ user });
         } catch (error) {
@@ -867,7 +895,7 @@ async function startServer() {
         const accountMatch = /^user:([1-9]\d{0,18})$/.exec(playerId);
         if (accountMatch) {
             const { rows: [profile] } = await pool.query(
-                'SELECT id, username, real_name, profile_text, discord_name, interests, created_at FROM chat_users WHERE id = $1',
+                'SELECT id, username, real_name, profile_text, discord_name, interests, steam_name, facebook_name, birth_date::text AS birth_date, postal_code, created_at, last_login_at FROM chat_users WHERE id = $1',
                 [accountMatch[1]]
             );
             return profile ? { player: null, profile } : null;
@@ -878,7 +906,7 @@ async function startServer() {
         const account = normalizeUsername(player.name);
         if (!account) return null;
         const { rows: [profile] } = await pool.query(
-            'SELECT id, username, real_name, profile_text, discord_name, interests, created_at FROM chat_users WHERE username_normalized = $1',
+            'SELECT id, username, real_name, profile_text, discord_name, interests, steam_name, facebook_name, birth_date::text AS birth_date, postal_code, created_at, last_login_at FROM chat_users WHERE username_normalized = $1',
             [account.normalized]
         );
         return profile ? { player, profile } : null;
@@ -917,7 +945,12 @@ async function startServer() {
                     profileText: profile.profile_text || '',
                     discordName: profile.discord_name || '',
                     interests: profile.interests || '',
+                    steamName: profile.steam_name || '',
+                    facebookName: profile.facebook_name || '',
+                    age: calculateAge(profile.birth_date),
+                    residence: getPostalTown(profile.postal_code) || '',
                     createdAt: profile.created_at,
+                    lastLoginAt: profile.last_login_at,
                     totalOnlineMs: await getTotalOnlineMs(profile.id),
                     relationship: relationship ? relationship.relationship : null,
                     isOwnProfile: String(profile.id) === String(socket.data.user.id)
