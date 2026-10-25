@@ -24,7 +24,7 @@ const {
     renameSessionSetCookie
 } = require('./lib/tab-session');
 const { hashRegistrationIp, MAX_ACCOUNTS_PER_IP } = require('./lib/account-ip-limit');
-const { calculateAge, getPostalTown, normalizePublicProfile } = require('./lib/public-profile');
+const { calculateAge, getDanishRegions, normalizePublicProfile } = require('./lib/public-profile');
 const { registerChatMessage } = require('./lib/chat-rate-limit');
 const { GUESTBOOK_MESSAGE_MAX_LENGTH, normalizeGuestbookMessage } = require('./lib/guestbook');
 const { USER_SEARCH_RESULT_LIMIT, getUserSearchPatterns } = require('./lib/user-search');
@@ -358,6 +358,7 @@ async function startServer() {
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS steam_name VARCHAR(64)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS birth_date DATE');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS postal_code VARCHAR(4)');
+    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS region VARCHAR(32)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ');
     await pool.query('CREATE INDEX IF NOT EXISTS chat_users_registration_ip_hash_idx ON chat_users (registration_ip_hash) WHERE registration_ip_hash IS NOT NULL');
     await pool.query(`
@@ -528,7 +529,7 @@ async function startServer() {
         response.json({ user: request.session.user });
     });
 
-    const OWN_PROFILE_COLUMNS = 'real_name, profile_text, discord_name, interests, steam_name, birth_date::text AS birth_date, postal_code';
+    const OWN_PROFILE_COLUMNS = 'real_name, profile_text, discord_name, interests, steam_name, birth_date::text AS birth_date, region';
 
     function serializeOwnProfile(row) {
         return {
@@ -538,8 +539,8 @@ async function startServer() {
             interests: row.interests || '',
             steamName: row.steam_name || '',
             birthDate: row.birth_date || '',
-            postalCode: row.postal_code || '',
-            postalTown: getPostalTown(row.postal_code) || ''
+            region: row.region || '',
+            regions: getDanishRegions()
         };
     }
 
@@ -573,12 +574,17 @@ async function startServer() {
             response.status(401).json({ error: 'Log ind for at fortsætte.' });
             return;
         }
-        const requestedPostalCode = request.body && typeof request.body.postalCode === 'string' ? request.body.postalCode.trim() : '';
-        if (requestedPostalCode && !getPostalTown(requestedPostalCode)) {
-            response.status(400).json({ error: 'Postnummeret findes ikke i Danmark.' });
+        const regionValue = request.body && request.body.region !== undefined ? request.body.region : '';
+        if (typeof regionValue !== 'string') {
+            response.status(400).json({ error: 'Vælg en gyldig dansk region.' });
             return;
         }
-        const profile = normalizePublicProfile(request.body);
+        const requestedRegion = regionValue.trim();
+        if (requestedRegion && !getDanishRegions().includes(requestedRegion)) {
+            response.status(400).json({ error: 'Vælg en gyldig dansk region.' });
+            return;
+        }
+        const profile = normalizePublicProfile({ ...request.body, postalCode: '' });
         if (!profile) {
             response.status(400).json({ error: 'Profilen indeholder ugyldige felter eller overskrider tegnbegrænsningen.' });
             return;
@@ -587,7 +593,7 @@ async function startServer() {
             const result = await pool.query(
                 `UPDATE chat_users
                  SET real_name = $1, profile_text = $2, discord_name = $3, interests = $4,
-                     steam_name = $5, birth_date = $6, postal_code = $7
+                     steam_name = $5, birth_date = $6, region = $7
                  WHERE id = $8
                  RETURNING ${OWN_PROFILE_COLUMNS}`,
                 [
@@ -597,7 +603,7 @@ async function startServer() {
                     profile.interests || null,
                     profile.steamName || null,
                     profile.birthDate || null,
-                    profile.postalCode || null,
+                    requestedRegion || null,
                     request.session.user.id
                 ]
             );
@@ -892,7 +898,7 @@ async function startServer() {
         const accountMatch = /^user:([1-9]\d{0,18})$/.exec(playerId);
         if (accountMatch) {
             const { rows: [profile] } = await pool.query(
-                'SELECT id, username, real_name, profile_text, discord_name, interests, steam_name, birth_date::text AS birth_date, postal_code, created_at, last_login_at FROM chat_users WHERE id = $1',
+                'SELECT id, username, real_name, profile_text, discord_name, interests, steam_name, birth_date::text AS birth_date, region, created_at, last_login_at FROM chat_users WHERE id = $1',
                 [accountMatch[1]]
             );
             return profile ? { player: null, profile } : null;
@@ -903,7 +909,7 @@ async function startServer() {
         const account = normalizeUsername(player.name);
         if (!account) return null;
         const { rows: [profile] } = await pool.query(
-            'SELECT id, username, real_name, profile_text, discord_name, interests, steam_name, birth_date::text AS birth_date, postal_code, created_at, last_login_at FROM chat_users WHERE username_normalized = $1',
+            'SELECT id, username, real_name, profile_text, discord_name, interests, steam_name, birth_date::text AS birth_date, region, created_at, last_login_at FROM chat_users WHERE username_normalized = $1',
             [account.normalized]
         );
         return profile ? { player, profile } : null;
@@ -944,7 +950,7 @@ async function startServer() {
                     interests: profile.interests || '',
                     steamName: profile.steam_name || '',
                     age: calculateAge(profile.birth_date),
-                    residence: getPostalTown(profile.postal_code) || '',
+                    residence: profile.region || '',
                     createdAt: profile.created_at,
                     lastLoginAt: profile.last_login_at,
                     totalOnlineMs: await getTotalOnlineMs(profile.id),

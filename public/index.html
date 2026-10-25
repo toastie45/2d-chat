@@ -493,7 +493,7 @@
             gap: 10px;
         }
         .profile-field { display: grid; min-width: 0; align-content: start; gap: 5px; color: #d9d8d1; font-size: 10px; font-weight: 650; }
-        .profile-field input, .profile-field textarea {
+        .profile-field input, .profile-field textarea, .profile-field select {
             width: 100%;
             min-height: 34px;
             padding: 7px 9px;
@@ -505,7 +505,7 @@
             font-size: 11px;
             font-weight: 400;
         }
-        .profile-field input:focus, .profile-field textarea:focus { border-color: #9fc65f; box-shadow: 0 0 0 2px #c1f0781a; }
+        .profile-field input:focus, .profile-field textarea:focus, .profile-field select:focus { border-color: #9fc65f; box-shadow: 0 0 0 2px #c1f0781a; }
         .profile-field textarea { min-height: 110px; resize: vertical; white-space: pre-wrap; }
         .profile-field-wide { grid-column: 1 / -1; }
         .profile-facts-view {
@@ -618,7 +618,6 @@
             font-size: 11px;
             font-weight: 400;
         }
-        .profile-postal-town { min-height: 14px; color: var(--muted); font-weight: 400; }
         .profile-level-row { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; color: #d9d8d1; font-size: 10px; font-weight: 650; }
         .profile-level-icon {
             display: grid;
@@ -913,10 +912,11 @@
                                                 <select id="profile-birth-year" aria-label="Fødselsår"></select>
                                             </div>
                                         </fieldset>
-                                        <label class="profile-field" for="profile-postal-code">
-                                            Postnummer
-                                            <input id="profile-postal-code" name="postalCode" maxlength="4" inputmode="numeric" pattern="[0-9]{4}" autocomplete="postal-code" placeholder="fx 7560">
-                                            <span class="profile-postal-town" id="profile-postal-town"></span>
+                                        <label class="profile-field" for="profile-region">
+                                            Bopæl
+                                            <select id="profile-region" name="region">
+                                                <option value="">Vælg region</option>
+                                            </select>
                                         </label>
                                         <label class="profile-field profile-field-wide" for="profile-interests">
                                             Interesser
@@ -1068,8 +1068,7 @@
             const profileBirthDay = document.getElementById('profile-birth-day');
             const profileBirthMonth = document.getElementById('profile-birth-month');
             const profileBirthYear = document.getElementById('profile-birth-year');
-            const profilePostalCode = document.getElementById('profile-postal-code');
-            const profilePostalTown = document.getElementById('profile-postal-town');
+            const profileRegion = document.getElementById('profile-region');
             const profileOnlineDuration = document.getElementById('profile-online-duration');
             const viewProfileName = document.getElementById('profile-view-name');
             const viewProfileRealName = document.getElementById('view-profile-real-name');
@@ -1184,8 +1183,17 @@
                 profileDiscordName.value = result.discordName;
                 profileInterests.value = result.interests;
                 profileText.value = result.profileText;
-                profilePostalCode.value = result.postalCode;
-                profilePostalTown.textContent = result.postalTown;
+                const regionPlaceholder = document.createElement('option');
+                regionPlaceholder.value = '';
+                regionPlaceholder.textContent = 'Vælg region';
+                profileRegion.replaceChildren(regionPlaceholder);
+                for (const region of result.regions || []) {
+                    const option = document.createElement('option');
+                    option.value = region;
+                    option.textContent = region;
+                    profileRegion.append(option);
+                }
+                profileRegion.value = result.region || '';
                 setProfileBirthDate(result.birthDate);
             }
 
@@ -1917,8 +1925,10 @@
                 ctx.fillStyle = isTyping ? '#4a4b45' : '#171815';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
+                const lineHeight = 18;
+                const firstLineY = bubbleY + bubbleHeight / 2 - ((lines.length - 1) * lineHeight) / 2;
                 lines.forEach((line, index) => {
-                    ctx.fillText(line, bubbleX + bubbleWidth / 2, bubbleY + 12 + index * 18, bubbleWidth - 16);
+                    ctx.fillText(line, bubbleX + bubbleWidth / 2, firstLineY + index * lineHeight, bubbleWidth - 16);
                 });
                 ctx.restore();
             }
@@ -2068,8 +2078,6 @@
                 profileSaveButton.disabled = true;
                 profileStatus.textContent = 'Gemmer…';
                 try {
-                    const postalCode = profilePostalCode.value.trim();
-                    if (postalCode && !/^\d{4}$/.test(postalCode)) throw new Error('Postnummeret skal være 4 cifre.');
                     const response = await authFetch('/api/profile', {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
@@ -2080,7 +2088,7 @@
                             interests: profileInterests.value,
                             steamName: profileSteamName.value,
                             birthDate: getProfileBirthDate(),
-                            postalCode
+                            region: profileRegion.value
                         })
                     });
                     const result = await response.json();
