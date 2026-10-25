@@ -720,7 +720,7 @@
         .avatar-context-action[hidden] { display: none; }
         .avatar-context-action:disabled { cursor: not-allowed; }
         .room-notice.whisper-mode { color: #c9cbc7; }
-        .whisper-chat-entry { color: #b9bbb6; font-style: italic; }
+        .whisper-chat-entry { color: #c1f078; font-style: italic; }
 
         .chat-section {
             display: flex;
@@ -747,7 +747,8 @@
 
         .chat-entry { margin: 0 0 8px; overflow-wrap: anywhere; }
         .chat-entry strong { color: #f2f0e9; font-weight: 600; }
-        .chat-mention { padding: 1px 3px; border-radius: 3px; background: #4a5534; color: #d5f59c; font-weight: 650; }
+        .chat-mention { padding: 1px 3px; border-radius: 3px; background: #303b25; color: #a5c576; font-weight: 650; }
+        .whisper-chat-entry .chat-mention { padding: 0; background: transparent; color: #c1f078; font-weight: 700; }
         .chat-time {
             margin-left: 6px;
             color: #777970;
@@ -1528,11 +1529,13 @@
             function updateAvatarContextMute() {
                 const player = contextPlayerId ? players[contextPlayerId] : null;
                 const isSelf = contextPlayerId === myId;
-                avatarContextWhisper.hidden = !player || isSelf;
-                avatarContextWhisper.disabled = !player || isSelf || !canWhisperTo(contextPlayerId);
-                avatarContextWhisper.title = avatarContextWhisper.disabled ? 'Gå hen til avataren for at hviske' : 'Start en privat hvisken';
+                const whisperInRange = Boolean(player && !isSelf && canWhisperTo(contextPlayerId));
+                avatarContextWhisper.hidden = !whisperInRange;
+                avatarContextWhisper.disabled = false;
+                avatarContextWhisper.title = 'Start en privat hvisken';
                 const highlighted = Boolean(player && highlightedSpeechBubblePlayers.has(contextPlayerId));
-                avatarContextHighlight.disabled = !player;
+                avatarContextHighlight.hidden = !player || isSelf;
+                avatarContextHighlight.disabled = !player || isSelf;
                 avatarContextHighlight.textContent = highlighted ? 'Fjern fremhævning' : 'Fremhæv';
                 avatarContextHighlight.setAttribute('aria-pressed', String(highlighted));
                 avatarContextMute.hidden = !player || isSelf;
@@ -2414,7 +2417,7 @@
                 canvas.focus({ preventScroll: true });
             });
             avatarContextHighlight.addEventListener('click', () => {
-                if (!contextPlayerId || !players[contextPlayerId]) return;
+                if (!contextPlayerId || contextPlayerId === myId || !players[contextPlayerId]) return;
                 const playerId = contextPlayerId;
                 const enabled = !highlightedSpeechBubblePlayers.has(playerId);
                 if (enabled) highlightedSpeechBubblePlayers.add(playerId);
