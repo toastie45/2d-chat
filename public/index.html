@@ -719,7 +719,6 @@
         .avatar-context-action:disabled { cursor: not-allowed; }
         .room-notice.whisper-mode { color: #c9cbc7; }
         .whisper-chat-entry { color: #b9bbb6; font-style: italic; }
-        .whisper-chat-entry strong { color: #c9cbc7; }
 
         .chat-section {
             display: flex;
@@ -1963,7 +1962,8 @@
                 chatEmpty.classList.add('hidden');
                 const line = document.createElement('p');
                 line.className = 'chat-entry whisper-chat-entry';
-                const sender = document.createElement('strong');
+                const sender = document.createElement('mark');
+                sender.className = 'chat-mention';
                 sender.textContent = entry.own
                     ? `Du hvisker til ${entry.playerName}: `
                     : `${entry.playerName} hvisker til dig: `;
