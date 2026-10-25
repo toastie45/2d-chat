@@ -716,28 +716,10 @@
         }
         .avatar-context-action:hover { background: #292b26; color: #fff; }
         .avatar-context-action[hidden] { display: none; }
-        .avatar-context-action:disabled { cursor: wait; opacity: .55; }
         .avatar-context-action:disabled { cursor: not-allowed; }
-        .whisper-dialog {
-            width: min(420px, calc(100% - 28px));
-            max-height: min(620px, calc(100% - 28px));
-            margin: auto;
-            padding: 16px;
-            border: 1px solid #383a33;
-            border-radius: 12px;
-            background: #171815;
-            color: #f2f0e9;
-            box-shadow: 0 18px 60px #000b;
-        }
-        .whisper-dialog::backdrop { background: #050605b8; }
-        .whisper-dialog-header { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
-        .whisper-dialog-header h2 { flex: 1; margin: 0; font-size: 14px; }
-        .whisper-close { width: 30px; height: 30px; border: 1px solid #363831; border-radius: 5px; background: #20211d; color: #e4e3dc; cursor: pointer; }
-        .whisper-note { margin: 0 0 10px; color: var(--muted); font-size: 10px; }
-        .whisper-form { display: grid; grid-template-columns: 1fr auto; gap: 7px; margin-top: 9px; }
-        .whisper-form textarea { min-height: 40px; max-height: 110px; resize: vertical; padding: 8px; border: 1px solid #363831; border-radius: 6px; background: #10110f; color: #f2f0e9; font: inherit; font-size: 11px; }
-        .whisper-form button { align-self: end; min-height: 36px; padding: 0 11px; border: 1px solid #087e60; border-radius: 6px; background: #087e60; color: #fff; font-size: 10px; font-weight: 650; cursor: pointer; }
-        .whisper-status { min-height: 14px; margin: 6px 0 0; color: #ff9d8b; font-size: 10px; }
+        .room-notice.whisper-mode { color: #c9cbc7; }
+        .whisper-chat-entry { color: #b9bbb6; font-style: italic; }
+        .whisper-chat-entry strong { color: #c9cbc7; }
 
         .chat-section {
             display: flex;
@@ -1051,18 +1033,6 @@
             <button class="avatar-context-action" id="avatar-context-whisper" type="button" role="menuitem" hidden>Hvisk</button>
             <button class="avatar-context-action" id="avatar-context-mute" type="button" role="menuitem" hidden></button>
         </div>
-        <dialog class="whisper-dialog" id="whisper-dialog" aria-labelledby="whisper-dialog-title">
-            <div class="whisper-dialog-header">
-                <h2 id="whisper-dialog-title">Hvisk</h2>
-                <button class="whisper-close" id="whisper-close" type="button" aria-label="Luk hvisken">×</button>
-            </div>
-            <p class="whisper-note">Kun du og den anden bruger kan se beskederne.</p>
-            <form class="whisper-form" id="whisper-form">
-                <textarea id="whisper-input" maxlength="100" placeholder="Skriv en hvisken…" aria-label="Skriv en privat hvisken" required></textarea>
-                <button id="whisper-send" type="submit">Send</button>
-            </form>
-            <p class="whisper-status" id="whisper-status" aria-live="polite"></p>
-        </dialog>
     </div>
     <script src="/socket.io/socket.io.js"></script>
     <script>
@@ -1186,13 +1156,6 @@
             const avatarContextProfile = document.getElementById('avatar-context-profile');
             const avatarContextWhisper = document.getElementById('avatar-context-whisper');
             const avatarContextMute = document.getElementById('avatar-context-mute');
-            const whisperDialog = document.getElementById('whisper-dialog');
-            const whisperDialogTitle = document.getElementById('whisper-dialog-title');
-            const whisperClose = document.getElementById('whisper-close');
-            const whisperForm = document.getElementById('whisper-form');
-            const whisperInput = document.getElementById('whisper-input');
-            const whisperSend = document.getElementById('whisper-send');
-            const whisperStatus = document.getElementById('whisper-status');
             const roomNotice = document.getElementById('room-notice');
             const logoutButton = document.getElementById('logout-button');
             const chatLog = document.getElementById('chat-log');
@@ -1216,6 +1179,7 @@
             let roomNoticeTimer = null;
             let contextPlayerId = null;
             let activeWhisperPlayerId = null;
+            let whisperSending = false;
             const whisperBubbles = new Map();
             let viewingProfilePlayerId = null;
             let viewingProfileUserId = null;
@@ -1569,17 +1533,6 @@
                 }
             }
 
-            function openWhisperDialog(playerId) {
-                const player = players[playerId];
-                if (!player) return;
-                activeWhisperPlayerId = playerId;
-                whisperDialogTitle.textContent = `Hvisk med ${player.name}`;
-                whisperStatus.textContent = '';
-                whisperSend.disabled = false;
-                if (!whisperDialog.open) whisperDialog.showModal();
-                whisperInput.focus({ preventScroll: true });
-            }
-
             function receiveWhisper(entry) {
                 const speakerId = entry.own ? myId : entry.playerId;
                 if (typeof speakerId !== 'string') return;
@@ -1587,13 +1540,8 @@
                     message: entry.message,
                     expiresAt: Number(entry.sentAt) + messageDuration
                 });
-                if (entry.own) {
-                    if (activeWhisperPlayerId === entry.playerId) {
-                        whisperInput.value = '';
-                        whisperDialog.close();
-                    }
-                }
-                if (whisperDialog.open && activeWhisperPlayerId === entry.playerId) whisperSend.disabled = false;
+                addWhisperChatEntry(entry);
+                if (entry.own && activeWhisperPlayerId === entry.playerId) clearWhisperMode();
             }
 
 
@@ -1745,9 +1693,10 @@
 
             function resetPendingAuthentication() {
                 currentUser = null;
-                if (whisperDialog.open) whisperDialog.close();
                 whisperBubbles.clear();
                 activeWhisperPlayerId = null;
+                whisperSending = false;
+                roomNotice.classList.remove('whisper-mode');
                 privateMailList.replaceChildren();
                 privateMailThread.replaceChildren();
                 activePrivateMailUsername = '';
@@ -1771,11 +1720,35 @@
             function setRoomNotice(message) {
                 roomNotice.textContent = message;
                 clearTimeout(roomNoticeTimer);
+                roomNotice.classList.remove('whisper-mode');
                 if (message) {
                     roomNoticeTimer = setTimeout(() => {
                         roomNotice.textContent = '';
                     }, 4000);
                 }
+            }
+
+            function setWhisperModeNotice(message = '') {
+                clearTimeout(roomNoticeTimer);
+                roomNoticeTimer = null;
+                roomNotice.classList.add('whisper-mode');
+                const target = activeWhisperPlayerId ? players[activeWhisperPlayerId] : null;
+                roomNotice.textContent = message || (target
+                    ? `Hvisker til ${target.name} · skriv og tryk Enter for at sende · Esc annullerer.`
+                    : 'Skriv en hvisken og tryk Enter for at sende · Esc annullerer.');
+            }
+
+            function clearWhisperMode() {
+                activeWhisperPlayerId = null;
+                whisperSending = false;
+                updateDraftText('');
+                setRoomNotice('');
+            }
+
+            function cancelWhisperIfOutOfRange() {
+                if (!activeWhisperPlayerId || canWhisperTo(activeWhisperPlayerId)) return;
+                clearWhisperMode();
+                setRoomNotice('Hvisken blev slået fra, fordi I kom for langt væk fra hinanden.');
             }
 
             function clearChatLog() {
@@ -1986,6 +1959,21 @@
                 chatLog.scrollTop = chatLog.scrollHeight;
             }
 
+            function addWhisperChatEntry(entry) {
+                chatEmpty.classList.add('hidden');
+                const line = document.createElement('p');
+                line.className = 'chat-entry whisper-chat-entry';
+                const sender = document.createElement('strong');
+                sender.textContent = entry.own
+                    ? `Du hvisker til ${entry.playerName}: `
+                    : `${entry.playerName} hvisker til dig: `;
+                line.append(sender, document.createTextNode(hideSensitiveData(entry.message)));
+                addChatTime(line, entry.sentAt);
+                chatLog.append(line);
+                while (chatLog.children.length > 500) chatLog.removeChild(chatLog.firstElementChild);
+                chatLog.scrollTop = chatLog.scrollHeight;
+            }
+
             function removePlayerChatMessages(playerId) {
                 chatLog.querySelectorAll('.chat-entry').forEach((entry) => {
                     if (entry.dataset.playerId === playerId) entry.remove();
@@ -2155,13 +2143,16 @@
                 const position = player.position || player.target || positionFor(player);
                 if (!position) return;
                 ctx.save();
-                if (remaining < 900) ctx.globalAlpha = Math.max(0, remaining / 900);
+                const elapsed = Math.max(0, messageDuration - remaining);
+                const entrance = Math.min(1, elapsed / 180);
+                const easedEntrance = 1 - ((1 - entrance) ** 3);
+                ctx.globalAlpha = easedEntrance * (remaining < 900 ? Math.max(0, remaining / 900) : 1);
                 const lines = wrapText(whisper.message, 210);
                 ctx.font = '13px Inter, system-ui, sans-serif';
                 const bubbleWidth = Math.min(240, Math.max(62, ...lines.map((line) => ctx.measureText(line).width + 22)));
                 const bubbleHeight = lines.length * 18 + 20;
                 const bubbleX = Math.max(8, Math.min(canvas.width - bubbleWidth - 8, position.x - bubbleWidth / 2));
-                const bubbleY = Math.max(8, position.y - avatarRadius - bubbleHeight - 17);
+                const bubbleY = Math.max(8, position.y - avatarRadius - bubbleHeight - 17 + (1 - easedEntrance) * 9);
                 roundedRect(ctx, bubbleX, bubbleY, bubbleWidth, bubbleHeight, 9);
                 ctx.fillStyle = '#c9cbc7';
                 ctx.fill();
@@ -2377,29 +2368,17 @@
             avatarContextWhisper.addEventListener('click', () => {
                 const playerId = contextPlayerId;
                 if (!playerId || !canWhisperTo(playerId)) return;
+                activeWhisperPlayerId = playerId;
+                whisperSending = false;
+                updateDraftText('');
                 closeAvatarContextMenu();
-                openWhisperDialog(playerId);
+                setWhisperModeNotice();
+                canvas.focus({ preventScroll: true });
             });
             avatarContextMute.addEventListener('click', () => {
                 if (!contextPlayerId || contextPlayerId === myId) return;
                 avatarContextMute.disabled = true;
                 socket.emit('profile-mute-toggle', { playerId: contextPlayerId });
-            });
-            whisperClose.addEventListener('click', () => whisperDialog.close());
-            whisperDialog.addEventListener('close', () => { activeWhisperPlayerId = null; });
-            whisperForm.addEventListener('submit', (event) => {
-                event.preventDefault();
-                if (!activeWhisperPlayerId || !whisperInput.value.trim()) return;
-                if (!canWhisperTo(activeWhisperPlayerId)) {
-                    whisperStatus.textContent = 'I skal stå ved siden af hinanden for at hviske.';
-                    return;
-                }
-                whisperSend.disabled = true;
-                whisperStatus.textContent = '';
-                socket.emit('private-whisper-send', {
-                    playerId: activeWhisperPlayerId,
-                    message: whisperInput.value
-                });
             });
             profileFriendButton.addEventListener('click', () => {
                 if (viewingProfilePlayerId && !viewingOwnProfile) {
@@ -2547,7 +2526,21 @@
                 if (event.key === 'Enter') {
                     event.preventDefault();
                     const text = draftText.trim();
-                    if (text) socket.emit('chat-message', hideSensitiveData(text));
+                    if (!text) return;
+                    if (activeWhisperPlayerId) {
+                        if (whisperSending) return;
+                        if (!canWhisperTo(activeWhisperPlayerId)) {
+                            setWhisperModeNotice('I skal st\u00e5 ved siden af hinanden for at hviske. Esc annullerer.');
+                            return;
+                        }
+                        whisperSending = true;
+                        socket.emit('private-whisper-send', {
+                            playerId: activeWhisperPlayerId,
+                            message: hideSensitiveData(text)
+                        });
+                        return;
+                    }
+                    socket.emit('chat-message', hideSensitiveData(text));
                     updateDraftText('');
                     return;
                 }
@@ -2560,7 +2553,8 @@
 
                 if (event.key === 'Escape') {
                     event.preventDefault();
-                    updateDraftText('');
+                    if (activeWhisperPlayerId) clearWhisperMode();
+                    else updateDraftText('');
                     return;
                 }
 
@@ -2577,6 +2571,8 @@
             });
 
             socket.on('disconnect', (reason) => {
+                if (activeWhisperPlayerId) clearWhisperMode();
+                whisperBubbles.clear();
                 if (sessionKickMessage) return;
                 if (currentUser && reason === 'io server disconnect') {
                     authFetch('/api/auth/me')
@@ -2698,6 +2694,7 @@
                 players[player.id].row = player.row;
                 players[player.id].position = positionFor(player);
                 players[player.id].target = players[player.id].position;
+                cancelWhisperIfOutOfRange();
                 if (contextPlayerId) updateAvatarContextMute();
             });
 
@@ -2706,8 +2703,9 @@
                 receiveWhisper(entry);
             });
             socket.on('private-whisper-error', ({ message } = {}) => {
-                whisperSend.disabled = false;
-                whisperStatus.textContent = message || 'Hvisken kunne ikke sendes.';
+                whisperSending = false;
+                if (activeWhisperPlayerId) setWhisperModeNotice(message || 'Hvisken kunne ikke sendes.');
+                else setRoomNotice(message || 'Hvisken kunne ikke sendes.');
             });
 
             socket.on('user-search-results', ({ query, matchMode, sortBy, results, error } = {}) => {
@@ -2947,6 +2945,7 @@
             socket.on('playerDisconnected', (id) => {
                 const player = players[id];
                 delete players[id];
+                cancelWhisperIfOutOfRange();
                 if (contextPlayerId === id) updateAvatarContextMute();
                 if (id === viewingProfilePlayerId) {
                     freezeOnlineDuration(viewProfileOnlineDuration);
