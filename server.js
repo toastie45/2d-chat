@@ -1282,6 +1282,31 @@ async function startServer() {
             }
         });
 
+        socket.on('private-mail-recipient-check', async (payload) => {
+            if (!activeSocketIds.has(socket.id)) return;
+            const recipient = normalizeUsername(payload && payload.username);
+            if (!recipient) {
+                socket.emit('private-mail-recipient-result', { exists: false });
+                return;
+            }
+            try {
+                const { rows: [target] } = await pool.query(
+                    'SELECT id, username FROM chat_users WHERE username_normalized = $1', [recipient.normalized]
+                );
+                if (target && String(target.id) === String(socket.data.user.id)) {
+                    socket.emit('private-mail-recipient-result', { exists: false, error: 'Du kan ikke starte en samtale med dig selv.' });
+                    return;
+                }
+                socket.emit('private-mail-recipient-result', {
+                    exists: Boolean(target),
+                    username: target ? target.username : ''
+                });
+            } catch (error) {
+                console.error('Could not check private mail recipient:', getSafeErrorCode(error));
+                socket.emit('private-mail-recipient-result', { exists: false, error: 'Modtageren kunne ikke tjekkes. Prøv igen.' });
+            }
+        });
+
         socket.on('private-mail-conversation-request', async (payload) => {
             if (!activeSocketIds.has(socket.id)) return;
             const peer = normalizeUsername(payload && payload.username);

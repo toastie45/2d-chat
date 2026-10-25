@@ -889,7 +889,7 @@
                             <h2 class="side-title" id="private-mail-title">Privat mail</h2>
                             <p class="private-mail-status" id="private-mail-status" aria-live="polite"></p>
                             <div id="private-mail-inbox-view">
-                                <button class="private-mail-new-button" id="private-mail-compose-open" type="button">Ny samtale</button>
+                                <button class="private-mail-new-button" id="private-mail-compose-open" type="button">Send post</button>
                                 <form class="private-mail-new-form" id="private-mail-new-form" hidden>
                                     <label for="private-mail-to">Start samtale med
                                         <input id="private-mail-to" maxlength="18" autocomplete="off" required>
@@ -1079,6 +1079,7 @@
             const privateMailThreadView = document.getElementById('private-mail-thread-view');
             const privateMailComposeOpen = document.getElementById('private-mail-compose-open');
             const privateMailNewForm = document.getElementById('private-mail-new-form');
+            const privateMailNewSubmit = privateMailNewForm.querySelector('button[type="submit"]');
             const privateMailForm = document.getElementById('private-mail-form');
             const privateMailTo = document.getElementById('private-mail-to');
             const privateMailMessage = document.getElementById('private-mail-message');
@@ -2196,9 +2197,9 @@
                     privateMailStatus.textContent = 'Skriv et brugernavn.';
                     return;
                 }
-                privateMailNewForm.reset();
-                privateMailNewForm.hidden = true;
-                openPrivateConversation(username);
+                privateMailNewSubmit.disabled = true;
+                privateMailStatus.textContent = 'Tjekker modtager…';
+                socket.emit('private-mail-recipient-check', { username });
             });
             privateMailBack.addEventListener('click', () => {
                 activePrivateMailUsername = '';
@@ -2560,6 +2561,20 @@
             socket.on('private-mail-data', ({ unreadCount, conversations } = {}) => {
                 updateMailUnreadBadge(unreadCount);
                 renderPrivateMail(Array.isArray(conversations) ? conversations : []);
+            });
+            socket.on('private-mail-recipient-result', ({ exists, username, error } = {}) => {
+                privateMailNewSubmit.disabled = false;
+                if (error) {
+                    privateMailStatus.textContent = error;
+                    return;
+                }
+                if (!exists || !username) {
+                    privateMailStatus.textContent = 'Brugeren findes ikke.';
+                    return;
+                }
+                privateMailNewForm.reset();
+                privateMailNewForm.hidden = true;
+                openPrivateConversation(username);
             });
             socket.on('private-mail-unread-count', ({ count } = {}) => updateMailUnreadBadge(count));
             socket.on('private-mail-conversation-data', ({ username, messages } = {}) => {
