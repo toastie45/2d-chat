@@ -1030,6 +1030,7 @@
             <p class="avatar-context-room">Fællesrum</p>
             <button class="avatar-context-action" id="avatar-context-profile" type="button" role="menuitem">Se profilinfo</button>
             <button class="avatar-context-action" id="avatar-context-whisper" type="button" role="menuitem" hidden>Hvisk</button>
+            <button class="avatar-context-action" id="avatar-context-highlight" type="button" role="menuitem" aria-pressed="false">Fremhæv tekstboble</button>
             <button class="avatar-context-action" id="avatar-context-mute" type="button" role="menuitem" hidden></button>
         </div>
     </div>
@@ -1154,6 +1155,7 @@
             const avatarContextName = document.getElementById('avatar-context-name');
             const avatarContextProfile = document.getElementById('avatar-context-profile');
             const avatarContextWhisper = document.getElementById('avatar-context-whisper');
+            const avatarContextHighlight = document.getElementById('avatar-context-highlight');
             const avatarContextMute = document.getElementById('avatar-context-mute');
             const roomNotice = document.getElementById('room-notice');
             const logoutButton = document.getElementById('logout-button');
@@ -1180,6 +1182,7 @@
             let activeWhisperPlayerId = null;
             let whisperSending = false;
             const whisperBubbles = new Map();
+            const highlightedSpeechBubblePlayers = new Set();
             let viewingProfilePlayerId = null;
             let viewingProfileUserId = null;
             let sessionKickMessage = '';
@@ -1524,6 +1527,10 @@
                 avatarContextWhisper.hidden = !player || isSelf;
                 avatarContextWhisper.disabled = !player || isSelf || !canWhisperTo(contextPlayerId);
                 avatarContextWhisper.title = avatarContextWhisper.disabled ? 'Gå hen til avataren for at hviske' : 'Start en privat hvisken';
+                const highlighted = Boolean(player && highlightedSpeechBubblePlayers.has(contextPlayerId));
+                avatarContextHighlight.disabled = !player;
+                avatarContextHighlight.textContent = highlighted ? 'Fjern fremhævning' : 'Fremhæv tekstboble';
+                avatarContextHighlight.setAttribute('aria-pressed', String(highlighted));
                 avatarContextMute.hidden = !player || isSelf;
                 avatarContextMute.disabled = false;
                 if (player && !isSelf) {
@@ -1693,6 +1700,7 @@
             function resetPendingAuthentication() {
                 currentUser = null;
                 whisperBubbles.clear();
+                highlightedSpeechBubblePlayers.clear();
                 activeWhisperPlayerId = null;
                 whisperSending = false;
                 roomNotice.classList.remove('whisper-mode');
@@ -2124,9 +2132,13 @@
                     ctx.fillText(player.name, position.x, position.y + 31, labelWidth - 8);
                 }
 
-                // Draw speech bubbles after every avatar so they stay in front on the canvas.
-                for (const player of Object.values(players)) {
-                    drawSpeechBubble(player, now);
+                // Highlighted bubbles are drawn last so they remain visible when bubbles overlap.
+                const speechBubblePlayers = Object.values(players);
+                for (const player of speechBubblePlayers) {
+                    if (!highlightedSpeechBubblePlayers.has(player.id)) drawSpeechBubble(player, now);
+                }
+                for (const player of speechBubblePlayers) {
+                    if (highlightedSpeechBubblePlayers.has(player.id)) drawSpeechBubble(player, now);
                 }
                 for (const [playerId, whisper] of whisperBubbles) {
                     const remaining = whisper.expiresAt - now;
@@ -2198,10 +2210,21 @@
                 const bubbleHeight = lines.length * 18 + 20;
                 const bubbleX = Math.max(8, Math.min(canvas.width - bubbleWidth - 8, position.x - bubbleWidth / 2));
                 const bubbleY = Math.max(8, position.y - avatarRadius - bubbleHeight - 17);
+                const highlighted = highlightedSpeechBubblePlayers.has(player.id);
 
                 roundedRect(ctx, bubbleX, bubbleY, bubbleWidth, bubbleHeight, 9);
                 ctx.fillStyle = isTyping ? '#d6d3c9' : '#f2f0e9';
                 ctx.fill();
+                if (highlighted) {
+                    ctx.save();
+                    ctx.shadowColor = '#c1f078';
+                    ctx.shadowBlur = 12;
+                    ctx.strokeStyle = '#c1f078';
+                    ctx.lineWidth = 3;
+                    roundedRect(ctx, bubbleX, bubbleY, bubbleWidth, bubbleHeight, 9);
+                    ctx.stroke();
+                    ctx.restore();
+                }
                 ctx.beginPath();
                 const tailX = Math.max(bubbleX + 13, Math.min(position.x, bubbleX + bubbleWidth - 13));
                 ctx.moveTo(tailX - 6, bubbleY + bubbleHeight - 1);
@@ -2374,6 +2397,18 @@
                 closeAvatarContextMenu();
                 setWhisperModeNotice();
                 canvas.focus({ preventScroll: true });
+            });
+            avatarContextHighlight.addEventListener('click', () => {
+                if (!contextPlayerId || !players[contextPlayerId]) return;
+                const playerId = contextPlayerId;
+                const enabled = !highlightedSpeechBubblePlayers.has(playerId);
+                if (enabled) highlightedSpeechBubblePlayers.add(playerId);
+                else highlightedSpeechBubblePlayers.delete(playerId);
+                const playerName = players[playerId].name;
+                closeAvatarContextMenu();
+                setRoomNotice(enabled
+                    ? `${playerName}s taleboble bliver fremhævet.`
+                    : `${playerName}s taleboble fremhæves ikke længere.`);
             });
             avatarContextMute.addEventListener('click', () => {
                 if (!contextPlayerId || contextPlayerId === myId) return;
@@ -2945,6 +2980,7 @@
             socket.on('playerDisconnected', (id) => {
                 const player = players[id];
                 delete players[id];
+                highlightedSpeechBubblePlayers.delete(id);
                 cancelWhisperIfOutOfRange();
                 if (contextPlayerId === id) updateAvatarContextMute();
                 if (id === viewingProfilePlayerId) {
