@@ -842,7 +842,7 @@
                 </div>
                 <div class="room">
                     <section class="board-card" aria-label="Chatrum">
-                        <canvas id="game-canvas" width="480" height="400" tabindex="0" aria-label="Et diamantgrid med 30 primære felter og 20 mellemliggende felter. Klik på et felt for at flytte din avatar. Højreklik på en anden avatar for at se profilen. Skriv for at chatte, og tryk Enter for at sende.">
+                        <canvas id="game-canvas" tabindex="0" aria-label="Et diamantgrid med 30 primære felter og 20 mellemliggende felter. Klik på et felt for at flytte din avatar. Højreklik på en anden avatar for at se profilen. Skriv for at chatte, og tryk Enter for at sende.">
                             Dit browserprogram understøtter ikke canvas.
                         </canvas>
                         <p class="room-notice" id="room-notice" aria-live="polite"></p>
@@ -1038,6 +1038,7 @@
             <button class="avatar-context-action" id="avatar-context-highlight" type="button" role="menuitem" aria-pressed="false">Fremhæv</button>
         </div>
     </div>
+    <script src="/grid-layout.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <script>
         (() => {
@@ -1054,6 +1055,9 @@
                 auth: { tabId }
             });
             const canvas = document.getElementById('game-canvas');
+            const gridLayout = window.ChatGridLayout;
+            canvas.width = gridLayout.width;
+            canvas.height = gridLayout.height;
             const ctx = canvas.getContext('2d');
             const loginSection = document.getElementById('login-section');
             const gameSection = document.getElementById('game-section');
@@ -1165,11 +1169,7 @@
             const logoutButton = document.getElementById('logout-button');
             const chatLog = document.getElementById('chat-log');
             const chatEmpty = document.getElementById('chat-empty');
-            const cellSize = 80;
-            const gridRows = Math.floor(canvas.height / cellSize);
-            const gridColumns = Math.floor(canvas.width / cellSize);
-            const gridLeft = (canvas.width - gridColumns * cellSize) / 2;
-            const gridTop = (canvas.height - gridRows * cellSize) / 2;
+            const { cellSize, cells: gridCells } = gridLayout;
             const avatarRadius = 19;
             const messageDuration = 10000;
             const maxMessageLength = 100;
@@ -1179,6 +1179,7 @@
             let myId = null;
             let hoveredCell = null;
             let animationFrame = null;
+            let boardRenderTimer = null;
             let draftText = '';
             let authMode = 'login';
             let currentUser = null;
@@ -1208,6 +1209,7 @@
 
             function updateDraftText(text) {
                 draftText = text.slice(0, maxMessageLength);
+                requestBoardRender();
             }
 
             function formatProfileDateTime(value) {
@@ -1554,6 +1556,7 @@
                     expiresAt: Number(entry.sentAt) + messageDuration
                 });
                 addWhisperChatEntry(entry);
+                requestBoardRender();
                 if (entry.own && activeWhisperPlayerId === entry.playerId) clearWhisperMode();
             }
 
@@ -1705,6 +1708,7 @@
             }
 
             function resetPendingAuthentication() {
+                stopGameLoop();
                 currentUser = null;
                 whisperBubbles.clear();
                 highlightedSpeechBubblePlayers.clear();
@@ -1780,35 +1784,7 @@
             }
 
             function positionFor(player) {
-                return {
-                    x: canvas.width / 2 - cellSize / 2 + (player.col - player.row) * cellSize / 2,
-                    y: gridTop + cellSize / 2 + (player.col + player.row) * cellSize / 2
-                };
-            }
-
-            function coordinateForGridCenter(x, y) {
-                const offsetX = x - (canvas.width / 2 - cellSize / 2);
-                const offsetY = y - gridTop - cellSize / 2;
-                return {
-                    col: Math.round((offsetX + offsetY) / cellSize),
-                    row: Math.round((offsetY - offsetX) / cellSize)
-                };
-            }
-
-            const gridCells = [];
-            for (let row = 0; row < gridRows; row++) {
-                for (let col = 0; col < gridColumns; col++) {
-                    const x = gridLeft + cellSize / 2 + col * cellSize;
-                    const y = gridTop + cellSize / 2 + row * cellSize;
-                    gridCells.push({ ...coordinateForGridCenter(x, y), x, y, kind: 'primary' });
-                }
-            }
-            for (let row = 0; row < gridRows - 1; row++) {
-                for (let col = 0; col < gridColumns - 1; col++) {
-                    const x = gridLeft + cellSize + col * cellSize;
-                    const y = gridTop + cellSize + row * cellSize;
-                    gridCells.push({ ...coordinateForGridCenter(x, y), x, y, kind: 'intermediate' });
-                }
+                return gridLayout.positionFor(player.col, player.row);
             }
 
             function showPlayer(player) {
@@ -1816,6 +1792,7 @@
                 player.position = { x: target.x, y: target.y };
                 player.target = target;
                 players[player.id] = player;
+                requestBoardRender();
             }
 
             function updateOnlineList() {
@@ -2039,6 +2016,8 @@
                 let nearestCell = null;
                 let nearestDistance = Infinity;
                 for (const cell of gridCells) {
+                    const distanceWithinDiamond = Math.abs(cell.x - x) + Math.abs(cell.y - y);
+                    if (distanceWithinDiamond > cellSize / 2 + 0.5) continue;
                     const distance = (cell.x - x) ** 2 + (cell.y - y) ** 2;
                     if (distance < nearestDistance) {
                         nearestCell = cell;
@@ -2143,11 +2122,12 @@
                     ctx.textBaseline = 'top';
                     const nameWidth = ctx.measureText(player.name).width;
                     const labelWidth = Math.min(cellSize - 10, nameWidth + 14);
-                    roundedRect(ctx, position.x - labelWidth / 2, position.y + 27, labelWidth, 19, 6);
+                    const labelY = Math.max(0, Math.min(canvas.height - 19, position.y + 27));
+                    roundedRect(ctx, position.x - labelWidth / 2, labelY, labelWidth, 19, 6);
                     ctx.fillStyle = '#10110f';
                     ctx.fill();
                     ctx.fillStyle = '#e8e7df';
-                    ctx.fillText(player.name, position.x, position.y + 31, labelWidth - 8);
+                    ctx.fillText(player.name, position.x, labelY + 4, labelWidth - 8);
                 }
 
                 // Highlighted bubbles are drawn last so they remain visible when bubbles overlap.
@@ -2297,10 +2277,66 @@
                 context.roundRect(x, y, width, height, radius);
             }
 
-            function gameLoop() {
-                drawBoard();
-                animationFrame = requestAnimationFrame(gameLoop);
+            function getBoardFramePlan(now) {
+                let animate = false;
+                let nextAt = Infinity;
+                for (const player of Object.values(players)) {
+                    if (!player.text || !player.messageTime || isMutedPlayer(player)) continue;
+                    const expiresAt = player.messageTime + messageDuration;
+                    const remaining = expiresAt - now;
+                    if (remaining <= 0) continue;
+                    if (remaining <= 900) animate = true;
+                    else nextAt = Math.min(nextAt, expiresAt - 900);
+                }
+                for (const whisper of whisperBubbles.values()) {
+                    const sentAt = whisper.expiresAt - messageDuration;
+                    const remaining = whisper.expiresAt - now;
+                    if (remaining <= 0) continue;
+                    const elapsed = now - sentAt;
+                    if ((elapsed >= 0 && elapsed < 180) || remaining <= 900) animate = true;
+                    else if (elapsed < 0) nextAt = Math.min(nextAt, sentAt);
+                    else nextAt = Math.min(nextAt, whisper.expiresAt - 900);
+                }
+                return { animate, nextAt };
             }
+
+            function gameLoop() {
+                animationFrame = null;
+                boardRenderTimer = null;
+                if (document.hidden || gameSection.classList.contains('hidden')) return;
+                drawBoard();
+                const framePlan = getBoardFramePlan(Date.now());
+                if (framePlan.animate) {
+                    animationFrame = requestAnimationFrame(gameLoop);
+                } else if (Number.isFinite(framePlan.nextAt)) {
+                    boardRenderTimer = setTimeout(requestBoardRender, Math.max(0, framePlan.nextAt - Date.now()));
+                }
+            }
+
+            function requestBoardRender() {
+                if (document.hidden || gameSection.classList.contains('hidden')) return;
+                if (boardRenderTimer !== null) {
+                    clearTimeout(boardRenderTimer);
+                    boardRenderTimer = null;
+                }
+                if (animationFrame === null) animationFrame = requestAnimationFrame(gameLoop);
+            }
+
+            function startGameLoop() {
+                requestBoardRender();
+            }
+
+            function stopGameLoop() {
+                if (animationFrame !== null) cancelAnimationFrame(animationFrame);
+                if (boardRenderTimer !== null) clearTimeout(boardRenderTimer);
+                animationFrame = null;
+                boardRenderTimer = null;
+            }
+
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) stopGameLoop();
+                else startGameLoop();
+            });
 
             document.getElementById('login-form').addEventListener('submit', async (event) => {
                 event.preventDefault();
@@ -2422,6 +2458,7 @@
                 const enabled = !highlightedSpeechBubblePlayers.has(playerId);
                 if (enabled) highlightedSpeechBubblePlayers.add(playerId);
                 else highlightedSpeechBubblePlayers.delete(playerId);
+                requestBoardRender();
                 const playerName = players[playerId].name;
                 closeAvatarContextMenu();
                 setRoomNotice(enabled
@@ -2552,11 +2589,16 @@
             });
 
             canvas.addEventListener('pointermove', (event) => {
-                hoveredCell = getCellFromPointer(event);
+                const nextHoveredCell = getCellFromPointer(event);
+                if (nextHoveredCell?.col === hoveredCell?.col && nextHoveredCell?.row === hoveredCell?.row) return;
+                hoveredCell = nextHoveredCell;
+                requestBoardRender();
             });
 
             canvas.addEventListener('pointerleave', () => {
+                if (!hoveredCell) return;
                 hoveredCell = null;
+                requestBoardRender();
             });
 
             document.addEventListener('click', (event) => {
@@ -2626,6 +2668,7 @@
             socket.on('disconnect', (reason) => {
                 if (activeWhisperPlayerId) clearWhisperMode();
                 whisperBubbles.clear();
+                requestBoardRender();
                 if (sessionKickMessage) return;
                 if (currentUser && reason === 'io server disconnect') {
                     authFetch('/api/auth/me')
@@ -2729,9 +2772,7 @@
                 updateAccountActions();
                 loginError.textContent = '';
                 setRoomNotice('');
-                if (animationFrame === null) {
-                    animationFrame = requestAnimationFrame(gameLoop);
-                }
+                startGameLoop();
                 canvas.focus();
             });
 
@@ -2748,6 +2789,7 @@
                 players[player.id].position = positionFor(player);
                 players[player.id].target = players[player.id].position;
                 cancelWhisperIfOutOfRange();
+                requestBoardRender();
                 if (contextPlayerId) updateAvatarContextMute();
             });
 
@@ -2884,6 +2926,7 @@
                         removePlayerChatMessages(player.id);
                     }
                 });
+                requestBoardRender();
             });
 
             socket.on('profile-management-updated', ({ message, targetUserId, username, relationshipRemoved, muted } = {}) => {
@@ -2914,6 +2957,7 @@
                     }
                 }
                 updateAvatarContextMute();
+                requestBoardRender();
                 requestProfileManagement();
                 if (viewingProfilePlayerId === myId && !guestbookPage.hidden) {
                     socket.emit('guestbook-request', { playerId: myId });
@@ -2980,11 +3024,13 @@
                     player.text = '';
                     player.messageTime = null;
                     removePlayerChatMessages(player.id);
+                    requestBoardRender();
                     return;
                 }
                 player.text = hideSensitiveData(message.text);
                 player.messageTime = message.messageTime;
                 addChatEntry(player, player.text, message.createdAt);
+                requestBoardRender();
             });
 
             socket.on('playerChatExpired', (message) => {
@@ -2992,6 +3038,7 @@
                 if (player && player.messageTime === message.messageTime) {
                     player.text = '';
                     player.messageTime = null;
+                    requestBoardRender();
                 }
             });
 
@@ -3000,6 +3047,7 @@
                 delete players[id];
                 highlightedSpeechBubblePlayers.delete(id);
                 cancelWhisperIfOutOfRange();
+                requestBoardRender();
                 if (contextPlayerId === id) updateAvatarContextMute();
                 if (id === viewingProfilePlayerId) {
                     freezeOnlineDuration(viewProfileOnlineDuration);
