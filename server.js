@@ -1389,7 +1389,6 @@ async function startServer() {
                     arguments: [socket.id, String(position.col), String(position.row), String(Date.now())]
                 });
                 if (!movedPlayerJson) {
-                    socket.emit('move-rejected', { message: 'Feltet er allerede optaget.' });
                     return;
                 }
                 const player = publicPlayer(JSON.parse(movedPlayerJson));
