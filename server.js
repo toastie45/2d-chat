@@ -31,11 +31,9 @@ const { USER_SEARCH_RESULT_LIMIT, getUserSearchPatterns } = require('./lib/user-
 const PRIVATE_MAIL_SUBJECT_MAX_LENGTH = 100;
 const PRIVATE_MAIL_MESSAGE_MAX_LENGTH = 2000;
 
-const GRID_MIN = -3;
-const GRID_MAX = 8;
-const GRID_CELL_SIZE = 100;
-const GRID_CANVAS_SIZE = 600;
-const GRID_EDGE_MARGIN = 20;
+const GRID_CELL_SIZE = 80;
+const GRID_CANVAS_WIDTH = 400;
+const GRID_CANVAS_HEIGHT = 320;
 const MESSAGE_DURATION = 10_000;
 const OFFLINE_PROFILE_PREFIX = 'user:';
 const HISTORY_LIMIT = 500;
@@ -50,21 +48,35 @@ const LOGIN_ATTEMPT_WINDOW_SECONDS = 15 * 60;
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 const GRID_CELLS = [];
 
-for (let row = GRID_MIN; row <= GRID_MAX; row++) {
-    for (let col = GRID_MIN; col <= GRID_MAX; col++) {
-        const x = GRID_CANVAS_SIZE / 2 + GRID_EDGE_MARGIN + (col - row) * GRID_CELL_SIZE / 2;
-        const y = GRID_CELL_SIZE / 2 + GRID_EDGE_MARGIN + (col + row) * GRID_CELL_SIZE / 2;
-        if (
-            x < GRID_EDGE_MARGIN || x > GRID_CANVAS_SIZE - GRID_EDGE_MARGIN ||
-            y < GRID_EDGE_MARGIN || y > GRID_CANVAS_SIZE - GRID_EDGE_MARGIN
-        ) continue;
-        GRID_CELLS.push({ col, row });
+function gridCoordinateForCenter(x, y) {
+    const offsetX = x - GRID_CANVAS_WIDTH / 2;
+    const offsetY = y - GRID_CELL_SIZE / 2;
+    return {
+        col: Math.round((offsetX + offsetY) / GRID_CELL_SIZE),
+        row: Math.round((offsetY - offsetX) / GRID_CELL_SIZE)
+    };
+}
+
+for (let row = 0; row < GRID_CANVAS_HEIGHT / GRID_CELL_SIZE; row++) {
+    for (let col = 0; col < GRID_CANVAS_WIDTH / GRID_CELL_SIZE; col++) {
+        GRID_CELLS.push(gridCoordinateForCenter(
+            GRID_CELL_SIZE / 2 + col * GRID_CELL_SIZE,
+            GRID_CELL_SIZE / 2 + row * GRID_CELL_SIZE
+        ));
+    }
+}
+for (let row = 0; row < GRID_CANVAS_HEIGHT / GRID_CELL_SIZE - 1; row++) {
+    for (let col = 0; col < GRID_CANVAS_WIDTH / GRID_CELL_SIZE - 1; col++) {
+        GRID_CELLS.push(gridCoordinateForCenter(
+            GRID_CELL_SIZE + col * GRID_CELL_SIZE,
+            GRID_CELL_SIZE + row * GRID_CELL_SIZE
+        ));
     }
 }
 
 GRID_CELLS.sort((first, second) => {
-    const firstDistance = Math.abs(first.col - 2.5) + Math.abs(first.row - 2.5);
-    const secondDistance = Math.abs(second.col - 2.5) + Math.abs(second.row - 2.5);
+    const firstDistance = Math.abs(first.col - 1.5) + Math.abs(first.row - 1.5);
+    const secondDistance = Math.abs(second.col - 1.5) + Math.abs(second.row - 1.5);
     return firstDistance - secondDistance;
 });
 const GRID_CELL_KEYS = new Set(GRID_CELLS.map(({ col, row }) => `${col}:${row}`));

@@ -841,7 +841,7 @@
                 </div>
                 <div class="room">
                     <section class="board-card" aria-label="Chatrum">
-                        <canvas id="game-canvas" width="600" height="600" tabindex="0" aria-label="Et diamantgrid. Klik på et felt for at flytte din avatar. Højreklik på en anden avatar for at se profilen. Skriv for at chatte, og tryk Enter for at sende.">
+                        <canvas id="game-canvas" width="400" height="320" tabindex="0" aria-label="Et diamantgrid med 20 primære felter og 12 mellemliggende felter. Klik på et felt for at flytte din avatar. Højreklik på en anden avatar for at se profilen. Skriv for at chatte, og tryk Enter for at sende.">
                             Dit browserprogram understøtter ikke canvas.
                         </canvas>
                         <p class="room-notice" id="room-notice" aria-live="polite"></p>
@@ -1164,10 +1164,7 @@
             const logoutButton = document.getElementById('logout-button');
             const chatLog = document.getElementById('chat-log');
             const chatEmpty = document.getElementById('chat-empty');
-            const gridMin = -3;
-            const gridMax = 8;
-            const gridEdgeMargin = 20;
-            const cellSize = canvas.width / 6;
+            const cellSize = 80;
             const avatarRadius = 19;
             const messageDuration = 10000;
             const maxMessageLength = 100;
@@ -1777,20 +1774,33 @@
 
             function positionFor(player) {
                 return {
-                    x: canvas.width / 2 + gridEdgeMargin + (player.col - player.row) * cellSize / 2,
-                    y: cellSize / 2 + gridEdgeMargin + (player.col + player.row) * cellSize / 2
+                    x: canvas.width / 2 + (player.col - player.row) * cellSize / 2,
+                    y: cellSize / 2 + (player.col + player.row) * cellSize / 2
+                };
+            }
+
+            function coordinateForGridCenter(x, y) {
+                const offsetX = x - canvas.width / 2;
+                const offsetY = y - cellSize / 2;
+                return {
+                    col: Math.round((offsetX + offsetY) / cellSize),
+                    row: Math.round((offsetY - offsetX) / cellSize)
                 };
             }
 
             const gridCells = [];
-            for (let row = gridMin; row <= gridMax; row++) {
-                for (let col = gridMin; col <= gridMax; col++) {
-                    const position = positionFor({ col, row });
-                    if (
-                        position.x < gridEdgeMargin || position.x > canvas.width - gridEdgeMargin ||
-                        position.y < gridEdgeMargin || position.y > canvas.height - gridEdgeMargin
-                    ) continue;
-                    gridCells.push({ col, row, ...position });
+            for (let row = 0; row < 4; row++) {
+                for (let col = 0; col < 5; col++) {
+                    const x = cellSize / 2 + col * cellSize;
+                    const y = cellSize / 2 + row * cellSize;
+                    gridCells.push({ ...coordinateForGridCenter(x, y), x, y, kind: 'primary' });
+                }
+            }
+            for (let row = 0; row < 3; row++) {
+                for (let col = 0; col < 4; col++) {
+                    const x = cellSize + col * cellSize;
+                    const y = cellSize + row * cellSize;
+                    gridCells.push({ ...coordinateForGridCenter(x, y), x, y, kind: 'intermediate' });
                 }
             }
 
@@ -2038,8 +2048,22 @@
 
             function drawBoard() {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = '#11130f';
+                ctx.fillStyle = '#edf4f8';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                for (const cell of gridCells) {
+                    ctx.beginPath();
+                    ctx.moveTo(cell.x, cell.y - cellSize / 2);
+                    ctx.lineTo(cell.x + cellSize / 2, cell.y);
+                    ctx.lineTo(cell.x, cell.y + cellSize / 2);
+                    ctx.lineTo(cell.x - cellSize / 2, cell.y);
+                    ctx.closePath();
+                    ctx.fillStyle = cell.kind === 'primary' ? '#a9cce4' : '#e5c58b';
+                    ctx.fill();
+                    ctx.strokeStyle = cell.kind === 'primary' ? '#4d82a4' : '#bd8d42';
+                    ctx.lineWidth = 1.5;
+                    ctx.stroke();
+                }
 
                 if (hoveredCell) {
                     const hoveredPosition = positionFor(hoveredCell);
@@ -2049,26 +2073,10 @@
                     ctx.lineTo(hoveredPosition.x, hoveredPosition.y + cellSize / 2);
                     ctx.lineTo(hoveredPosition.x - cellSize / 2, hoveredPosition.y);
                     ctx.closePath();
-                    ctx.fillStyle = '#c1f07812';
+                    ctx.fillStyle = '#c1f07835';
                     ctx.fill();
-                }
-
-                ctx.strokeStyle = '#292d25';
-                ctx.lineWidth = 1;
-                for (let offset = -canvas.height; offset <= canvas.width; offset += cellSize) {
-                    ctx.beginPath();
-                    const startX = Math.max(0, offset);
-                    const endX = Math.min(canvas.width, canvas.height + offset);
-                    ctx.moveTo(startX, startX - offset);
-                    ctx.lineTo(endX, endX - offset);
-                    ctx.stroke();
-                }
-                for (let offset = gridEdgeMargin * 2; offset <= canvas.width + canvas.height; offset += cellSize) {
-                    ctx.beginPath();
-                    const startX = Math.max(0, offset - canvas.height);
-                    const endX = Math.min(canvas.width, offset);
-                    ctx.moveTo(startX, offset - startX);
-                    ctx.lineTo(endX, offset - endX);
+                    ctx.strokeStyle = '#658f36';
+                    ctx.lineWidth = 2;
                     ctx.stroke();
                 }
 
