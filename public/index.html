@@ -452,7 +452,7 @@
         .profile-form { display: grid; gap: 12px; }
         .profile-management { display: grid; gap: 10px; margin-bottom: 16px; }
         .profile-management-select { margin: 0; }
-        .profile-management-select:focus-visible, .profile-manage-action:focus-visible, .profile-details summary:focus-visible {
+        .profile-management-select:focus-visible, .profile-manage-action:focus-visible {
             outline: 2px solid var(--accent);
             outline-offset: 2px;
         }
@@ -486,8 +486,7 @@
         .profile-manage-action:hover { border-color: #829e52; background: #303729; color: #fff; }
         .profile-manage-action:disabled { cursor: wait; opacity: .55; }
         .profile-management-empty, .profile-management-status { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
-        .profile-details { margin-top: 12px; border-top: 1px solid #353943; }
-        .profile-details summary { padding: 11px 0; color: #f0f1f3; font-size: 11px; font-weight: 650; cursor: pointer; }
+        .profile-details { margin-top: 0; }
         .profile-facts {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -825,8 +824,7 @@
                                 </section>
                                 <p class="profile-management-status" id="profile-management-status" aria-live="polite"></p>
                             </div>
-                            <details class="profile-details" id="manage-profile-panel" open>
-                                <summary>Rediger profiloplysninger</summary>
+                            <div class="profile-details" id="manage-profile-panel">
                                 <form class="profile-form" id="profile-form">
                                     <dl class="profile-facts profile-meta">
                                         <div><dt>Oprettet</dt><dd id="profile-created-at">Henter…</dd></div>
@@ -853,7 +851,7 @@
                                     <button class="profile-save" id="profile-save-button" type="submit">Gem profil</button>
                                     <p class="profile-status" id="profile-status" aria-live="polite"></p>
                                 </form>
-                            </details>
+                            </div>
                         </section>
                         <section class="side-panel profile-panel" id="profile-view-panel" aria-labelledby="profile-view-title" hidden>
                             <h2 class="side-title" id="profile-view-title">Profil</h2>
@@ -1199,7 +1197,6 @@
                 Object.entries(managementPanels).forEach(([pageName, panel]) => {
                     panel.hidden = pageName !== selectedPage;
                 });
-                if (selectedPage === 'profile') managementPanels.profile.open = true;
             }
 
             function isMutedPlayer(player) {
