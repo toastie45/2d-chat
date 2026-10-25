@@ -316,6 +316,7 @@
         }
 
         .toolbar-button {
+            position: relative;
             display: flex;
             width: 38px;
             height: 34px;
@@ -362,6 +363,22 @@
             clip: rect(0, 0, 0, 0);
             white-space: nowrap;
             clip-path: inset(50%);
+        }
+        .mail-unread-badge {
+            position: absolute !important;
+            top: -5px;
+            right: -5px;
+            width: 17px !important;
+            height: 17px !important;
+            clip: auto !important;
+            clip-path: none !important;
+            border: 1px solid #11130f;
+            border-radius: 50%;
+            background: #ef5454;
+            color: white;
+            font-size: 9px;
+            line-height: 15px;
+            text-align: center;
         }
         .side-title { margin: 0 0 13px; font-size: 12px; font-weight: 650; }
         .member-list {
@@ -508,6 +525,7 @@
             cursor: pointer;
         }
         .profile-action:hover, .profile-action[aria-pressed="true"] { border-color: #829e52; background: #303729; }
+        .profile-action[hidden] { display: none; }
         .profile-action:disabled { cursor: not-allowed; opacity: .45; }
         .profile-action:focus-visible, .profile-page-select:focus-visible, .guestbook-form textarea:focus-visible {
             outline: 2px solid var(--accent);
@@ -574,6 +592,26 @@
             cursor: pointer;
         }
         .guestbook-form button:disabled { cursor: wait; opacity: .6; }
+        .private-mail-controls { display: flex; gap: 7px; margin-bottom: 12px; }
+        .private-mail-controls select, .private-mail-controls button, .private-mail-form input, .private-mail-form textarea, .private-mail-form button {
+            min-height: 32px; padding: 6px 8px; border: 1px solid #363831; border-radius: 5px;
+            background: #10110f; color: #f2f0e9; font: inherit; font-size: 11px;
+        }
+        .private-mail-controls select { flex: 1; }
+        .private-mail-controls button, .private-mail-form button { background: #25291f; cursor: pointer; }
+        .private-mail-form { display: grid; gap: 8px; margin-bottom: 14px; }
+        .private-mail-form[hidden] { display: none; }
+        .private-mail-form label { display: grid; gap: 4px; color: var(--muted); font-size: 10px; }
+        .private-mail-form input, .private-mail-form textarea { width: 100%; }
+        .private-mail-form textarea { min-height: 95px; resize: vertical; white-space: pre-wrap; }
+        .private-mail-form button { justify-self: start; padding: 0 12px; background: #087e60; border-color: #087e60; }
+        .private-mail-list { display: grid; max-height: 350px; gap: 8px; overflow-y: auto; }
+        .private-mail-entry { padding: 9px; border: 1px solid #292b26; border-radius: 6px; background: #171815; }
+        .private-mail-entry summary { cursor: pointer; color: #f2f0e9; font-size: 11px; }
+        .private-mail-entry.unread { border-color: #647d3b; }
+        .private-mail-meta { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 7px; color: var(--muted); font-size: 9px; }
+        .private-mail-body { margin: 8px 0 0; color: #d9d8d1; font-size: 11px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .private-mail-status, .private-mail-empty { margin: 0 0 9px; color: var(--muted); font-size: 10px; line-height: 1.5; }
         .profile-field input[readonly] { border-color: #363831; background: #1b1d19; color: #b7b7ae; cursor: default; }
         .profile-birthdate { margin: 0; padding: 0; border: 0; }
         .profile-birthdate legend { margin-bottom: 5px; padding: 0; }
@@ -807,6 +845,7 @@
                             <button class="toolbar-button" id="search-nav-button" type="button" aria-pressed="false" aria-controls="search-panel" aria-label="Søg efter brugere" title="Søg efter brugere">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.4-4.4"/></svg>
                             </button>
+                            <button class="toolbar-button" id="private-mail-nav-button" type="button" aria-pressed="false" aria-controls="private-mail-panel" aria-label="Privat mail" title="Privat mail"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg><span class="mail-unread-badge" id="mail-unread-badge" hidden></span></button>
                             <button class="toolbar-button" id="profile-nav-button" type="button" aria-pressed="false" aria-controls="profile-editor-panel" aria-label="Rediger min profil" title="Min profil">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 6.5 3-3 3 3-3 3"/><path d="m3 21 4.5-1 11-11-3.5-3.5-11 11L3 21Z"/><path d="m13 8 3.5 3.5"/></svg>
                             </button>
@@ -836,6 +875,31 @@
                             <button class="user-search-submit" id="user-search-submit" type="button">Start søgning</button>
                             <div class="member-list" id="user-search-results" role="list" aria-live="polite"></div>
                             <p class="member-empty hidden" id="user-search-empty" role="status" aria-live="polite"></p>
+                        </section>
+                        <section class="side-panel" id="private-mail-panel" aria-labelledby="private-mail-title" hidden>
+                            <h2 class="side-title" id="private-mail-title">Privat mail</h2>
+                            <div class="private-mail-controls">
+                                <select id="private-mail-folder" aria-label="Postkasse">
+                                    <option value="inbox">Indbakke</option>
+                                    <option value="sent">Sendt</option>
+                                </select>
+                                <button id="private-mail-compose-open" type="button">Ny mail</button>
+                            </div>
+                            <form class="private-mail-form" id="private-mail-form" hidden>
+                                <label for="private-mail-to">Til brugernavn
+                                    <input id="private-mail-to" maxlength="18" autocomplete="off" required>
+                                </label>
+                                <label for="private-mail-subject">Emne
+                                    <input id="private-mail-subject" maxlength="100" required>
+                                </label>
+                                <label for="private-mail-message">Besked
+                                    <textarea id="private-mail-message" maxlength="2000" required></textarea>
+                                </label>
+                                <button id="private-mail-send" type="submit">Send mail</button>
+                            </form>
+                            <p class="private-mail-status" id="private-mail-status" aria-live="polite"></p>
+                            <div class="private-mail-list" id="private-mail-list" role="list"></div>
+                            <p class="private-mail-empty" id="private-mail-empty">Postkassen er tom.</p>
                         </section>
                         <section class="side-panel chat-section" id="chat-panel" aria-labelledby="chat-title">
                             <h2 class="side-title" id="chat-title">Velkommen i Fællesrum</h2>
@@ -904,7 +968,7 @@
                                 <span class="profile-level-icon" id="view-profile-level" title="Level 1" aria-label="Level 1">1</span>
                                 <button class="profile-action" id="profile-friend-button" type="button" aria-label="Tilføj til venneliste" title="Tilføj til venneliste" aria-pressed="false">🫂</button>
                                 <button class="profile-action" id="profile-enemy-button" type="button" aria-label="Tilføj til fjendeliste" title="Tilføj til fjendeliste" aria-pressed="false">⚔️</button>
-                            </div>
+                                <button class="profile-action" id="profile-mail-button" type="button" aria-label="Skriv privat mail" title="Skriv privat mail" hidden>✉</button></div>
                             <label class="visually-hidden" for="profile-page-select">Vælg infoside</label>
                             <select class="profile-page-select" id="profile-page-select">
                                 <option value="">Vælg infoside:</option>
@@ -992,7 +1056,21 @@
             const chatNavButton = document.getElementById('chat-nav-button');
             const profileNavButton = document.getElementById('profile-nav-button');
             const searchNavButton = document.getElementById('search-nav-button');
+            const privateMailNavButton = document.getElementById('private-mail-nav-button');
+            const mailUnreadBadge = document.getElementById('mail-unread-badge');
             const searchPanel = document.getElementById('search-panel');
+            const privateMailPanel = document.getElementById('private-mail-panel');
+            const privateMailFolder = document.getElementById('private-mail-folder');
+            const privateMailComposeOpen = document.getElementById('private-mail-compose-open');
+            const privateMailForm = document.getElementById('private-mail-form');
+            const privateMailTo = document.getElementById('private-mail-to');
+            const privateMailSubject = document.getElementById('private-mail-subject');
+            const privateMailMessage = document.getElementById('private-mail-message');
+            const privateMailSend = document.getElementById('private-mail-send');
+            const privateMailStatus = document.getElementById('private-mail-status');
+            const privateMailList = document.getElementById('private-mail-list');
+            const privateMailEmpty = document.getElementById('private-mail-empty');
+            let viewingProfileMailUsername = '';
             const userSearchInput = document.getElementById('user-search-input');
             const userSearchMatch = document.getElementById('user-search-match');
             const userSearchSubmit = document.getElementById('user-search-submit');
@@ -1036,6 +1114,7 @@
             const viewProfileResidence = document.getElementById('view-profile-residence');
             const profileFriendButton = document.getElementById('profile-friend-button');
             const profileEnemyButton = document.getElementById('profile-enemy-button');
+            const profileMailButton = document.getElementById('profile-mail-button');
             const profilePageSelect = document.getElementById('profile-page-select');
             const profileInfoPage = document.getElementById('profile-info-page');
             const guestbookPage = document.getElementById('guestbook-page');
@@ -1236,6 +1315,7 @@
                 chatNavButton.setAttribute('aria-pressed', String(!chatPanel.hidden));
                 profileNavButton.setAttribute('aria-pressed', String(!profileEditorPanel.hidden));
                 searchNavButton.setAttribute('aria-pressed', String(!searchPanel.hidden));
+                privateMailNavButton.setAttribute('aria-pressed', String(!privateMailPanel.hidden));
             }
 
             function selectAuthMode(mode) {
@@ -1256,9 +1336,65 @@
                 membersPanel.hidden = panel !== 'members';
                 chatPanel.hidden = panel !== 'chat';
                 searchPanel.hidden = panel !== 'search';
+                privateMailPanel.hidden = panel !== 'private-mail';
                 profileEditorPanel.hidden = panel !== 'profile-editor';
                 profileViewPanel.hidden = panel !== 'profile-view';
                 updateToolbarState();
+            }
+
+            function updateMailUnreadBadge(count) {
+                const unreadCount = Math.max(0, Number(count) || 0);
+                mailUnreadBadge.hidden = unreadCount === 0;
+                mailUnreadBadge.textContent = unreadCount > 9 ? '9+' : String(unreadCount);
+                privateMailNavButton.setAttribute('aria-label', unreadCount ? `Privat mail, ${unreadCount} ulæste` : 'Privat mail');
+            }
+
+            function requestPrivateMail() {
+                if (!socket.connected) return;
+                privateMailEmpty.textContent = 'Henter post…';
+                privateMailEmpty.classList.remove('hidden');
+                socket.emit('private-mail-request', { folder: privateMailFolder.value });
+            }
+
+            function openPrivateMail(recipientName = '') {
+                selectSidePanel('private-mail');
+                privateMailStatus.textContent = '';
+                privateMailForm.hidden = !recipientName;
+                if (recipientName) {
+                    privateMailFolder.value = 'inbox';
+                    privateMailTo.value = recipientName;
+                    privateMailSubject.focus({ preventScroll: true });
+                }
+                requestPrivateMail();
+            }
+
+            function renderPrivateMail(messages, folder) {
+                privateMailList.replaceChildren();
+                privateMailEmpty.textContent = folder === 'sent' ? 'Du har ikke sendt nogen mails endnu.' : 'Indbakken er tom.';
+                privateMailEmpty.classList.toggle('hidden', messages.length > 0);
+                for (const mail of messages) {
+                    const entry = document.createElement('details');
+                    entry.className = `private-mail-entry${!mail.read && folder === 'inbox' ? ' unread' : ''}`;
+                    entry.dataset.messageId = mail.id;
+                    const summary = document.createElement('summary');
+                    summary.textContent = `${folder === 'sent' ? `Til ${mail.recipientName}` : `Fra ${mail.senderName}`} · ${mail.subject}`;
+                    const meta = document.createElement('div');
+                    meta.className = 'private-mail-meta';
+                    meta.textContent = formatProfileDateTime(mail.createdAt);
+                    const body = document.createElement('p');
+                    body.className = 'private-mail-body';
+                    body.textContent = mail.message;
+                    entry.append(summary, meta, body);
+                    if (folder === 'inbox' && !mail.read) {
+                        entry.addEventListener('toggle', () => {
+                            if (entry.open && entry.classList.contains('unread')) {
+                                entry.classList.remove('unread');
+                                socket.emit('private-mail-read', { messageId: mail.id });
+                            }
+                        });
+                    }
+                    privateMailList.append(entry);
+                }
             }
 
             function closeAvatarContextMenu() {
@@ -1419,6 +1555,8 @@
                 viewingProfilePlayerId = playerId;
                 viewingProfileUserId = null;
                 viewingOwnProfile = playerId === myId;
+                viewingProfileMailUsername = '';
+                profileMailButton.hidden = true;
                 selectSidePanel('profile-view');
                 viewProfileName.textContent = 'Henter profil…';
                 profilePageSelect.value = '';
@@ -1450,6 +1588,11 @@
 
             function resetPendingAuthentication() {
                 currentUser = null;
+                privateMailList.replaceChildren();
+                privateMailForm.reset();
+                privateMailForm.hidden = true;
+                privateMailStatus.textContent = '';
+                updateMailUnreadBadge(0);
                 profileManagement = { relations: [] };
                 mutedUsernames = new Set();
                 renderFriendMenu();
@@ -1964,6 +2107,25 @@
             chatNavButton.addEventListener('click', () => selectSidePanel('chat'));
             profileNavButton.addEventListener('click', openProfileEditor);
             searchNavButton.addEventListener('click', openUserSearch);
+            privateMailNavButton.addEventListener('click', () => openPrivateMail());
+            privateMailComposeOpen.addEventListener('click', () => {
+                privateMailForm.hidden = !privateMailForm.hidden;
+                if (!privateMailForm.hidden) privateMailTo.focus({ preventScroll: true });
+            });
+            privateMailFolder.addEventListener('change', requestPrivateMail);
+            privateMailForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                privateMailSend.disabled = true;
+                privateMailStatus.textContent = 'Sender…';
+                socket.emit('private-mail-send', {
+                    to: privateMailTo.value,
+                    subject: privateMailSubject.value,
+                    message: privateMailMessage.value
+                });
+            });
+            profileMailButton.addEventListener('click', () => {
+                if (!viewingOwnProfile && viewingProfileMailUsername) openPrivateMail(viewingProfileMailUsername);
+            });
             userSearchInput.addEventListener('input', () => {
                 renderUserSearchResults();
                 scheduleUserSearch();
@@ -2258,6 +2420,7 @@
                 addChatSystemEntry(`Du er kommet ind i chatten som ${currentUser.username}.`);
                 updateOnlineList();
                 requestProfileManagement();
+                socket.emit('private-mail-unread-request');
                 selectSidePanel('chat');
                 updateToolbarState();
                 loginSection.classList.add('hidden');
@@ -2296,11 +2459,35 @@
                 };
                 renderUserSearchResults();
             });
+            socket.on('private-mail-data', ({ folder, unreadCount, messages } = {}) => {
+                updateMailUnreadBadge(unreadCount);
+                if (folder !== privateMailFolder.value) return;
+                renderPrivateMail(Array.isArray(messages) ? messages : [], folder);
+            });
+            socket.on('private-mail-unread-count', ({ count } = {}) => updateMailUnreadBadge(count));
+            socket.on('private-mail-notification', () => {
+                socket.emit('private-mail-unread-request');
+                if (!privateMailPanel.hidden) requestPrivateMail();
+            });
+            socket.on('private-mail-sent', ({ recipientName } = {}) => {
+                privateMailStatus.textContent = `Mailen er sendt til ${recipientName}.`;
+                privateMailForm.reset();
+                privateMailForm.hidden = true;
+                privateMailSend.disabled = false;
+                privateMailFolder.value = 'sent';
+                requestPrivateMail();
+            });
+            socket.on('private-mail-error', ({ message } = {}) => {
+                privateMailStatus.textContent = message || 'Mailen kunne ikke sendes.';
+                privateMailSend.disabled = false;
+            });
             socket.on('profile-info', (profile) => {
                 if (profile.playerId !== viewingProfilePlayerId) return;
                 viewingProfileUserId = profile.userId || null;
                 viewProfileName.textContent = profile.online ? profile.avatarName : `${profile.avatarName} (offline)`;
+                viewingProfileMailUsername = profile.avatarName;
                 viewingOwnProfile = profile.isOwnProfile;
+                profileMailButton.hidden = viewingOwnProfile;
                 guestbookForm.hidden = viewingOwnProfile;
                 updateProfileRelationship(profile.relationship);
                 viewProfileRealName.textContent = profile.realName || 'Ikke angivet.';

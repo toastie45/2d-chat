@@ -28,6 +28,8 @@ const { calculateAge, getDanishRegions, getSteamUrl, normalizePublicProfile } = 
 const { registerChatMessage } = require('./lib/chat-rate-limit');
 const { GUESTBOOK_MESSAGE_MAX_LENGTH, normalizeGuestbookMessage } = require('./lib/guestbook');
 const { USER_SEARCH_RESULT_LIMIT, getUserSearchPatterns } = require('./lib/user-search');
+const PRIVATE_MAIL_SUBJECT_MAX_LENGTH = 100;
+const PRIVATE_MAIL_MESSAGE_MAX_LENGTH = 2000;
 
 const GRID_MIN = -3;
 const GRID_MAX = 8;
@@ -410,6 +412,20 @@ async function startServer() {
         )
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS chat_guestbook_profile_recent_idx ON chat_guestbook_entries (profile_user_id, id DESC)');
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS chat_private_messages (
+            id BIGSERIAL PRIMARY KEY,
+            sender_user_id BIGINT NOT NULL REFERENCES chat_users(id) ON DELETE CASCADE,
+            recipient_user_id BIGINT NOT NULL REFERENCES chat_users(id) ON DELETE CASCADE,
+            subject VARCHAR(${PRIVATE_MAIL_SUBJECT_MAX_LENGTH}) NOT NULL,
+            message VARCHAR(${PRIVATE_MAIL_MESSAGE_MAX_LENGTH}) NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            read_at TIMESTAMPTZ,
+            CHECK (sender_user_id <> recipient_user_id)
+        )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS chat_private_messages_inbox_idx ON chat_private_messages (recipient_user_id, id DESC)');
+    await pool.query('CREATE INDEX IF NOT EXISTS chat_private_messages_sent_idx ON chat_private_messages (sender_user_id, id DESC)');
     await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_messages (
             id BIGSERIAL PRIMARY KEY,
@@ -1218,6 +1234,119 @@ async function startServer() {
             }
         });
 
+        socket.on('private-mail-request', async (payload) => {
+            if (!activeSocketIds.has(socket.id)) return;
+            const folder = payload && payload.folder === 'sent' ? 'sent' : 'inbox';
+            try {
+                const userId = socket.data.user.id;
+                const [messagesResult, unreadResult] = await Promise.all([
+                    folder === 'sent'
+                        ? pool.query(`
+                            SELECT mail.id, mail.subject, mail.message, mail.created_at, mail.read_at,
+                                   sender.username AS sender_name, recipient.username AS recipient_name
+                            FROM chat_private_messages mail
+                            JOIN chat_users sender ON sender.id = mail.sender_user_id
+                            JOIN chat_users recipient ON recipient.id = mail.recipient_user_id
+                            WHERE mail.sender_user_id = $1 ORDER BY mail.id DESC LIMIT 50
+                        `, [userId])
+                        : pool.query(`
+                            SELECT mail.id, mail.subject, mail.message, mail.created_at, mail.read_at,
+                                   sender.username AS sender_name, recipient.username AS recipient_name
+                            FROM chat_private_messages mail
+                            JOIN chat_users sender ON sender.id = mail.sender_user_id
+                            JOIN chat_users recipient ON recipient.id = mail.recipient_user_id
+                            WHERE mail.recipient_user_id = $1 ORDER BY mail.id DESC LIMIT 50
+                        `, [userId]),
+                    pool.query('SELECT COUNT(*)::int AS count FROM chat_private_messages WHERE recipient_user_id = $1 AND read_at IS NULL', [userId])
+                ]);
+                socket.emit('private-mail-data', {
+                    folder,
+                    unreadCount: unreadResult.rows[0]?.count || 0,
+                    messages: messagesResult.rows.map((row) => ({
+                        id: String(row.id), subject: row.subject, message: row.message,
+                        createdAt: row.created_at, read: Boolean(row.read_at),
+                        senderName: row.sender_name, recipientName: row.recipient_name
+                    }))
+                });
+            } catch (error) {
+                console.error('Could not load private mail:', getSafeErrorCode(error));
+                socket.emit('private-mail-error', { message: 'Postkassen kunne ikke indlæses. Prøv igen.' });
+            }
+        });
+
+        socket.on('private-mail-send', async (payload) => {
+            if (!activeSocketIds.has(socket.id)) return;
+            const recipient = normalizeUsername(payload && payload.to);
+            const subject = typeof (payload && payload.subject) === 'string'
+                ? payload.subject.normalize('NFKC').replace(/\0/g, '').trim().slice(0, PRIVATE_MAIL_SUBJECT_MAX_LENGTH)
+                : '';
+            const message = typeof (payload && payload.message) === 'string'
+                ? payload.message.normalize('NFKC').replace(/\0/g, '').trim().slice(0, PRIVATE_MAIL_MESSAGE_MAX_LENGTH)
+                : '';
+            if (!recipient || !subject || !message) {
+                socket.emit('private-mail-error', { message: 'Udfyld modtager, emne og besked.' });
+                return;
+            }
+            try {
+                const { rows: [target] } = await pool.query(
+                    'SELECT id, username FROM chat_users WHERE username_normalized = $1', [recipient.normalized]
+                );
+                if (!target) {
+                    socket.emit('private-mail-error', { message: 'Brugeren findes ikke.' });
+                    return;
+                }
+                if (String(target.id) === String(socket.data.user.id)) {
+                    socket.emit('private-mail-error', { message: 'Du kan ikke sende en mail til dig selv.' });
+                    return;
+                }
+                const cooldownKey = `chat:private-mail-cooldown:${socket.data.user.id}`;
+                if (!await redis.set(cooldownKey, '1', { EX: 3, NX: true })) {
+                    socket.emit('private-mail-error', { message: 'Vent et øjeblik, før du sender en mail mere.' });
+                    return;
+                }
+                await pool.query(
+                    'INSERT INTO chat_private_messages (sender_user_id, recipient_user_id, subject, message) VALUES ($1, $2, $3, $4)',
+                    [socket.data.user.id, target.id, subject, message]
+                );
+                socket.emit('private-mail-sent', { recipientName: target.username });
+                io.to(`private-mail:${target.id}`).emit('private-mail-notification');
+            } catch (error) {
+                console.error('Could not send private mail:', getSafeErrorCode(error));
+                socket.emit('private-mail-error', { message: 'Mailen kunne ikke sendes. Prøv igen.' });
+            }
+        });
+
+        socket.on('private-mail-read', async (payload) => {
+            const messageId = String(payload && payload.messageId || '');
+            if (!activeSocketIds.has(socket.id) || !/^[1-9]\d{0,18}$/.test(messageId)) return;
+            try {
+                await pool.query(
+                    'UPDATE chat_private_messages SET read_at = NOW() WHERE id = $1 AND recipient_user_id = $2 AND read_at IS NULL',
+                    [messageId, socket.data.user.id]
+                );
+                const { rows: [row] } = await pool.query(
+                    'SELECT COUNT(*)::int AS count FROM chat_private_messages WHERE recipient_user_id = $1 AND read_at IS NULL',
+                    [socket.data.user.id]
+                );
+                io.to(`private-mail:${socket.data.user.id}`).emit('private-mail-unread-count', { count: row?.count || 0 });
+            } catch (error) {
+                console.error('Could not mark private mail read:', getSafeErrorCode(error));
+            }
+        });
+
+        socket.on('private-mail-unread-request', async () => {
+            if (!activeSocketIds.has(socket.id)) return;
+            try {
+                const { rows: [row] } = await pool.query(
+                    'SELECT COUNT(*)::int AS count FROM chat_private_messages WHERE recipient_user_id = $1 AND read_at IS NULL',
+                    [socket.data.user.id]
+                );
+                socket.emit('private-mail-unread-count', { count: row?.count || 0 });
+            } catch (error) {
+                console.error('Could not load private mail count:', getSafeErrorCode(error));
+            }
+        });
+
         socket.on('guestbook-add', async (payload) => {
             const playerId = payload && payload.playerId;
             const message = normalizeGuestbookMessage(payload && payload.message);
@@ -1394,6 +1523,7 @@ async function startServer() {
 
                 const player = publicPlayer(JSON.parse(joinedPlayerJson));
                 activeSocketIds.add(socket.id);
+                await socket.join(`private-mail:${socket.data.user.id}`);
                 const currentPlayers = await getPlayers();
                 for (const player of Object.values(currentPlayers)) {
                     player.text = '';
