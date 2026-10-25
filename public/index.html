@@ -1030,7 +1030,7 @@
             <p class="avatar-context-room">Fællesrum</p>
             <button class="avatar-context-action" id="avatar-context-profile" type="button" role="menuitem">Se profilinfo</button>
             <button class="avatar-context-action" id="avatar-context-whisper" type="button" role="menuitem" hidden>Hvisk</button>
-            <button class="avatar-context-action" id="avatar-context-highlight" type="button" role="menuitem" aria-pressed="false">Fremhæv tekstboble</button>
+            <button class="avatar-context-action" id="avatar-context-highlight" type="button" role="menuitem" aria-pressed="false">Fremhæv</button>
             <button class="avatar-context-action" id="avatar-context-mute" type="button" role="menuitem" hidden></button>
         </div>
     </div>
@@ -1529,7 +1529,7 @@
                 avatarContextWhisper.title = avatarContextWhisper.disabled ? 'Gå hen til avataren for at hviske' : 'Start en privat hvisken';
                 const highlighted = Boolean(player && highlightedSpeechBubblePlayers.has(contextPlayerId));
                 avatarContextHighlight.disabled = !player;
-                avatarContextHighlight.textContent = highlighted ? 'Fjern fremhævning' : 'Fremhæv tekstboble';
+                avatarContextHighlight.textContent = highlighted ? 'Fjern fremhævning' : 'Fremhæv';
                 avatarContextHighlight.setAttribute('aria-pressed', String(highlighted));
                 avatarContextMute.hidden = !player || isSelf;
                 avatarContextMute.disabled = false;
