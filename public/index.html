@@ -484,6 +484,8 @@
         .profile-fact:nth-child(odd) { border-right: 1px solid #292b26; }
         .profile-fact dt { margin-bottom: 4px; color: #96988f; font-size: 10px; font-weight: 650; }
         .profile-fact dd { margin: 0; color: #f2f0e9; font-size: 11px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .profile-fact dd a { color: #c1f078; text-decoration: underline; overflow-wrap: anywhere; }
+        .profile-fact dd a:hover { color: #d2ff96; }
         .profile-fact-wide { grid-column: 1 / -1; border-right: 0 !important; }
         .profile-actions { display: flex; gap: 7px; margin: -5px 0 12px; }
         .profile-action {
@@ -838,7 +840,7 @@
                                         </label>
                                         <label class="profile-field" for="profile-steam-name">
                                             Steam
-                                            <input id="profile-steam-name" name="steamName" maxlength="64" autocomplete="off" placeholder="Steam">
+                                            <input id="profile-steam-name" name="steamName" maxlength="256" autocomplete="off" placeholder="Steam navn eller URL">
                                         </label>
                                         <label class="profile-field" for="profile-last-login">
                                             Dit sidste login
@@ -2240,7 +2242,16 @@
                 viewProfileRealName.textContent = profile.realName || 'Ikke angivet.';
                 viewProfileAge.textContent = Number.isInteger(profile.age) ? `${profile.age} år` : 'Ikke angivet.';
                 viewProfileDiscord.textContent = profile.discordName || 'Ikke angivet.';
-                viewProfileSteam.textContent = profile.steamName || 'Ikke angivet.';
+                if (profile.steamUrl) {
+                    const steamLink = document.createElement('a');
+                    steamLink.href = profile.steamUrl;
+                    steamLink.target = '_blank';
+                    steamLink.rel = 'noopener noreferrer';
+                    steamLink.textContent = profile.steamName;
+                    viewProfileSteam.replaceChildren(steamLink);
+                } else {
+                    viewProfileSteam.textContent = profile.steamName || 'Ikke angivet.';
+                }
                 viewProfileResidence.textContent = profile.residence || 'Ikke angivet.';
                 viewProfileCreatedAt.textContent = formatProfileDateTime(profile.createdAt);
                 viewProfileLastLogin.textContent = formatProfileDateTime(profile.lastLoginAt);

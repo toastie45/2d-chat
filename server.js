@@ -24,7 +24,7 @@ const {
     renameSessionSetCookie
 } = require('./lib/tab-session');
 const { hashRegistrationIp, MAX_ACCOUNTS_PER_IP } = require('./lib/account-ip-limit');
-const { calculateAge, getDanishRegions, normalizePublicProfile } = require('./lib/public-profile');
+const { calculateAge, getDanishRegions, getSteamUrl, normalizePublicProfile } = require('./lib/public-profile');
 const { registerChatMessage } = require('./lib/chat-rate-limit');
 const { GUESTBOOK_MESSAGE_MAX_LENGTH, normalizeGuestbookMessage } = require('./lib/guestbook');
 const { USER_SEARCH_RESULT_LIMIT, getUserSearchPatterns } = require('./lib/user-search');
@@ -355,7 +355,8 @@ async function startServer() {
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS interests VARCHAR(160)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS registration_ip_hash TEXT');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS total_online_ms BIGINT NOT NULL DEFAULT 0');
-    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS steam_name VARCHAR(64)');
+    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS steam_name VARCHAR(256)');
+    await pool.query('ALTER TABLE chat_users ALTER COLUMN steam_name TYPE VARCHAR(256)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS birth_date DATE');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS postal_code VARCHAR(4)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS region VARCHAR(32)');
@@ -948,6 +949,7 @@ async function startServer() {
                     discordName: profile.discord_name || '',
                     interests: profile.interests || '',
                     steamName: profile.steam_name || '',
+                    steamUrl: getSteamUrl(profile.steam_name) || '',
                     age: calculateAge(profile.birth_date),
                     residence: profile.region || '',
                     createdAt: profile.created_at,
