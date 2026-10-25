@@ -1,6 +1,6 @@
 # Rundt om bordet
 
-A real-time 6x6 canvas chat with registered accounts, persistent chat history, and shared presence across Render instances.
+A real-time canvas chat with a 72-cell diamond grid, registered accounts, persistent chat history, and shared presence across Render instances.
 
 ## Run locally
 

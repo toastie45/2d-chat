@@ -29,7 +29,11 @@ const { registerChatMessage } = require('./lib/chat-rate-limit');
 const { GUESTBOOK_MESSAGE_MAX_LENGTH, normalizeGuestbookMessage } = require('./lib/guestbook');
 const { USER_SEARCH_RESULT_LIMIT, getUserSearchPatterns } = require('./lib/user-search');
 
-const GRID_COUNT = 6;
+const GRID_MIN = -3;
+const GRID_MAX = 8;
+const GRID_CELL_SIZE = 100;
+const GRID_CANVAS_SIZE = 600;
+const GRID_EDGE_MARGIN = 20;
 const MESSAGE_DURATION = 10_000;
 const OFFLINE_PROFILE_PREFIX = 'user:';
 const HISTORY_LIMIT = 500;
@@ -44,8 +48,14 @@ const LOGIN_ATTEMPT_WINDOW_SECONDS = 15 * 60;
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 const GRID_CELLS = [];
 
-for (let row = 0; row < GRID_COUNT; row++) {
-    for (let col = 0; col < GRID_COUNT; col++) {
+for (let row = GRID_MIN; row <= GRID_MAX; row++) {
+    for (let col = GRID_MIN; col <= GRID_MAX; col++) {
+        const x = GRID_CANVAS_SIZE / 2 + GRID_EDGE_MARGIN + (col - row) * GRID_CELL_SIZE / 2;
+        const y = GRID_CELL_SIZE / 2 + GRID_EDGE_MARGIN + (col + row) * GRID_CELL_SIZE / 2;
+        if (
+            x < GRID_EDGE_MARGIN || x > GRID_CANVAS_SIZE - GRID_EDGE_MARGIN ||
+            y < GRID_EDGE_MARGIN || y > GRID_CANVAS_SIZE - GRID_EDGE_MARGIN
+        ) continue;
         GRID_CELLS.push({ col, row });
     }
 }
@@ -55,6 +65,7 @@ GRID_CELLS.sort((first, second) => {
     const secondDistance = Math.abs(second.col - 2.5) + Math.abs(second.row - 2.5);
     return firstDistance - secondDistance;
 });
+const GRID_CELL_KEYS = new Set(GRID_CELLS.map(({ col, row }) => `${col}:${row}`));
 
 const PLAYER_JOIN_SCRIPT = `
 local existing = redis.call('HGET', KEYS[1], ARGV[1])
@@ -70,7 +81,7 @@ end
 for index = 4, #ARGV do
     local cell = ARGV[index]
     if redis.call('HEXISTS', KEYS[2], cell) == 0 then
-        local col, row = string.match(cell, '^(%d+):(%d+)$')
+        local col, row = string.match(cell, '^([%-]?%d+):([%-]?%d+)$')
         local player = {
             id = ARGV[1],
             name = ARGV[2],
@@ -231,8 +242,8 @@ if count == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
 return count
 `;
 
-function isGridCoordinate(value) {
-    return Number.isInteger(value) && value >= 0 && value < GRID_COUNT;
+function isGridCoordinate(col, row) {
+    return Number.isInteger(col) && Number.isInteger(row) && GRID_CELL_KEYS.has(`${col}:${row}`);
 }
 
 function publicPlayer(player) {
@@ -1388,7 +1399,7 @@ async function startServer() {
         socket.on('move', async (position) => {
             if (!activeSocketIds.has(socket.id)) return;
             if (!position || typeof position !== 'object') return;
-            if (!isGridCoordinate(position.col) || !isGridCoordinate(position.row)) return;
+            if (!isGridCoordinate(position.col, position.row)) return;
 
             try {
                 const movedPlayerJson = await redis.eval(PLAYER_MOVE_SCRIPT, {
