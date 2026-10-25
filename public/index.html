@@ -734,10 +734,6 @@
         .whisper-dialog-header h2 { flex: 1; margin: 0; font-size: 14px; }
         .whisper-close { width: 30px; height: 30px; border: 1px solid #363831; border-radius: 5px; background: #20211d; color: #e4e3dc; cursor: pointer; }
         .whisper-note { margin: 0 0 10px; color: var(--muted); font-size: 10px; }
-        .whisper-thread { display: flex; min-height: 140px; max-height: 330px; flex-direction: column; gap: 7px; overflow-y: auto; padding: 8px; border: 1px solid #292b26; border-radius: 7px; background: #10110f; }
-        .whisper-message { max-width: 86%; align-self: flex-start; padding: 7px 9px; border-radius: 9px 9px 9px 2px; background: #252821; color: #f2f0e9; font-size: 11px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
-        .whisper-message.own { align-self: flex-end; border-radius: 9px 9px 2px 9px; background: #345346; }
-        .whisper-message time { display: block; margin-top: 4px; color: #aeb1a5; font-size: 8px; }
         .whisper-form { display: grid; grid-template-columns: 1fr auto; gap: 7px; margin-top: 9px; }
         .whisper-form textarea { min-height: 40px; max-height: 110px; resize: vertical; padding: 8px; border: 1px solid #363831; border-radius: 6px; background: #10110f; color: #f2f0e9; font: inherit; font-size: 11px; }
         .whisper-form button { align-self: end; min-height: 36px; padding: 0 11px; border: 1px solid #087e60; border-radius: 6px; background: #087e60; color: #fff; font-size: 10px; font-weight: 650; cursor: pointer; }
@@ -1061,7 +1057,6 @@
                 <button class="whisper-close" id="whisper-close" type="button" aria-label="Luk hvisken">×</button>
             </div>
             <p class="whisper-note">Kun du og den anden bruger kan se beskederne.</p>
-            <div class="whisper-thread" id="whisper-thread" role="log" aria-live="polite"></div>
             <form class="whisper-form" id="whisper-form">
                 <textarea id="whisper-input" maxlength="100" placeholder="Skriv en hvisken…" aria-label="Skriv en privat hvisken" required></textarea>
                 <button id="whisper-send" type="submit">Send</button>
@@ -1194,7 +1189,6 @@
             const whisperDialog = document.getElementById('whisper-dialog');
             const whisperDialogTitle = document.getElementById('whisper-dialog-title');
             const whisperClose = document.getElementById('whisper-close');
-            const whisperThread = document.getElementById('whisper-thread');
             const whisperForm = document.getElementById('whisper-form');
             const whisperInput = document.getElementById('whisper-input');
             const whisperSend = document.getElementById('whisper-send');
@@ -1222,7 +1216,7 @@
             let roomNoticeTimer = null;
             let contextPlayerId = null;
             let activeWhisperPlayerId = null;
-            const whisperConversations = new Map();
+            const whisperBubbles = new Map();
             let viewingProfilePlayerId = null;
             let viewingProfileUserId = null;
             let sessionKickMessage = '';
@@ -1575,51 +1569,31 @@
                 }
             }
 
-            function renderWhisperConversation(playerId) {
-                const conversation = whisperConversations.get(playerId);
-                whisperThread.replaceChildren();
-                if (!conversation) return;
-                for (const entry of conversation.messages) {
-                    const bubble = document.createElement('div');
-                    bubble.className = `whisper-message${entry.own ? ' own' : ''}`;
-                    bubble.append(document.createTextNode(entry.message));
-                    const time = document.createElement('time');
-                    time.textContent = new Intl.DateTimeFormat('da-DK', { hour: '2-digit', minute: '2-digit' }).format(new Date(entry.sentAt));
-                    bubble.append(time);
-                    whisperThread.append(bubble);
-                }
-                whisperThread.scrollTop = whisperThread.scrollHeight;
-            }
-
             function openWhisperDialog(playerId) {
                 const player = players[playerId];
-                const conversation = whisperConversations.get(playerId);
-                const playerName = player?.name || conversation?.playerName;
-                if (!playerName) return;
+                if (!player) return;
                 activeWhisperPlayerId = playerId;
-                whisperDialogTitle.textContent = `Hvisk med ${playerName}`;
+                whisperDialogTitle.textContent = `Hvisk med ${player.name}`;
                 whisperStatus.textContent = '';
-                renderWhisperConversation(playerId);
+                whisperSend.disabled = false;
                 if (!whisperDialog.open) whisperDialog.showModal();
                 whisperInput.focus({ preventScroll: true });
             }
 
             function receiveWhisper(entry) {
-                const conversation = whisperConversations.get(entry.playerId) || { playerName: entry.playerName, messages: [] };
-                conversation.playerName = entry.playerName || conversation.playerName;
-                conversation.messages.push({ message: entry.message, sentAt: entry.sentAt, own: Boolean(entry.own) });
-                if (conversation.messages.length > 100) conversation.messages.shift();
-                whisperConversations.set(entry.playerId, conversation);
-                whisperSend.disabled = false;
+                const speakerId = entry.own ? myId : entry.playerId;
+                if (typeof speakerId !== 'string') return;
+                whisperBubbles.set(speakerId, {
+                    message: entry.message,
+                    expiresAt: Number(entry.sentAt) + messageDuration
+                });
                 if (entry.own) {
                     if (activeWhisperPlayerId === entry.playerId) {
                         whisperInput.value = '';
-                        whisperStatus.textContent = '';
+                        whisperDialog.close();
                     }
-                } else if (activeWhisperPlayerId !== entry.playerId || !whisperDialog.open) {
-                    openWhisperDialog(entry.playerId);
                 }
-                if (activeWhisperPlayerId === entry.playerId) renderWhisperConversation(entry.playerId);
+                if (whisperDialog.open && activeWhisperPlayerId === entry.playerId) whisperSend.disabled = false;
             }
 
 
@@ -1772,7 +1746,7 @@
             function resetPendingAuthentication() {
                 currentUser = null;
                 if (whisperDialog.open) whisperDialog.close();
-                whisperConversations.clear();
+                whisperBubbles.clear();
                 activeWhisperPlayerId = null;
                 privateMailList.replaceChildren();
                 privateMailThread.replaceChildren();
@@ -2166,6 +2140,50 @@
                 for (const player of Object.values(players)) {
                     drawSpeechBubble(player, now);
                 }
+                for (const [playerId, whisper] of whisperBubbles) {
+                    const remaining = whisper.expiresAt - now;
+                    const speaker = players[playerId];
+                    if (remaining <= 0) {
+                        whisperBubbles.delete(playerId);
+                    } else if (speaker) {
+                        drawWhisperBubble(speaker, whisper, remaining);
+                    }
+                }
+            }
+
+            function drawWhisperBubble(player, whisper, remaining) {
+                const position = player.position || player.target || positionFor(player);
+                if (!position) return;
+                ctx.save();
+                if (remaining < 900) ctx.globalAlpha = Math.max(0, remaining / 900);
+                const lines = wrapText(whisper.message, 210);
+                ctx.font = '13px Inter, system-ui, sans-serif';
+                const bubbleWidth = Math.min(240, Math.max(62, ...lines.map((line) => ctx.measureText(line).width + 22)));
+                const bubbleHeight = lines.length * 18 + 20;
+                const bubbleX = Math.max(8, Math.min(canvas.width - bubbleWidth - 8, position.x - bubbleWidth / 2));
+                const bubbleY = Math.max(8, position.y - avatarRadius - bubbleHeight - 17);
+                roundedRect(ctx, bubbleX, bubbleY, bubbleWidth, bubbleHeight, 9);
+                ctx.fillStyle = '#c9cbc7';
+                ctx.fill();
+                ctx.strokeStyle = '#6b6e69';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                ctx.beginPath();
+                const tailX = Math.max(bubbleX + 13, Math.min(position.x, bubbleX + bubbleWidth - 13));
+                ctx.moveTo(tailX - 6, bubbleY + bubbleHeight - 1);
+                ctx.lineTo(tailX + 6, bubbleY + bubbleHeight - 1);
+                ctx.lineTo(tailX, bubbleY + bubbleHeight + 7);
+                ctx.closePath();
+                ctx.fill();
+                ctx.fillStyle = '#292b27';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                const lineHeight = 18;
+                const firstLineY = bubbleY + bubbleHeight / 2 - ((lines.length - 1) * lineHeight) / 2;
+                lines.forEach((line, index) => {
+                    ctx.fillText(line, bubbleX + bubbleWidth / 2, firstLineY + index * lineHeight, bubbleWidth - 16);
+                });
+                ctx.restore();
             }
 
             function drawSpeechBubble(player, now) {
