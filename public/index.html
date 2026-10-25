@@ -1747,9 +1747,7 @@
                 if (!isTyping && (!bubbleText || remaining <= 0)) return;
 
                 ctx.save();
-                if (isTyping) {
-                    ctx.globalAlpha = .68;
-                } else if (remaining < 900) {
+                if (!isTyping && remaining < 900) {
                     ctx.globalAlpha = Math.max(0, remaining / 900);
                 }
 
@@ -1758,29 +1756,19 @@
                 const bubbleWidth = Math.min(240, Math.max(62, ...lines.map((line) => ctx.measureText(line).width + 22)));
                 const bubbleHeight = lines.length * 18 + 20;
                 const bubbleX = Math.max(8, Math.min(canvas.width - bubbleWidth - 8, position.x - bubbleWidth / 2));
-                const bubbleAboveY = position.y - avatarRadius - bubbleHeight - 17;
-                const bubbleBelowAvatar = bubbleAboveY < 8;
-                const bubbleY = bubbleBelowAvatar
-                    ? position.y + avatarRadius + 17
-                    : bubbleAboveY;
+                const bubbleY = Math.max(8, position.y - avatarRadius - bubbleHeight - 17);
 
                 roundedRect(ctx, bubbleX, bubbleY, bubbleWidth, bubbleHeight, 9);
-                ctx.fillStyle = '#f2f0e9';
+                ctx.fillStyle = isTyping ? '#d6d3c9' : '#f2f0e9';
                 ctx.fill();
                 ctx.beginPath();
                 const tailX = Math.max(bubbleX + 13, Math.min(position.x, bubbleX + bubbleWidth - 13));
-                if (bubbleBelowAvatar) {
-                    ctx.moveTo(tailX - 6, bubbleY + 1);
-                    ctx.lineTo(tailX + 6, bubbleY + 1);
-                    ctx.lineTo(tailX, bubbleY - 7);
-                } else {
-                    ctx.moveTo(tailX - 6, bubbleY + bubbleHeight - 1);
-                    ctx.lineTo(tailX + 6, bubbleY + bubbleHeight - 1);
-                    ctx.lineTo(tailX, bubbleY + bubbleHeight + 7);
-                }
+                ctx.moveTo(tailX - 6, bubbleY + bubbleHeight - 1);
+                ctx.lineTo(tailX + 6, bubbleY + bubbleHeight - 1);
+                ctx.lineTo(tailX, bubbleY + bubbleHeight + 7);
                 ctx.closePath();
                 ctx.fill();
-                ctx.fillStyle = '#171815';
+                ctx.fillStyle = isTyping ? '#4a4b45' : '#171815';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 lines.forEach((line, index) => {
