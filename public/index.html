@@ -308,7 +308,7 @@
             gap: 9px;
             margin: 10px -15px -15px;
             padding: 9px 15px;
-            border: 1px solid #252525;
+            border: 1px solid #292b26;
             border-bottom: 0;
             border-radius: 0 0 15px 15px;
             background: #080909;
@@ -322,24 +322,24 @@
             align-items: center;
             justify-content: center;
             padding: 0;
-            border: 1px solid #bd1914;
+            border: 1px solid #4a5534;
             border-radius: 2px;
-            background: #970b08;
-            color: #fff;
+            background: #20231b;
+            color: #c1f078;
             cursor: pointer;
             transition: background .16s ease, border-color .16s ease, transform .16s ease;
         }
 
-        .toolbar-button:hover { border-color: #f24a3f; background: #bd120e; }
+        .toolbar-button:hover { border-color: #9fc65f; background: #2c3027; color: #d5f59c; }
         .toolbar-button:active { transform: translateY(1px); }
         .toolbar-button[aria-pressed="true"] {
-            border-color: #d83229;
-            background: #a90e0a;
+            border-color: #c1f078;
+            background: #303729;
             color: #fff;
         }
 
         .toolbar-button:focus-visible {
-            outline: 2px solid #ff8379;
+            outline: 2px solid #c1f078;
             outline-offset: 2px;
         }
 
@@ -442,10 +442,10 @@
         .profile-section-title {
             margin: 0 -17px 14px;
             padding: 8px 17px;
-            border-top: 1px solid #353943;
-            border-bottom: 1px solid #353943;
-            background: #282b32;
-            color: #f0f1f3;
+            border-top: 1px solid #292b26;
+            border-bottom: 1px solid #292b26;
+            background: #1b1d19;
+            color: #f2f0e9;
             font-size: 11px;
             font-weight: 700;
         }
@@ -475,9 +475,9 @@
             flex: 0 0 auto;
             min-height: 28px;
             padding: 0 8px;
-            border: 1px solid #454850;
+            border: 1px solid #393b33;
             border-radius: 5px;
-            background: #2a2c32;
+            background: #20211d;
             color: #d9d8d1;
             font: inherit;
             font-size: 10px;
@@ -497,10 +497,10 @@
             width: 100%;
             min-height: 34px;
             padding: 7px 9px;
-            border: 1px solid #3a3d44;
+            border: 1px solid #363831;
             border-radius: 5px;
             outline: none;
-            background: #202228;
+            background: #10110f;
             color: #f2f0e9;
             font-size: 11px;
             font-weight: 400;
@@ -512,14 +512,14 @@
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
             overflow: hidden;
-            border: 1px solid #363941;
+            border: 1px solid #292b26;
             border-radius: 7px;
-            background: #22242a;
+            background: #171815;
         }
-        .profile-fact { min-width: 0; padding: 10px 11px; border-bottom: 1px solid #383b42; }
-        .profile-fact:nth-child(odd) { border-right: 1px solid #383b42; }
-        .profile-fact dt { margin-bottom: 4px; color: #aeb2ba; font-size: 10px; font-weight: 650; }
-        .profile-fact dd { margin: 0; color: #f0f1f3; font-size: 11px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .profile-fact { min-width: 0; padding: 10px 11px; border-bottom: 1px solid #292b26; }
+        .profile-fact:nth-child(odd) { border-right: 1px solid #292b26; }
+        .profile-fact dt { margin-bottom: 4px; color: #96988f; font-size: 10px; font-weight: 650; }
+        .profile-fact dd { margin: 0; color: #f2f0e9; font-size: 11px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
         .profile-fact-wide { grid-column: 1 / -1; border-right: 0 !important; }
         .profile-actions { display: flex; gap: 7px; margin: -5px 0 12px; }
         .profile-action {
@@ -528,10 +528,10 @@
             height: 32px;
             place-items: center;
             padding: 0;
-            border: 1px solid #3a3d44;
+            border: 1px solid #363831;
             border-radius: 5px;
-            background: #202228;
-            color: #f0f1f3;
+            background: #10110f;
+            color: #f2f0e9;
             font-size: 17px;
             cursor: pointer;
         }
@@ -546,10 +546,10 @@
             min-height: 34px;
             margin: 0 0 12px;
             padding: 6px 9px;
-            border: 1px solid #3a3d44;
+            border: 1px solid #363831;
             border-radius: 5px;
-            background: #202228;
-            color: #f0f1f3;
+            background: #10110f;
+            color: #f2f0e9;
             font: inherit;
             font-size: 11px;
         }
@@ -557,20 +557,20 @@
         .guestbook-list { display: grid; gap: 9px; margin-bottom: 12px; }
         .guestbook-entry {
             padding: 10px;
-            border: 1px solid #363941;
+            border: 1px solid #292b26;
             border-radius: 6px;
-            background: #22242a;
+            background: #171815;
         }
         .guestbook-entry-header { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
-        .guestbook-author { min-width: 0; color: #f0f1f3; font-size: 10px; font-weight: 650; overflow-wrap: anywhere; }
-        .guestbook-date { margin-left: auto; color: #aeb2ba; font-size: 9px; white-space: nowrap; }
+        .guestbook-author { min-width: 0; color: #f2f0e9; font-size: 10px; font-weight: 650; overflow-wrap: anywhere; }
+        .guestbook-date { margin-left: auto; color: #96988f; font-size: 9px; white-space: nowrap; }
         .guestbook-message { margin: 0; color: #d9d8d1; font-size: 11px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
         .guestbook-delete {
             margin-left: 4px;
             padding: 2px 5px;
-            border: 1px solid #454850;
+            border: 1px solid #393b33;
             border-radius: 4px;
-            background: #2a2c32;
+            background: #20211d;
             color: #d9d8d1;
             font-size: 9px;
             cursor: pointer;
@@ -581,9 +581,9 @@
             width: 100%;
             min-height: 76px;
             padding: 8px 9px;
-            border: 1px solid #3a3d44;
+            border: 1px solid #363831;
             border-radius: 5px;
-            background: #202228;
+            background: #10110f;
             color: #f2f0e9;
             font: inherit;
             font-size: 11px;
@@ -602,7 +602,7 @@
             cursor: pointer;
         }
         .guestbook-form button:disabled { cursor: wait; opacity: .6; }
-        .profile-field input[readonly] { border-color: #3a3d44; background: #2b2e35; color: #c9ccd3; cursor: default; }
+        .profile-field input[readonly] { border-color: #363831; background: #1b1d19; color: #b7b7ae; cursor: default; }
         .profile-birthdate { margin: 0; padding: 0; border: 0; }
         .profile-birthdate legend { margin-bottom: 5px; padding: 0; }
         .profile-birthdate div { display: grid; grid-template-columns: 1.2fr 1fr 1.4fr; gap: 6px; }
@@ -610,30 +610,28 @@
             min-width: 0;
             min-height: 34px;
             padding: 0 6px;
-            border: 1px solid #3a3d44;
+            border: 1px solid #363831;
             border-radius: 5px;
-            background: #202228;
-            color: #f0f1f3;
+            background: #10110f;
+            color: #f2f0e9;
             font: inherit;
             font-size: 11px;
             font-weight: 400;
         }
         .profile-postal-town { min-height: 14px; color: var(--muted); font-weight: 400; }
         .profile-level-row { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; color: #d9d8d1; font-size: 10px; font-weight: 650; }
-        .profile-level-badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 38px;
-            height: 20px;
-            padding: 0 6px;
+        .profile-level-icon {
+            display: grid;
+            width: 34px;
+            height: 32px;
+            place-items: center;
             border: 1px solid #9fc65f;
-            border-radius: 10px;
+            border-radius: 7px;
             background: linear-gradient(#3a4a25, #26301a);
             color: #e6f8c4;
-            font-size: 9px;
+            font-size: 14px;
             font-weight: 800;
-            letter-spacing: .04em;
+            cursor: default;
         }
         .profile-facts-title {
             display: flex;
@@ -641,11 +639,11 @@
             justify-content: space-between;
             margin: 12px 0 0;
             padding: 7px 11px;
-            border: 1px solid #363941;
+            border: 1px solid #292b26;
             border-bottom: 0;
             border-radius: 7px 7px 0 0;
-            background: #31343c;
-            color: #f0f1f3;
+            background: #20231b;
+            color: #f2f0e9;
             font-size: 11px;
             font-weight: 700;
         }
@@ -653,10 +651,10 @@
         .profile-about {
             margin: 0;
             padding: 10px 11px;
-            border: 1px solid #363941;
+            border: 1px solid #292b26;
             border-radius: 0 0 7px 7px;
-            background: #22242a;
-            color: #f0f1f3;
+            background: #171815;
+            color: #f2f0e9;
             font-size: 11px;
             line-height: 1.5;
             white-space: pre-wrap;
@@ -884,7 +882,6 @@
                             <div class="profile-details" id="manage-profile-panel">
                                 <form class="profile-form" id="profile-form">
                                     <p class="profile-level-row">
-                                        <span class="profile-level-badge" title="Level 1">LVL 1</span>
                                         <span>Timer online: <span id="profile-online-duration">Henter…</span></span>
                                     </p>
                                     <div class="profile-facts">
@@ -907,10 +904,6 @@
                                         <label class="profile-field" for="profile-discord-name">
                                             Discord
                                             <input id="profile-discord-name" name="discordName" maxlength="64" autocomplete="off" placeholder="Discord">
-                                        </label>
-                                        <label class="profile-field" for="profile-facebook-name">
-                                            Facebook
-                                            <input id="profile-facebook-name" name="facebookName" maxlength="80" autocomplete="off" placeholder="Facebook navn">
                                         </label>
                                         <fieldset class="profile-field profile-birthdate">
                                             <legend>Fødselsdag</legend>
@@ -943,6 +936,7 @@
                             <h2 class="side-title" id="profile-view-title">Profil</h2>
                             <p class="profile-section-title" id="profile-view-name">Henter profil…</p>
                             <div class="profile-actions" aria-label="Profilhandlinger">
+                                <span class="profile-level-icon" id="view-profile-level" title="Level 1" aria-label="Level 1">1</span>
                                 <button class="profile-action" id="profile-friend-button" type="button" aria-label="Tilføj til venneliste" title="Tilføj til venneliste" aria-pressed="false">🫂</button>
                                 <button class="profile-action" id="profile-enemy-button" type="button" aria-label="Tilføj til fjendeliste" title="Tilføj til fjendeliste" aria-pressed="false">⚔️</button>
                             </div>
@@ -953,7 +947,7 @@
                                 <option value="guestbook">Gæstebog</option>
                             </select>
                             <div class="profile-info-page" id="profile-info-page">
-                                <p class="profile-facts-title"><span>Facts:</span><span class="profile-level-badge" id="view-profile-room" title="Level 1">LVL 1</span></p>
+                                <p class="profile-facts-title"><span>Facts:</span></p>
                                 <dl class="profile-facts-view">
                                     <div class="profile-fact"><dt>Alias:</dt><dd id="view-profile-real-name"></dd></div>
                                     <div class="profile-fact"><dt>Lejlighed:</dt><dd id="view-profile-apartment">Ingen endnu</dd></div>
@@ -962,10 +956,9 @@
                                     <div class="profile-fact"><dt>Første login:</dt><dd id="view-profile-created-at"></dd></div>
                                     <div class="profile-fact"><dt>Sidste login:</dt><dd id="view-profile-last-login"></dd></div>
                                     <div class="profile-fact"><dt>Discord:</dt><dd id="view-profile-discord"></dd></div>
-                                    <div class="profile-fact"><dt>Facebook:</dt><dd id="view-profile-facebook"></dd></div>
                                     <div class="profile-fact"><dt>Steam:</dt><dd id="view-profile-steam"></dd></div>
                                     <div class="profile-fact"><dt>Bopæl:</dt><dd id="view-profile-residence"></dd></div>
-                                    <div class="profile-fact profile-fact-wide"><dt>Interesser:</dt><dd id="view-profile-interests"></dd></div>
+                                    <div class="profile-fact"><dt>Interesser:</dt><dd id="view-profile-interests"></dd></div>
                                 </dl>
                                 <p class="profile-facts-title" id="view-profile-text-title">Derudover vil brugeren gerne fortælle:</p>
                                 <p class="profile-about" id="view-profile-text"></p>
@@ -1072,7 +1065,6 @@
             const profileCreatedAt = document.getElementById('profile-created-at');
             const profileLastLogin = document.getElementById('profile-last-login');
             const profileSteamName = document.getElementById('profile-steam-name');
-            const profileFacebookName = document.getElementById('profile-facebook-name');
             const profileBirthDay = document.getElementById('profile-birth-day');
             const profileBirthMonth = document.getElementById('profile-birth-month');
             const profileBirthYear = document.getElementById('profile-birth-year');
@@ -1089,7 +1081,6 @@
             const viewProfileTextTitle = document.getElementById('view-profile-text-title');
             const viewProfileAge = document.getElementById('view-profile-age');
             const viewProfileLastLogin = document.getElementById('view-profile-last-login');
-            const viewProfileFacebook = document.getElementById('view-profile-facebook');
             const viewProfileSteam = document.getElementById('view-profile-steam');
             const viewProfileResidence = document.getElementById('view-profile-residence');
             const profileFriendButton = document.getElementById('profile-friend-button');
@@ -1191,7 +1182,6 @@
                 profileRealName.value = result.realName;
                 profileSteamName.value = result.steamName;
                 profileDiscordName.value = result.discordName;
-                profileFacebookName.value = result.facebookName;
                 profileInterests.value = result.interests;
                 profileText.value = result.profileText;
                 profilePostalCode.value = result.postalCode;
@@ -1536,7 +1526,6 @@
                 viewProfileCreatedAt.textContent = '';
                 viewProfileLastLogin.textContent = '';
                 viewProfileAge.textContent = '';
-                viewProfileFacebook.textContent = '';
                 viewProfileSteam.textContent = '';
                 viewProfileResidence.textContent = '';
                 viewProfileTextTitle.textContent = 'Derudover vil brugeren gerne fortælle:';
@@ -2090,7 +2079,6 @@
                             discordName: profileDiscordName.value,
                             interests: profileInterests.value,
                             steamName: profileSteamName.value,
-                            facebookName: profileFacebookName.value,
                             birthDate: getProfileBirthDate(),
                             postalCode
                         })
@@ -2367,7 +2355,6 @@
                 viewProfileRealName.textContent = profile.realName || 'Ikke angivet.';
                 viewProfileAge.textContent = Number.isInteger(profile.age) ? `${profile.age} år` : 'Ikke angivet.';
                 viewProfileDiscord.textContent = profile.discordName || 'Ikke angivet.';
-                viewProfileFacebook.textContent = profile.facebookName || 'Ikke angivet.';
                 viewProfileSteam.textContent = profile.steamName || 'Ikke angivet.';
                 viewProfileResidence.textContent = profile.residence || 'Ikke angivet.';
                 viewProfileCreatedAt.textContent = formatProfileDateTime(profile.createdAt);

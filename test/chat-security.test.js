@@ -60,7 +60,7 @@ test('validates and normalizes account usernames', () => {
 
 const EMPTY_PROFILE = {
     realName: '', profileText: '', discordName: '', interests: '',
-    steamName: '', facebookName: '', birthDate: '', postalCode: ''
+    steamName: '', birthDate: '', postalCode: ''
 };
 
 test('normalizes optional public profile fields and enforces safe limits', () => {
@@ -70,7 +70,6 @@ test('normalizes optional public profile fields and enforces safe limits', () =>
         discordName: '  ada#1234 ',
         interests: '  programmering, bøger  ',
         steamName: ' ada_steam ',
-        facebookName: ' Ada L ',
         birthDate: '2006-07-08',
         postalCode: ' 7560 '
     }), {
@@ -79,7 +78,6 @@ test('normalizes optional public profile fields and enforces safe limits', () =>
         discordName: 'ada#1234',
         interests: 'programmering, bøger',
         steamName: 'ada_steam',
-        facebookName: 'Ada L',
         birthDate: '2006-07-08',
         postalCode: '7560'
     });
@@ -89,7 +87,6 @@ test('normalizes optional public profile fields and enforces safe limits', () =>
     assert.equal(normalizePublicProfile({ ...EMPTY_PROFILE, discordName: 'd'.repeat(65) }), null);
     assert.equal(normalizePublicProfile({ ...EMPTY_PROFILE, interests: 'i'.repeat(161) }), null);
     assert.equal(normalizePublicProfile({ ...EMPTY_PROFILE, steamName: 's'.repeat(65) }), null);
-    assert.equal(normalizePublicProfile({ ...EMPTY_PROFILE, facebookName: 'f'.repeat(81) }), null);
     assert.equal(normalizePublicProfile({ ...EMPTY_PROFILE, realName: 'Ada\u0000' }), null);
     assert.equal(normalizePublicProfile({ ...EMPTY_PROFILE, birthDate: '2006-02-30' }), null);
     assert.equal(normalizePublicProfile({ ...EMPTY_PROFILE, birthDate: '1899-12-31' }), null);

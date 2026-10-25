@@ -356,7 +356,6 @@ async function startServer() {
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS registration_ip_hash TEXT');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS total_online_ms BIGINT NOT NULL DEFAULT 0');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS steam_name VARCHAR(64)');
-    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS facebook_name VARCHAR(80)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS birth_date DATE');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS postal_code VARCHAR(4)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ');
@@ -529,7 +528,7 @@ async function startServer() {
         response.json({ user: request.session.user });
     });
 
-    const OWN_PROFILE_COLUMNS = 'real_name, profile_text, discord_name, interests, steam_name, facebook_name, birth_date::text AS birth_date, postal_code';
+    const OWN_PROFILE_COLUMNS = 'real_name, profile_text, discord_name, interests, steam_name, birth_date::text AS birth_date, postal_code';
 
     function serializeOwnProfile(row) {
         return {
@@ -538,7 +537,6 @@ async function startServer() {
             discordName: row.discord_name || '',
             interests: row.interests || '',
             steamName: row.steam_name || '',
-            facebookName: row.facebook_name || '',
             birthDate: row.birth_date || '',
             postalCode: row.postal_code || '',
             postalTown: getPostalTown(row.postal_code) || ''
@@ -589,8 +587,8 @@ async function startServer() {
             const result = await pool.query(
                 `UPDATE chat_users
                  SET real_name = $1, profile_text = $2, discord_name = $3, interests = $4,
-                     steam_name = $5, facebook_name = $6, birth_date = $7, postal_code = $8
-                 WHERE id = $9
+                     steam_name = $5, birth_date = $6, postal_code = $7
+                 WHERE id = $8
                  RETURNING ${OWN_PROFILE_COLUMNS}`,
                 [
                     profile.realName || null,
@@ -598,7 +596,6 @@ async function startServer() {
                     profile.discordName || null,
                     profile.interests || null,
                     profile.steamName || null,
-                    profile.facebookName || null,
                     profile.birthDate || null,
                     profile.postalCode || null,
                     request.session.user.id
@@ -895,7 +892,7 @@ async function startServer() {
         const accountMatch = /^user:([1-9]\d{0,18})$/.exec(playerId);
         if (accountMatch) {
             const { rows: [profile] } = await pool.query(
-                'SELECT id, username, real_name, profile_text, discord_name, interests, steam_name, facebook_name, birth_date::text AS birth_date, postal_code, created_at, last_login_at FROM chat_users WHERE id = $1',
+                'SELECT id, username, real_name, profile_text, discord_name, interests, steam_name, birth_date::text AS birth_date, postal_code, created_at, last_login_at FROM chat_users WHERE id = $1',
                 [accountMatch[1]]
             );
             return profile ? { player: null, profile } : null;
@@ -906,7 +903,7 @@ async function startServer() {
         const account = normalizeUsername(player.name);
         if (!account) return null;
         const { rows: [profile] } = await pool.query(
-            'SELECT id, username, real_name, profile_text, discord_name, interests, steam_name, facebook_name, birth_date::text AS birth_date, postal_code, created_at, last_login_at FROM chat_users WHERE username_normalized = $1',
+            'SELECT id, username, real_name, profile_text, discord_name, interests, steam_name, birth_date::text AS birth_date, postal_code, created_at, last_login_at FROM chat_users WHERE username_normalized = $1',
             [account.normalized]
         );
         return profile ? { player, profile } : null;
@@ -946,7 +943,6 @@ async function startServer() {
                     discordName: profile.discord_name || '',
                     interests: profile.interests || '',
                     steamName: profile.steam_name || '',
-                    facebookName: profile.facebook_name || '',
                     age: calculateAge(profile.birth_date),
                     residence: getPostalTown(profile.postal_code) || '',
                     createdAt: profile.created_at,
