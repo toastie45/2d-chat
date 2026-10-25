@@ -1472,7 +1472,7 @@
             }
 
             function renderUserSearchResults() {
-                const query = userSearchInput.value.trim().toLocaleLowerCase('da');
+                const query = userSearchInput.value.normalize('NFKC').trim().toLocaleLowerCase('da');
                 const matches = Object.values(players)
                     .filter((player) => player.name.toLocaleLowerCase('da').includes(query))
                     .sort((first, second) => first.name.localeCompare(second.name, 'da'));
@@ -1822,6 +1822,11 @@
             profileNavButton.addEventListener('click', openProfileEditor);
             searchNavButton.addEventListener('click', openUserSearch);
             userSearchInput.addEventListener('input', renderUserSearchResults);
+            userSearchInput.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter') return;
+                event.preventDefault();
+                userSearchResults.querySelector('.user-search-result')?.click();
+            });
             friendMenuTrigger.addEventListener('click', () => {
                 setFriendMenuOpen(friendMenu.hidden);
             });
@@ -1917,6 +1922,7 @@
                     resetPendingAuthentication();
                     setRoomNotice('');
                     updateDraftText('');
+                    userSearchInput.value = '';
                 } catch (error) {
                     setRoomNotice(error.message || 'Kunne ikke logge ud. Prøv igen.');
                 } finally {
@@ -2079,7 +2085,9 @@
                 resetPendingAuthentication();
                 players = {};
                 myId = null;
+                userSearchInput.value = '';
                 updateOnlineList();
+                selectSidePanel('members');
                 gameSection.classList.add('hidden');
                 loginSection.classList.remove('hidden');
                 loginError.textContent = `${sessionKickMessage} Log ind igen med din adgangskode for at gå ind i rummet.`;
