@@ -592,28 +592,34 @@
             cursor: pointer;
         }
         .guestbook-form button:disabled { cursor: wait; opacity: .6; }
-        .private-mail-controls { display: flex; gap: 7px; margin-bottom: 12px; }
-        .private-mail-controls select, .private-mail-controls button, .private-mail-form input, .private-mail-form textarea, .private-mail-form button {
+        .private-mail-form input, .private-mail-form textarea, .private-mail-form button, .private-mail-new-form input, .private-mail-new-form button {
             min-height: 32px; padding: 6px 8px; border: 1px solid #363831; border-radius: 5px;
             background: #10110f; color: #f2f0e9; font: inherit; font-size: 11px;
         }
-        .private-mail-controls select { flex: 1; }
-        .private-mail-controls button, .private-mail-form button { background: #25291f; cursor: pointer; }
+        .private-mail-new-button, .private-mail-new-form button { min-height: 32px; padding: 0 11px; border: 1px solid #829e52; border-radius: 5px; background: #25291f; color: #f2f0e9; font-size: 10px; cursor: pointer; }
+        .private-mail-new-form { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 7px; margin: 10px 0; }
+        .private-mail-new-form[hidden], #private-mail-thread-view[hidden] { display: none; }
+        .private-mail-new-form label, .private-mail-form label { display: grid; gap: 4px; color: var(--muted); font-size: 10px; }
         .private-mail-form { display: grid; gap: 8px; margin-bottom: 14px; }
-        .private-mail-form[hidden] { display: none; }
-        .private-mail-form label { display: grid; gap: 4px; color: var(--muted); font-size: 10px; }
-        .private-mail-form input, .private-mail-form textarea { width: 100%; }
-        .private-mail-form textarea { min-height: 95px; resize: vertical; white-space: pre-wrap; }
+        .private-mail-form textarea { width: 100%; min-height: 56px; resize: vertical; white-space: pre-wrap; }
         .private-mail-form button { justify-self: start; padding: 0 12px; background: #087e60; border-color: #087e60; }
-        .private-mail-list { display: grid; max-height: 350px; gap: 8px; overflow-y: auto; }
-        .private-mail-entry { padding: 9px; border: 1px solid #292b26; border-radius: 6px; background: #171815; }
-        .private-mail-entry summary { cursor: pointer; color: #f2f0e9; font-size: 11px; }
-        .private-mail-entry.unread { border-color: #647d3b; }
-        .private-mail-meta { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 7px; color: var(--muted); font-size: 9px; }
-        .private-mail-body { margin: 8px 0 0; color: #d9d8d1; font-size: 11px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
-        .private-mail-actions { display: flex; gap: 7px; margin-top: 9px; }
-        .private-mail-actions button { padding: 4px 8px; border: 1px solid #363831; border-radius: 4px; background: #20211d; color: #d9d8d1; font: inherit; font-size: 10px; cursor: pointer; }
-        .private-mail-actions button:hover { border-color: #829e52; }
+        .private-mail-list { display: grid; max-height: 400px; gap: 7px; overflow-y: auto; }
+        .private-mail-conversation { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: stretch; gap: 5px; padding: 8px; border: 1px solid #292b26; border-radius: 6px; background: #171815; }
+        .private-mail-conversation.unread { border-color: #829e52; }
+        .private-mail-conversation-open, .private-mail-conversation-delete { border: 0; background: transparent; color: #f2f0e9; cursor: pointer; }
+        .private-mail-conversation-open { min-width: 0; text-align: left; }
+        .private-mail-conversation-name { display: block; margin-bottom: 4px; font-size: 11px; font-weight: 650; }
+        .private-mail-conversation-preview { display: block; overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+        .private-mail-conversation-meta { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 9px; }
+        .private-mail-unread-count { min-width: 17px; padding: 2px 5px; border-radius: 10px; background: #829e52; color: #10110f; text-align: center; }
+        .private-mail-conversation-delete { color: #b8b8ad; font-size: 10px; }
+        .private-mail-thread-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+        .private-mail-thread-header strong { flex: 1; color: #f2f0e9; font-size: 11px; }
+        .private-mail-thread-header button { padding: 5px 7px; border: 1px solid #363831; border-radius: 5px; background: #20211d; color: #d9d8d1; font-size: 9px; cursor: pointer; }
+        .private-mail-thread { display: flex; max-height: 330px; min-height: 100px; flex-direction: column; gap: 7px; overflow-y: auto; padding: 4px 2px 10px; }
+        .private-mail-message { max-width: 85%; align-self: flex-start; padding: 8px 10px; border-radius: 10px 10px 10px 2px; background: #242720; color: #f2f0e9; font-size: 11px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .private-mail-message.own { align-self: flex-end; border-radius: 10px 10px 2px 10px; background: #345346; }
+        .private-mail-message time { display: block; margin-top: 4px; color: #aaa; font-size: 8px; }
         .private-mail-status, .private-mail-empty { margin: 0 0 9px; color: var(--muted); font-size: 10px; line-height: 1.5; }
         .profile-field input[readonly] { border-color: #363831; background: #1b1d19; color: #b7b7ae; cursor: default; }
         .profile-birthdate { margin: 0; padding: 0; border: 0; }
@@ -881,28 +887,34 @@
                         </section>
                         <section class="side-panel" id="private-mail-panel" aria-labelledby="private-mail-title" hidden>
                             <h2 class="side-title" id="private-mail-title">Privat mail</h2>
-                            <div class="private-mail-controls">
-                                <select id="private-mail-folder" aria-label="Postkasse">
-                                    <option value="inbox">Indbakke</option>
-                                    <option value="sent">Sendt</option>
-                                </select>
-                                <button id="private-mail-compose-open" type="button">Ny mail</button>
-                            </div>
-                            <form class="private-mail-form" id="private-mail-form" hidden>
-                                <label for="private-mail-to">Til brugernavn
-                                    <input id="private-mail-to" maxlength="18" autocomplete="off" required>
-                                </label>
-                                <label for="private-mail-subject">Emne
-                                    <input id="private-mail-subject" maxlength="100" required>
-                                </label>
-                                <label for="private-mail-message">Besked
-                                    <textarea id="private-mail-message" maxlength="2000" required></textarea>
-                                </label>
-                                <button id="private-mail-send" type="submit">Send mail</button>
-                            </form>
                             <p class="private-mail-status" id="private-mail-status" aria-live="polite"></p>
-                            <div class="private-mail-list" id="private-mail-list" role="list"></div>
-                            <p class="private-mail-empty" id="private-mail-empty">Postkassen er tom.</p>
+                            <div id="private-mail-inbox-view">
+                                <button class="private-mail-new-button" id="private-mail-compose-open" type="button">Ny samtale</button>
+                                <form class="private-mail-new-form" id="private-mail-new-form" hidden>
+                                    <label for="private-mail-to">Start samtale med
+                                        <input id="private-mail-to" maxlength="18" autocomplete="off" required>
+                                    </label>
+                                    <button type="submit">Åbn samtale</button>
+                                </form>
+                                <div class="private-mail-list" id="private-mail-list" role="list"></div>
+                                <p class="private-mail-empty" id="private-mail-empty">Din indbakke er tom.</p>
+                            </div>
+                            <div id="private-mail-thread-view" hidden>
+                                <div class="private-mail-thread-header">
+                                    <button id="private-mail-back" type="button">← Indbakke</button>
+                                    <strong id="private-mail-thread-title"></strong>
+                                    <button id="private-mail-delete" type="button">Slet samtale</button>
+                                </div>
+                                <div class="private-mail-thread" id="private-mail-thread" role="log" aria-live="polite">
+                                    <p class="private-mail-empty" id="private-mail-thread-empty">Start samtalen med en besked.</p>
+                                </div>
+                                <form class="private-mail-form" id="private-mail-form">
+                                    <label for="private-mail-message">Skriv en besked
+                                        <textarea id="private-mail-message" maxlength="2000" required></textarea>
+                                    </label>
+                                    <button id="private-mail-send" type="submit">Send</button>
+                                </form>
+                            </div>
                         </section>
                         <section class="side-panel chat-section" id="chat-panel" aria-labelledby="chat-title">
                             <h2 class="side-title" id="chat-title">Velkommen i Fællesrum</h2>
@@ -1063,16 +1075,23 @@
             const mailUnreadBadge = document.getElementById('mail-unread-badge');
             const searchPanel = document.getElementById('search-panel');
             const privateMailPanel = document.getElementById('private-mail-panel');
-            const privateMailFolder = document.getElementById('private-mail-folder');
+            const privateMailInboxView = document.getElementById('private-mail-inbox-view');
+            const privateMailThreadView = document.getElementById('private-mail-thread-view');
             const privateMailComposeOpen = document.getElementById('private-mail-compose-open');
+            const privateMailNewForm = document.getElementById('private-mail-new-form');
             const privateMailForm = document.getElementById('private-mail-form');
             const privateMailTo = document.getElementById('private-mail-to');
-            const privateMailSubject = document.getElementById('private-mail-subject');
             const privateMailMessage = document.getElementById('private-mail-message');
             const privateMailSend = document.getElementById('private-mail-send');
+            const privateMailBack = document.getElementById('private-mail-back');
+            const privateMailDelete = document.getElementById('private-mail-delete');
+            const privateMailThreadTitle = document.getElementById('private-mail-thread-title');
+            const privateMailThread = document.getElementById('private-mail-thread');
+            const privateMailThreadEmpty = document.getElementById('private-mail-thread-empty');
             const privateMailStatus = document.getElementById('private-mail-status');
             const privateMailList = document.getElementById('private-mail-list');
             const privateMailEmpty = document.getElementById('private-mail-empty');
+            let activePrivateMailUsername = '';
             let viewingProfileMailUsername = '';
             const userSearchInput = document.getElementById('user-search-input');
             const userSearchMatch = document.getElementById('user-search-match');
@@ -1354,73 +1373,100 @@
 
             function requestPrivateMail() {
                 if (!socket.connected) return;
-                privateMailEmpty.textContent = 'Henter post…';
+                privateMailEmpty.textContent = 'Henter indbakke…';
                 privateMailEmpty.classList.remove('hidden');
-                socket.emit('private-mail-request', { folder: privateMailFolder.value });
+                socket.emit('private-mail-request');
             }
 
-            function openPrivateMail(recipientName = '', subject = '') {
+            function requestPrivateConversation() {
+                if (!socket.connected || !activePrivateMailUsername) return;
+                privateMailThread.replaceChildren();
+                socket.emit('private-mail-conversation-request', { username: activePrivateMailUsername });
+            }
+
+            function openPrivateMail(recipientName = '') {
                 selectSidePanel('private-mail');
                 privateMailStatus.textContent = '';
-                privateMailForm.hidden = !recipientName;
-                if (recipientName) {
-                    privateMailFolder.value = 'inbox';
-                    privateMailTo.value = recipientName;
-                    privateMailSubject.value = subject;
-                    privateMailMessage.value = '';
-                    privateMailSubject.focus({ preventScroll: true });
-                }
+                privateMailInboxView.hidden = false;
+                privateMailThreadView.hidden = true;
+                activePrivateMailUsername = '';
                 requestPrivateMail();
+                if (recipientName) openPrivateConversation(recipientName);
             }
 
-            function renderPrivateMail(messages, folder) {
+            function openPrivateConversation(username) {
+                activePrivateMailUsername = username.trim();
+                if (!activePrivateMailUsername) return;
+                privateMailInboxView.hidden = true;
+                privateMailThreadView.hidden = false;
+                privateMailForm.hidden = false;
+                privateMailThreadTitle.textContent = activePrivateMailUsername;
+                privateMailStatus.textContent = '';
+                privateMailMessage.value = '';
+                requestPrivateConversation();
+                privateMailMessage.focus({ preventScroll: true });
+            }
+
+            function renderPrivateMail(conversations) {
                 privateMailList.replaceChildren();
-                privateMailEmpty.textContent = folder === 'sent' ? 'Du har ikke sendt nogen mails endnu.' : 'Indbakken er tom.';
-                privateMailEmpty.classList.toggle('hidden', messages.length > 0);
-                for (const mail of messages) {
-                    const entry = document.createElement('details');
-                    entry.className = `private-mail-entry${!mail.read && folder === 'inbox' ? ' unread' : ''}`;
-                    entry.dataset.messageId = mail.id;
-                    const summary = document.createElement('summary');
-                    summary.textContent = `${folder === 'sent' ? `Til ${mail.recipientName}` : `Fra ${mail.senderName}`} · ${mail.subject}`;
-                    const meta = document.createElement('div');
-                    meta.className = 'private-mail-meta';
-                    meta.textContent = formatProfileDateTime(mail.createdAt);
-                    const body = document.createElement('p');
-                    body.className = 'private-mail-body';
-                    body.textContent = mail.message;
-                    const actions = document.createElement('div');
-                    actions.className = 'private-mail-actions';
-                    if (folder === 'inbox') {
-                        const reply = document.createElement('button');
-                        reply.type = 'button';
-                        reply.textContent = 'Svar';
-                        reply.addEventListener('click', () => {
-                            const subject = /^re:\s*/i.test(mail.subject) ? mail.subject : `Re: ${mail.subject}`;
-                            openPrivateMail(mail.senderName, subject.slice(0, 100));
-                        });
-                        actions.append(reply);
+                privateMailEmpty.textContent = 'Din indbakke er tom.';
+                privateMailEmpty.classList.toggle('hidden', conversations.length > 0);
+                for (const conversation of conversations) {
+                    const entry = document.createElement('div');
+                    entry.className = `private-mail-conversation${conversation.unreadCount ? ' unread' : ''}`;
+                    entry.setAttribute('role', 'listitem');
+                    const open = document.createElement('button');
+                    open.className = 'private-mail-conversation-open';
+                    open.type = 'button';
+                    const name = document.createElement('span');
+                    name.className = 'private-mail-conversation-name';
+                    name.textContent = conversation.username;
+                    const preview = document.createElement('span');
+                    preview.className = 'private-mail-conversation-preview';
+                    preview.textContent = conversation.preview;
+                    open.append(name, preview);
+                    open.addEventListener('click', () => openPrivateConversation(conversation.username));
+                    const side = document.createElement('div');
+                    side.className = 'private-mail-conversation-meta';
+                    if (conversation.unreadCount) {
+                        const unread = document.createElement('span');
+                        unread.className = 'private-mail-unread-count';
+                        unread.textContent = conversation.unreadCount > 9 ? '9+' : String(conversation.unreadCount);
+                        side.append(unread);
                     }
+                    const date = document.createElement('time');
+                    date.textContent = formatProfileDateTime(conversation.updatedAt);
+                    side.append(date);
                     const remove = document.createElement('button');
+                    remove.className = 'private-mail-conversation-delete';
                     remove.type = 'button';
                     remove.textContent = 'Slet';
-                    remove.title = 'Slet mailen fra din postkasse';
+                    remove.title = 'Slet samtalen fra din indbakke';
                     remove.addEventListener('click', () => {
                         remove.disabled = true;
-                        socket.emit('private-mail-delete', { messageId: mail.id, folder });
+                        socket.emit('private-mail-delete', { username: conversation.username });
                     });
-                    actions.append(remove);
-                    entry.append(summary, meta, body, actions);
-                    if (folder === 'inbox' && !mail.read) {
-                        entry.addEventListener('toggle', () => {
-                            if (entry.open && entry.classList.contains('unread')) {
-                                entry.classList.remove('unread');
-                                socket.emit('private-mail-read', { messageId: mail.id });
-                            }
-                        });
-                    }
+                    entry.append(open, side, remove);
                     privateMailList.append(entry);
                 }
+            }
+
+            function renderPrivateConversation(messages) {
+                privateMailThread.replaceChildren();
+                if (!messages.length) {
+                    privateMailThread.append(privateMailThreadEmpty);
+                    return;
+                }
+                for (const message of messages) {
+                    const bubble = document.createElement('div');
+                    bubble.className = `private-mail-message${message.own ? ' own' : ''}`;
+                    bubble.textContent = message.message;
+                    const time = document.createElement('time');
+                    time.textContent = formatProfileDateTime(message.createdAt);
+                    bubble.append(time);
+                    privateMailThread.append(bubble);
+                }
+                privateMailThread.scrollTop = privateMailThread.scrollHeight;
             }
 
             function closeAvatarContextMenu() {
@@ -1615,8 +1661,13 @@
             function resetPendingAuthentication() {
                 currentUser = null;
                 privateMailList.replaceChildren();
+                privateMailThread.replaceChildren();
+                activePrivateMailUsername = '';
+                privateMailInboxView.hidden = false;
+                privateMailThreadView.hidden = true;
+                privateMailNewForm.reset();
+                privateMailNewForm.hidden = true;
                 privateMailForm.reset();
-                privateMailForm.hidden = true;
                 privateMailStatus.textContent = '';
                 updateMailUnreadBadge(0);
                 profileManagement = { relations: [] };
@@ -2135,17 +2186,38 @@
             searchNavButton.addEventListener('click', openUserSearch);
             privateMailNavButton.addEventListener('click', () => openPrivateMail());
             privateMailComposeOpen.addEventListener('click', () => {
-                privateMailForm.hidden = !privateMailForm.hidden;
-                if (!privateMailForm.hidden) privateMailTo.focus({ preventScroll: true });
+                privateMailNewForm.hidden = !privateMailNewForm.hidden;
+                if (!privateMailNewForm.hidden) privateMailTo.focus({ preventScroll: true });
             });
-            privateMailFolder.addEventListener('change', requestPrivateMail);
+            privateMailNewForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                const username = privateMailTo.value.trim();
+                if (!username) {
+                    privateMailStatus.textContent = 'Skriv et brugernavn.';
+                    return;
+                }
+                privateMailNewForm.reset();
+                privateMailNewForm.hidden = true;
+                openPrivateConversation(username);
+            });
+            privateMailBack.addEventListener('click', () => {
+                activePrivateMailUsername = '';
+                privateMailThreadView.hidden = true;
+                privateMailInboxView.hidden = false;
+                privateMailStatus.textContent = '';
+                requestPrivateMail();
+            });
+            privateMailDelete.addEventListener('click', () => {
+                if (activePrivateMailUsername) socket.emit('private-mail-delete', { username: activePrivateMailUsername });
+            });
             privateMailForm.addEventListener('submit', (event) => {
                 event.preventDefault();
+                if (!activePrivateMailUsername || !privateMailMessage.value.trim()) return;
                 privateMailSend.disabled = true;
                 privateMailStatus.textContent = 'Sender…';
                 socket.emit('private-mail-send', {
-                    to: privateMailTo.value,
-                    subject: privateMailSubject.value,
+                    to: activePrivateMailUsername,
+                    subject: 'Chat',
                     message: privateMailMessage.value
                 });
             });
@@ -2485,33 +2557,48 @@
                 };
                 renderUserSearchResults();
             });
-            socket.on('private-mail-data', ({ folder, unreadCount, messages } = {}) => {
+            socket.on('private-mail-data', ({ unreadCount, conversations } = {}) => {
                 updateMailUnreadBadge(unreadCount);
-                if (folder !== privateMailFolder.value) return;
-                renderPrivateMail(Array.isArray(messages) ? messages : [], folder);
+                renderPrivateMail(Array.isArray(conversations) ? conversations : []);
             });
             socket.on('private-mail-unread-count', ({ count } = {}) => updateMailUnreadBadge(count));
-            socket.on('private-mail-delete-result', ({ folder, deleted } = {}) => {
-                if (folder !== privateMailFolder.value) return;
-                if (!deleted) privateMailStatus.textContent = 'Mailen er allerede slettet.';
-                else privateMailStatus.textContent = 'Mailen er slettet fra din postkasse.';
+            socket.on('private-mail-conversation-data', ({ username, messages } = {}) => {
+                if (!username || username.toLocaleLowerCase('en-US') !== activePrivateMailUsername.toLocaleLowerCase('en-US')) return;
+                activePrivateMailUsername = username;
+                privateMailThreadTitle.textContent = username;
+                renderPrivateConversation(Array.isArray(messages) ? messages : []);
+            });
+            socket.on('private-mail-delete-result', ({ username } = {}) => {
+                if (username && username.toLocaleLowerCase('en-US') === activePrivateMailUsername.toLocaleLowerCase('en-US')) {
+                    activePrivateMailUsername = '';
+                    privateMailThreadView.hidden = true;
+                    privateMailInboxView.hidden = false;
+                    privateMailStatus.textContent = 'Samtalen er slettet fra din indbakke.';
+                }
                 requestPrivateMail();
             });
             socket.on('private-mail-notification', () => {
                 socket.emit('private-mail-unread-request');
-                if (!privateMailPanel.hidden) requestPrivateMail();
+                if (!privateMailPanel.hidden) {
+                    requestPrivateMail();
+                    if (!privateMailThreadView.hidden) requestPrivateConversation();
+                }
             });
             socket.on('private-mail-sent', ({ recipientName } = {}) => {
-                privateMailStatus.textContent = `Mailen er sendt til ${recipientName}.`;
-                privateMailForm.reset();
-                privateMailForm.hidden = true;
                 privateMailSend.disabled = false;
-                privateMailFolder.value = 'sent';
-                requestPrivateMail();
+                if (recipientName && recipientName.toLocaleLowerCase('en-US') === activePrivateMailUsername.toLocaleLowerCase('en-US')) {
+                    privateMailStatus.textContent = `Beskeden er sendt til ${recipientName}.`;
+                    privateMailMessage.value = '';
+                    requestPrivateConversation();
+                }
+                if (!privateMailPanel.hidden) requestPrivateMail();
             });
             socket.on('private-mail-error', ({ message } = {}) => {
-                privateMailStatus.textContent = message || 'Mailen kunne ikke sendes.';
+                privateMailStatus.textContent = message || 'Beskeden kunne ikke sendes.';
                 privateMailSend.disabled = false;
+            });
+            socket.on('private-mail-conversation-error', ({ message } = {}) => {
+                privateMailStatus.textContent = message || 'Samtalen kunne ikke åbnes.';
             });
             socket.on('profile-info', (profile) => {
                 if (profile.playerId !== viewingProfilePlayerId) return;

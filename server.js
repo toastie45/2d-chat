@@ -1238,43 +1238,92 @@ async function startServer() {
             }
         });
 
-        socket.on('private-mail-request', async (payload) => {
+        socket.on('private-mail-request', async () => {
             if (!activeSocketIds.has(socket.id)) return;
-            const folder = payload && payload.folder === 'sent' ? 'sent' : 'inbox';
             try {
                 const userId = socket.data.user.id;
-                const [messagesResult, unreadResult] = await Promise.all([
-                    folder === 'sent'
-                        ? pool.query(`
-                            SELECT mail.id, mail.subject, mail.message, mail.created_at, mail.read_at,
-                                   sender.username AS sender_name, recipient.username AS recipient_name
+                const [conversationsResult, unreadResult] = await Promise.all([
+                    pool.query(`
+                        WITH visible AS (
+                            SELECT mail.id, mail.sender_user_id, mail.recipient_user_id, mail.message, mail.created_at,
+                                   CASE WHEN mail.sender_user_id = $1 THEN mail.recipient_user_id ELSE mail.sender_user_id END AS peer_id
                             FROM chat_private_messages mail
-                            JOIN chat_users sender ON sender.id = mail.sender_user_id
-                            JOIN chat_users recipient ON recipient.id = mail.recipient_user_id
-                            WHERE mail.sender_user_id = $1 AND mail.deleted_by_sender_at IS NULL ORDER BY mail.id DESC LIMIT 50
-                        `, [userId])
-                        : pool.query(`
-                            SELECT mail.id, mail.subject, mail.message, mail.created_at, mail.read_at,
-                                   sender.username AS sender_name, recipient.username AS recipient_name
-                            FROM chat_private_messages mail
-                            JOIN chat_users sender ON sender.id = mail.sender_user_id
-                            JOIN chat_users recipient ON recipient.id = mail.recipient_user_id
-                            WHERE mail.recipient_user_id = $1 AND mail.deleted_by_recipient_at IS NULL ORDER BY mail.id DESC LIMIT 50
-                        `, [userId]),
+                            WHERE (mail.sender_user_id = $1 AND mail.deleted_by_sender_at IS NULL)
+                               OR (mail.recipient_user_id = $1 AND mail.deleted_by_recipient_at IS NULL)
+                        ), latest AS (
+                            SELECT DISTINCT ON (peer_id) peer_id, id, sender_user_id, message, created_at
+                            FROM visible ORDER BY peer_id, id DESC
+                        ), unread AS (
+                            SELECT sender_user_id AS peer_id, COUNT(*)::int AS count
+                            FROM chat_private_messages
+                            WHERE recipient_user_id = $1 AND read_at IS NULL AND deleted_by_recipient_at IS NULL
+                            GROUP BY sender_user_id
+                        )
+                        SELECT latest.peer_id, peer.username, latest.message, latest.created_at,
+                               COALESCE(unread.count, 0) AS unread_count
+                        FROM latest
+                        JOIN chat_users peer ON peer.id = latest.peer_id
+                        LEFT JOIN unread ON unread.peer_id = latest.peer_id
+                        ORDER BY latest.id DESC
+                        LIMIT 100
+                    `, [userId]),
                     pool.query('SELECT COUNT(*)::int AS count FROM chat_private_messages WHERE recipient_user_id = $1 AND read_at IS NULL AND deleted_by_recipient_at IS NULL', [userId])
                 ]);
                 socket.emit('private-mail-data', {
-                    folder,
                     unreadCount: unreadResult.rows[0]?.count || 0,
-                    messages: messagesResult.rows.map((row) => ({
-                        id: String(row.id), subject: row.subject, message: row.message,
-                        createdAt: row.created_at, read: Boolean(row.read_at),
-                        senderName: row.sender_name, recipientName: row.recipient_name
+                    conversations: conversationsResult.rows.map((row) => ({
+                        userId: String(row.peer_id), username: row.username, preview: row.message,
+                        updatedAt: row.created_at, unreadCount: row.unread_count
                     }))
                 });
             } catch (error) {
                 console.error('Could not load private mail:', getSafeErrorCode(error));
                 socket.emit('private-mail-error', { message: 'Postkassen kunne ikke indlæses. Prøv igen.' });
+            }
+        });
+
+        socket.on('private-mail-conversation-request', async (payload) => {
+            if (!activeSocketIds.has(socket.id)) return;
+            const peer = normalizeUsername(payload && payload.username);
+            if (!peer) {
+                socket.emit('private-mail-conversation-error', { message: 'Brugernavnet er ikke gyldigt.' });
+                return;
+            }
+            try {
+                const userId = socket.data.user.id;
+                const { rows: [target] } = await pool.query(
+                    'SELECT id, username FROM chat_users WHERE username_normalized = $1', [peer.normalized]
+                );
+                if (!target || String(target.id) === String(userId)) {
+                    socket.emit('private-mail-conversation-error', { message: target ? 'Du kan ikke skrive til dig selv.' : 'Brugeren findes ikke.' });
+                    return;
+                }
+                await pool.query(
+                    'UPDATE chat_private_messages SET read_at = NOW() WHERE sender_user_id = $1 AND recipient_user_id = $2 AND read_at IS NULL AND deleted_by_recipient_at IS NULL',
+                    [target.id, userId]
+                );
+                const [{ rows: messages }, { rows: [unread] }] = await Promise.all([
+                    pool.query(`
+                        SELECT id, sender_user_id, message, created_at
+                        FROM chat_private_messages
+                        WHERE ((sender_user_id = $1 AND recipient_user_id = $2 AND deleted_by_sender_at IS NULL)
+                            OR (sender_user_id = $2 AND recipient_user_id = $1 AND deleted_by_recipient_at IS NULL))
+                        ORDER BY id ASC
+                        LIMIT 200
+                    `, [userId, target.id]),
+                    pool.query('SELECT COUNT(*)::int AS count FROM chat_private_messages WHERE recipient_user_id = $1 AND read_at IS NULL AND deleted_by_recipient_at IS NULL', [userId])
+                ]);
+                io.to(`private-mail:${userId}`).emit('private-mail-unread-count', { count: unread?.count || 0 });
+                socket.emit('private-mail-conversation-data', {
+                    username: target.username,
+                    messages: messages.map((row) => ({
+                        id: String(row.id), message: row.message, createdAt: row.created_at,
+                        own: String(row.sender_user_id) === String(userId)
+                    }))
+                });
+            } catch (error) {
+                console.error('Could not load private mail conversation:', getSafeErrorCode(error));
+                socket.emit('private-mail-conversation-error', { message: 'Samtalen kunne ikke indlæses. Prøv igen.' });
             }
         });
 
@@ -1304,7 +1353,7 @@ async function startServer() {
                     return;
                 }
                 const cooldownKey = `chat:private-mail-cooldown:${socket.data.user.id}`;
-                if (!await redis.set(cooldownKey, '1', { EX: 3, NX: true })) {
+                if (!await redis.set(cooldownKey, '1', { EX: 1, NX: true })) {
                     socket.emit('private-mail-error', { message: 'Vent et øjeblik, før du sender en mail mere.' });
                     return;
                 }
@@ -1339,24 +1388,25 @@ async function startServer() {
         });
 
         socket.on('private-mail-delete', async (payload) => {
-            const messageId = String(payload && payload.messageId || '');
-            const folder = payload && payload.folder === 'sent' ? 'sent' : 'inbox';
-            if (!activeSocketIds.has(socket.id) || !/^[1-9]\d{0,18}$/.test(messageId)) return;
+            const peer = normalizeUsername(payload && payload.username);
+            if (!activeSocketIds.has(socket.id) || !peer) return;
             try {
-                const { rowCount } = folder === 'sent'
-                    ? await pool.query(
-                        'UPDATE chat_private_messages SET deleted_by_sender_at = NOW() WHERE id = $1 AND sender_user_id = $2 AND deleted_by_sender_at IS NULL',
-                        [messageId, socket.data.user.id]
-                    )
-                    : await pool.query(
-                        'UPDATE chat_private_messages SET deleted_by_recipient_at = NOW() WHERE id = $1 AND recipient_user_id = $2 AND deleted_by_recipient_at IS NULL',
-                        [messageId, socket.data.user.id]
-                    );
+                const { rows: [target] } = await pool.query(
+                    'SELECT id, username FROM chat_users WHERE username_normalized = $1', [peer.normalized]
+                );
+                if (!target || String(target.id) === String(socket.data.user.id)) return;
+                await pool.query(`
+                    UPDATE chat_private_messages
+                    SET deleted_by_sender_at = CASE WHEN sender_user_id = $1 THEN COALESCE(deleted_by_sender_at, NOW()) ELSE deleted_by_sender_at END,
+                        deleted_by_recipient_at = CASE WHEN recipient_user_id = $1 THEN COALESCE(deleted_by_recipient_at, NOW()) ELSE deleted_by_recipient_at END
+                    WHERE (sender_user_id = $1 AND recipient_user_id = $2)
+                       OR (sender_user_id = $2 AND recipient_user_id = $1)
+                `, [socket.data.user.id, target.id]);
                 const { rows: [row] } = await pool.query(
                     'SELECT COUNT(*)::int AS count FROM chat_private_messages WHERE recipient_user_id = $1 AND read_at IS NULL AND deleted_by_recipient_at IS NULL',
                     [socket.data.user.id]
                 );
-                socket.emit('private-mail-delete-result', { messageId, folder, deleted: Boolean(rowCount) });
+                io.to(`private-mail:${socket.data.user.id}`).emit('private-mail-delete-result', { username: peer.username });
                 io.to(`private-mail:${socket.data.user.id}`).emit('private-mail-unread-count', { count: row?.count || 0 });
             } catch (error) {
                 console.error('Could not delete private mail:', getSafeErrorCode(error));
