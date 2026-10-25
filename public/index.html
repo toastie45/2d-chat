@@ -1182,12 +1182,7 @@
             }
 
             function isMutedPlayer(player) {
-                const playerName = player.name.toLocaleLowerCase('en-US');
-                return mutedUsernames.has(playerName) || profileManagement.relations.some((relation) =>
-                    relation.relationship === 'friend' &&
-                    relation.muted &&
-                    relation.username.toLocaleLowerCase('en-US') === playerName
-                );
+                return mutedUsernames.has(player.name.toLocaleLowerCase('en-US'));
             }
 
             function updateAvatarContextMute() {
@@ -2161,9 +2156,6 @@
                     return;
                 }
                 updateProfileRelationship(relationship);
-                if (relationship !== 'friend' && players[playerId]) {
-                    mutedUsernames.delete(players[playerId].name.toLocaleLowerCase('en-US'));
-                }
             });
 
             socket.on('profile-management-info', ({ relations, mutedUsernames: serverMutedUsernames } = {}) => {
@@ -2184,15 +2176,9 @@
             socket.on('profile-management-updated', ({ message, targetUserId, username, relationshipRemoved, muted } = {}) => {
                 profileManagementStatus.textContent = message || '';
                 if (targetUserId) {
-                    const previousRelation = profileManagement.relations.find((item) =>
-                        item.targetUserId === String(targetUserId)
-                    );
                     if (relationshipRemoved) {
                         profileManagement.relations = profileManagement.relations
                             .filter((relation) => relation.targetUserId !== String(targetUserId));
-                        if (previousRelation) {
-                            mutedUsernames.delete(previousRelation.username.toLocaleLowerCase('en-US'));
-                        }
                     }
                     if (typeof muted === 'boolean' && username) {
                         const normalizedName = username.toLocaleLowerCase('en-US');
