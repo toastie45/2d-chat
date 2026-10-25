@@ -561,8 +561,7 @@ async function startServer() {
             response.json({
                 ...serializeOwnProfile(profile),
                 createdAt: profile.created_at,
-                lastLoginAt: profile.last_login_at,
-                totalOnlineMs: await getTotalOnlineMs(request.session.user.id)
+                lastLoginAt: profile.last_login_at
             });
         } catch (error) {
             next(error);
