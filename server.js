@@ -421,9 +421,13 @@ async function startServer() {
             message VARCHAR(${PRIVATE_MAIL_MESSAGE_MAX_LENGTH}) NOT NULL,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             read_at TIMESTAMPTZ,
+            deleted_by_sender_at TIMESTAMPTZ,
+            deleted_by_recipient_at TIMESTAMPTZ,
             CHECK (sender_user_id <> recipient_user_id)
         )
     `);
+    await pool.query('ALTER TABLE chat_private_messages ADD COLUMN IF NOT EXISTS deleted_by_sender_at TIMESTAMPTZ');
+    await pool.query('ALTER TABLE chat_private_messages ADD COLUMN IF NOT EXISTS deleted_by_recipient_at TIMESTAMPTZ');
     await pool.query('CREATE INDEX IF NOT EXISTS chat_private_messages_inbox_idx ON chat_private_messages (recipient_user_id, id DESC)');
     await pool.query('CREATE INDEX IF NOT EXISTS chat_private_messages_sent_idx ON chat_private_messages (sender_user_id, id DESC)');
     await pool.query(`
@@ -1247,7 +1251,7 @@ async function startServer() {
                             FROM chat_private_messages mail
                             JOIN chat_users sender ON sender.id = mail.sender_user_id
                             JOIN chat_users recipient ON recipient.id = mail.recipient_user_id
-                            WHERE mail.sender_user_id = $1 ORDER BY mail.id DESC LIMIT 50
+                            WHERE mail.sender_user_id = $1 AND mail.deleted_by_sender_at IS NULL ORDER BY mail.id DESC LIMIT 50
                         `, [userId])
                         : pool.query(`
                             SELECT mail.id, mail.subject, mail.message, mail.created_at, mail.read_at,
@@ -1255,9 +1259,9 @@ async function startServer() {
                             FROM chat_private_messages mail
                             JOIN chat_users sender ON sender.id = mail.sender_user_id
                             JOIN chat_users recipient ON recipient.id = mail.recipient_user_id
-                            WHERE mail.recipient_user_id = $1 ORDER BY mail.id DESC LIMIT 50
+                            WHERE mail.recipient_user_id = $1 AND mail.deleted_by_recipient_at IS NULL ORDER BY mail.id DESC LIMIT 50
                         `, [userId]),
-                    pool.query('SELECT COUNT(*)::int AS count FROM chat_private_messages WHERE recipient_user_id = $1 AND read_at IS NULL', [userId])
+                    pool.query('SELECT COUNT(*)::int AS count FROM chat_private_messages WHERE recipient_user_id = $1 AND read_at IS NULL AND deleted_by_recipient_at IS NULL', [userId])
                 ]);
                 socket.emit('private-mail-data', {
                     folder,
@@ -1321,11 +1325,11 @@ async function startServer() {
             if (!activeSocketIds.has(socket.id) || !/^[1-9]\d{0,18}$/.test(messageId)) return;
             try {
                 await pool.query(
-                    'UPDATE chat_private_messages SET read_at = NOW() WHERE id = $1 AND recipient_user_id = $2 AND read_at IS NULL',
+                    'UPDATE chat_private_messages SET read_at = NOW() WHERE id = $1 AND recipient_user_id = $2 AND read_at IS NULL AND deleted_by_recipient_at IS NULL',
                     [messageId, socket.data.user.id]
                 );
                 const { rows: [row] } = await pool.query(
-                    'SELECT COUNT(*)::int AS count FROM chat_private_messages WHERE recipient_user_id = $1 AND read_at IS NULL',
+                    'SELECT COUNT(*)::int AS count FROM chat_private_messages WHERE recipient_user_id = $1 AND read_at IS NULL AND deleted_by_recipient_at IS NULL',
                     [socket.data.user.id]
                 );
                 io.to(`private-mail:${socket.data.user.id}`).emit('private-mail-unread-count', { count: row?.count || 0 });
@@ -1334,11 +1338,37 @@ async function startServer() {
             }
         });
 
+        socket.on('private-mail-delete', async (payload) => {
+            const messageId = String(payload && payload.messageId || '');
+            const folder = payload && payload.folder === 'sent' ? 'sent' : 'inbox';
+            if (!activeSocketIds.has(socket.id) || !/^[1-9]\d{0,18}$/.test(messageId)) return;
+            try {
+                const { rowCount } = folder === 'sent'
+                    ? await pool.query(
+                        'UPDATE chat_private_messages SET deleted_by_sender_at = NOW() WHERE id = $1 AND sender_user_id = $2 AND deleted_by_sender_at IS NULL',
+                        [messageId, socket.data.user.id]
+                    )
+                    : await pool.query(
+                        'UPDATE chat_private_messages SET deleted_by_recipient_at = NOW() WHERE id = $1 AND recipient_user_id = $2 AND deleted_by_recipient_at IS NULL',
+                        [messageId, socket.data.user.id]
+                    );
+                const { rows: [row] } = await pool.query(
+                    'SELECT COUNT(*)::int AS count FROM chat_private_messages WHERE recipient_user_id = $1 AND read_at IS NULL AND deleted_by_recipient_at IS NULL',
+                    [socket.data.user.id]
+                );
+                socket.emit('private-mail-delete-result', { messageId, folder, deleted: Boolean(rowCount) });
+                io.to(`private-mail:${socket.data.user.id}`).emit('private-mail-unread-count', { count: row?.count || 0 });
+            } catch (error) {
+                console.error('Could not delete private mail:', getSafeErrorCode(error));
+                socket.emit('private-mail-error', { message: 'Mailen kunne ikke slettes. Prøv igen.' });
+            }
+        });
+
         socket.on('private-mail-unread-request', async () => {
             if (!activeSocketIds.has(socket.id)) return;
             try {
                 const { rows: [row] } = await pool.query(
-                    'SELECT COUNT(*)::int AS count FROM chat_private_messages WHERE recipient_user_id = $1 AND read_at IS NULL',
+                    'SELECT COUNT(*)::int AS count FROM chat_private_messages WHERE recipient_user_id = $1 AND read_at IS NULL AND deleted_by_recipient_at IS NULL',
                     [socket.data.user.id]
                 );
                 socket.emit('private-mail-unread-count', { count: row?.count || 0 });

@@ -611,6 +611,9 @@
         .private-mail-entry.unread { border-color: #647d3b; }
         .private-mail-meta { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 7px; color: var(--muted); font-size: 9px; }
         .private-mail-body { margin: 8px 0 0; color: #d9d8d1; font-size: 11px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .private-mail-actions { display: flex; gap: 7px; margin-top: 9px; }
+        .private-mail-actions button { padding: 4px 8px; border: 1px solid #363831; border-radius: 4px; background: #20211d; color: #d9d8d1; font: inherit; font-size: 10px; cursor: pointer; }
+        .private-mail-actions button:hover { border-color: #829e52; }
         .private-mail-status, .private-mail-empty { margin: 0 0 9px; color: var(--muted); font-size: 10px; line-height: 1.5; }
         .profile-field input[readonly] { border-color: #363831; background: #1b1d19; color: #b7b7ae; cursor: default; }
         .profile-birthdate { margin: 0; padding: 0; border: 0; }
@@ -1356,13 +1359,15 @@
                 socket.emit('private-mail-request', { folder: privateMailFolder.value });
             }
 
-            function openPrivateMail(recipientName = '') {
+            function openPrivateMail(recipientName = '', subject = '') {
                 selectSidePanel('private-mail');
                 privateMailStatus.textContent = '';
                 privateMailForm.hidden = !recipientName;
                 if (recipientName) {
                     privateMailFolder.value = 'inbox';
                     privateMailTo.value = recipientName;
+                    privateMailSubject.value = subject;
+                    privateMailMessage.value = '';
                     privateMailSubject.focus({ preventScroll: true });
                 }
                 requestPrivateMail();
@@ -1384,7 +1389,28 @@
                     const body = document.createElement('p');
                     body.className = 'private-mail-body';
                     body.textContent = mail.message;
-                    entry.append(summary, meta, body);
+                    const actions = document.createElement('div');
+                    actions.className = 'private-mail-actions';
+                    if (folder === 'inbox') {
+                        const reply = document.createElement('button');
+                        reply.type = 'button';
+                        reply.textContent = 'Svar';
+                        reply.addEventListener('click', () => {
+                            const subject = /^re:\s*/i.test(mail.subject) ? mail.subject : `Re: ${mail.subject}`;
+                            openPrivateMail(mail.senderName, subject.slice(0, 100));
+                        });
+                        actions.append(reply);
+                    }
+                    const remove = document.createElement('button');
+                    remove.type = 'button';
+                    remove.textContent = 'Slet';
+                    remove.title = 'Slet mailen fra din postkasse';
+                    remove.addEventListener('click', () => {
+                        remove.disabled = true;
+                        socket.emit('private-mail-delete', { messageId: mail.id, folder });
+                    });
+                    actions.append(remove);
+                    entry.append(summary, meta, body, actions);
                     if (folder === 'inbox' && !mail.read) {
                         entry.addEventListener('toggle', () => {
                             if (entry.open && entry.classList.contains('unread')) {
@@ -2465,6 +2491,12 @@
                 renderPrivateMail(Array.isArray(messages) ? messages : [], folder);
             });
             socket.on('private-mail-unread-count', ({ count } = {}) => updateMailUnreadBadge(count));
+            socket.on('private-mail-delete-result', ({ folder, deleted } = {}) => {
+                if (folder !== privateMailFolder.value) return;
+                if (!deleted) privateMailStatus.textContent = 'Mailen er allerede slettet.';
+                else privateMailStatus.textContent = 'Mailen er slettet fra din postkasse.';
+                requestPrivateMail();
+            });
             socket.on('private-mail-notification', () => {
                 socket.emit('private-mail-unread-request');
                 if (!privateMailPanel.hidden) requestPrivateMail();
