@@ -764,8 +764,9 @@
                             <h2 class="side-title" id="profile-editor-title">Min profil</h2>
                             <p class="profile-section-title">Profiloplysninger · <span id="profile-avatar-name"></span></p>
                             <div class="profile-management">
-                                <label class="visually-hidden" for="profile-management-select">Vælg liste, du vil administrere</label>
+                                <label class="visually-hidden" for="profile-management-select">Vælg brugerindstilling</label>
                                 <select class="profile-page-select profile-management-select" id="profile-management-select">
+                                    <option value="profile">Rediger profiloplysninger</option>
                                     <option value="friends">Administrer venneliste</option>
                                     <option value="enemies">Administrer fjendeliste</option>
                                 </select>
@@ -779,7 +780,7 @@
                                 </section>
                                 <p class="profile-management-status" id="profile-management-status" aria-live="polite"></p>
                             </div>
-                            <details class="profile-details">
+                            <details class="profile-details" id="manage-profile-panel" open>
                                 <summary>Rediger profiloplysninger</summary>
                                 <form class="profile-form" id="profile-form">
                                     <dl class="profile-facts profile-meta">
@@ -913,6 +914,7 @@
             const profileManagementStatus = document.getElementById('profile-management-status');
             const managementSelect = document.getElementById('profile-management-select');
             const managementPanels = {
+                profile: document.getElementById('manage-profile-panel'),
                 friends: document.getElementById('manage-friends-panel'),
                 enemies: document.getElementById('manage-enemies-panel')
             };
@@ -1134,11 +1136,12 @@
             }
 
             function selectManagementPage(name) {
-                const selectedPage = Object.prototype.hasOwnProperty.call(managementPanels, name) ? name : 'friends';
+                const selectedPage = Object.prototype.hasOwnProperty.call(managementPanels, name) ? name : 'profile';
                 managementSelect.value = selectedPage;
                 Object.entries(managementPanels).forEach(([pageName, panel]) => {
                     panel.hidden = pageName !== selectedPage;
                 });
+                if (selectedPage === 'profile') managementPanels.profile.open = true;
             }
 
             function isMutedPlayer(player) {
@@ -1150,20 +1153,14 @@
                 );
             }
 
-            function relationshipForPlayer(playerId) {
-                const player = players[playerId];
-                if (!player) return null;
-                return profileManagement.relations.find((relation) =>
-                    relation.username.toLocaleLowerCase('en-US') === player.name.toLocaleLowerCase('en-US')
-                ) || null;
-            }
-
             function updateAvatarContextMute() {
-                const relation = contextPlayerId ? relationshipForPlayer(contextPlayerId) : null;
-                avatarContextMute.hidden = !relation || relation.relationship !== 'friend';
+                const player = contextPlayerId ? players[contextPlayerId] : null;
+                const isSelf = contextPlayerId === myId;
+                avatarContextMute.hidden = !player || isSelf;
                 avatarContextMute.disabled = false;
-                if (relation && relation.relationship === 'friend') {
-                    avatarContextMute.textContent = relation.muted ? 'Slå mute fra' : 'Mute';
+                if (player && !isSelf) {
+                    const muted = mutedUsernames.has(player.name.toLocaleLowerCase('en-US'));
+                    avatarContextMute.textContent = muted ? 'Slå mute fra' : 'Mute';
                 }
             }
 
@@ -1299,6 +1296,7 @@
             async function openProfileEditor() {
                 if (!currentUser) return;
                 selectSidePanel('profile-editor');
+                selectManagementPage('profile');
                 requestProfileManagement();
                 profileAvatarName.textContent = currentUser.username;
                 profileStatus.textContent = 'Henter dine profiloplysninger…';
@@ -1556,54 +1554,6 @@
                     if (!position) continue;
                     const color = colorForPlayer(player.id);
                     const muted = isMutedPlayer(player);
-                    const isTyping = !muted && player.id === myId && draftText.trim().length > 0;
-                    const bubbleText = muted ? '' : isTyping ? hideSensitiveData(draftText.trim()) : player.text;
-                    const expiresAt = player.messageTime ? player.messageTime + messageDuration : 0;
-                    const remaining = expiresAt - now;
-
-                    if (isTyping || (bubbleText && remaining > 0)) {
-                        ctx.save();
-                        if (isTyping) {
-                            ctx.globalAlpha = .68;
-                        } else if (remaining < 900) {
-                            ctx.globalAlpha = Math.max(0, remaining / 900);
-                        }
-
-                        const lines = wrapText(bubbleText, 210);
-                        ctx.font = '13px Inter, system-ui, sans-serif';
-                        const bubbleWidth = Math.min(240, Math.max(62, ...lines.map((line) => ctx.measureText(line).width + 22)));
-                        const bubbleHeight = lines.length * 18 + 20;
-                        const bubbleX = Math.max(8, Math.min(canvas.width - bubbleWidth - 8, position.x - bubbleWidth / 2));
-                        const bubbleAboveY = position.y - avatarRadius - bubbleHeight - 17;
-                        const bubbleBelowAvatar = bubbleAboveY < 8;
-                        const bubbleY = bubbleBelowAvatar
-                            ? position.y + avatarRadius + 17
-                            : bubbleAboveY;
-
-                        roundedRect(ctx, bubbleX, bubbleY, bubbleWidth, bubbleHeight, 9);
-                        ctx.fillStyle = '#f2f0e9';
-                        ctx.fill();
-                        ctx.beginPath();
-                        const tailX = Math.max(bubbleX + 13, Math.min(position.x, bubbleX + bubbleWidth - 13));
-                        if (bubbleBelowAvatar) {
-                            ctx.moveTo(tailX - 6, bubbleY + 1);
-                            ctx.lineTo(tailX + 6, bubbleY + 1);
-                            ctx.lineTo(tailX, bubbleY - 7);
-                        } else {
-                            ctx.moveTo(tailX - 6, bubbleY + bubbleHeight - 1);
-                            ctx.lineTo(tailX + 6, bubbleY + bubbleHeight - 1);
-                            ctx.lineTo(tailX, bubbleY + bubbleHeight + 7);
-                        }
-                        ctx.closePath();
-                        ctx.fill();
-                        ctx.fillStyle = '#171815';
-                        ctx.textAlign = 'center';
-                        ctx.textBaseline = 'middle';
-                        lines.forEach((line, index) => {
-                            ctx.fillText(line, bubbleX + bubbleWidth / 2, bubbleY + 12 + index * 18, bubbleWidth - 16);
-                        });
-                        ctx.restore();
-                    }
 
                     ctx.save();
                     ctx.globalAlpha = 0.16;
@@ -1660,6 +1610,63 @@
                     ctx.fillStyle = '#e8e7df';
                     ctx.fillText(player.name, position.x, position.y + 31, labelWidth - 8);
                 }
+
+                for (const player of Object.values(players)) {
+                    drawSpeechBubble(player, now);
+                }
+            }
+
+            function drawSpeechBubble(player, now) {
+                if (isMutedPlayer(player)) return;
+                const position = player.position || player.target || positionFor(player);
+                if (!position) return;
+                const isTyping = player.id === myId && draftText.trim().length > 0;
+                const bubbleText = isTyping ? hideSensitiveData(draftText.trim()) : player.text;
+                const expiresAt = player.messageTime ? player.messageTime + messageDuration : 0;
+                const remaining = expiresAt - now;
+                if (!isTyping && (!bubbleText || remaining <= 0)) return;
+
+                ctx.save();
+                if (isTyping) {
+                    ctx.globalAlpha = .68;
+                } else if (remaining < 900) {
+                    ctx.globalAlpha = Math.max(0, remaining / 900);
+                }
+
+                const lines = wrapText(bubbleText, 210);
+                ctx.font = '13px Inter, system-ui, sans-serif';
+                const bubbleWidth = Math.min(240, Math.max(62, ...lines.map((line) => ctx.measureText(line).width + 22)));
+                const bubbleHeight = lines.length * 18 + 20;
+                const bubbleX = Math.max(8, Math.min(canvas.width - bubbleWidth - 8, position.x - bubbleWidth / 2));
+                const bubbleAboveY = position.y - avatarRadius - bubbleHeight - 17;
+                const bubbleBelowAvatar = bubbleAboveY < 8;
+                const bubbleY = bubbleBelowAvatar
+                    ? position.y + avatarRadius + 17
+                    : bubbleAboveY;
+
+                roundedRect(ctx, bubbleX, bubbleY, bubbleWidth, bubbleHeight, 9);
+                ctx.fillStyle = '#f2f0e9';
+                ctx.fill();
+                ctx.beginPath();
+                const tailX = Math.max(bubbleX + 13, Math.min(position.x, bubbleX + bubbleWidth - 13));
+                if (bubbleBelowAvatar) {
+                    ctx.moveTo(tailX - 6, bubbleY + 1);
+                    ctx.lineTo(tailX + 6, bubbleY + 1);
+                    ctx.lineTo(tailX, bubbleY - 7);
+                } else {
+                    ctx.moveTo(tailX - 6, bubbleY + bubbleHeight - 1);
+                    ctx.lineTo(tailX + 6, bubbleY + bubbleHeight - 1);
+                    ctx.lineTo(tailX, bubbleY + bubbleHeight + 7);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.fillStyle = '#171815';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                lines.forEach((line, index) => {
+                    ctx.fillText(line, bubbleX + bubbleWidth / 2, bubbleY + 12 + index * 18, bubbleWidth - 16);
+                });
+                ctx.restore();
             }
 
             function wrapText(text, maxWidth) {
@@ -1755,11 +1762,9 @@
                 if (contextPlayerId) showPublicProfile(contextPlayerId);
             });
             avatarContextMute.addEventListener('click', () => {
-                const relation = contextPlayerId ? relationshipForPlayer(contextPlayerId) : null;
-                if (!relation || relation.relationship !== 'friend') return;
+                if (!contextPlayerId || contextPlayerId === myId) return;
                 avatarContextMute.disabled = true;
-                socket.emit('profile-mute-toggle', { targetUserId: relation.targetUserId });
-                closeAvatarContextMenu();
+                socket.emit('profile-mute-toggle', { playerId: contextPlayerId });
             });
             profileFriendButton.addEventListener('click', () => {
                 if (viewingProfilePlayerId && !viewingOwnProfile) {
@@ -1875,7 +1880,6 @@
                 contextPlayerId = target.id;
                 avatarContextName.textContent = target.name;
                 updateAvatarContextMute();
-                if (!relationshipForPlayer(target.id)) requestProfileManagement();
                 avatarContextMenu.classList.remove('hidden');
                 avatarContextMenu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - avatarContextMenu.offsetWidth - 8))}px`;
                 avatarContextMenu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - avatarContextMenu.offsetHeight - 8))}px`;
@@ -2090,12 +2094,10 @@
                 }
             });
 
-            socket.on('profile-management-info', ({ relations } = {}) => {
-                if (!Array.isArray(relations)) return;
+            socket.on('profile-management-info', ({ relations, mutedUsernames: serverMutedUsernames } = {}) => {
+                if (!Array.isArray(relations) || !Array.isArray(serverMutedUsernames)) return;
                 profileManagement = { relations };
-                mutedUsernames = new Set(relations
-                    .filter((relation) => relation.relationship === 'friend' && relation.muted)
-                    .map((relation) => relation.username.toLocaleLowerCase('en-US')));
+                mutedUsernames = new Set(serverMutedUsernames.map((username) => username.toLocaleLowerCase('en-US')));
                 renderProfileManagement();
                 updateAvatarContextMute();
                 Object.values(players).forEach((player) => {
@@ -2107,7 +2109,7 @@
                 });
             });
 
-            socket.on('profile-management-updated', ({ message, targetUserId, relationshipRemoved, muted } = {}) => {
+            socket.on('profile-management-updated', ({ message, targetUserId, username, relationshipRemoved, muted } = {}) => {
                 profileManagementStatus.textContent = message || '';
                 if (targetUserId) {
                     const previousRelation = profileManagement.relations.find((item) =>
@@ -2119,16 +2121,15 @@
                         if (previousRelation) {
                             mutedUsernames.delete(previousRelation.username.toLocaleLowerCase('en-US'));
                         }
-                    } else if (typeof muted === 'boolean') {
+                    }
+                    if (typeof muted === 'boolean' && username) {
+                        const normalizedName = username.toLocaleLowerCase('en-US');
+                        if (muted) mutedUsernames.add(normalizedName);
+                        else mutedUsernames.delete(normalizedName);
                         const relation = profileManagement.relations.find((item) =>
                             item.targetUserId === String(targetUserId)
                         );
-                        if (relation) {
-                            relation.muted = muted;
-                            const normalizedName = relation.username.toLocaleLowerCase('en-US');
-                            if (muted) mutedUsernames.add(normalizedName);
-                            else mutedUsernames.delete(normalizedName);
-                        }
+                        if (relation) relation.muted = muted;
                     }
                     renderProfileManagement();
                     if (muted) {
@@ -2141,6 +2142,7 @@
                         });
                     }
                 }
+                updateAvatarContextMute();
                 requestProfileManagement();
                 if (viewingProfilePlayerId === myId && !guestbookPage.hidden) {
                     socket.emit('guestbook-request', { playerId: myId });

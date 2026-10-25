@@ -987,7 +987,8 @@ async function startServer() {
             if (!activeSocketIds.has(socket.id)) return;
             try {
                 const userId = socket.data.user.id;
-                const { rows: relations } = await pool.query(`
+                const [{ rows: relations }, { rows: mutes }] = await Promise.all([
+                    pool.query(`
                     SELECT relation.target_user_id, target.username, relation.relationship,
                            (mute.target_user_id IS NOT NULL) AS muted
                     FROM chat_profile_relationships relation
@@ -997,14 +998,22 @@ async function startServer() {
                         AND mute.target_user_id = relation.target_user_id
                     WHERE relation.user_id = $1
                     ORDER BY target.username_normalized
-                `, [userId]);
+                    `, [userId]),
+                    pool.query(`
+                        SELECT target.username
+                        FROM chat_profile_mutes mute
+                        JOIN chat_users target ON target.id = mute.target_user_id
+                        WHERE mute.user_id = $1
+                    `, [userId])
+                ]);
                 socket.emit('profile-management-info', {
                     relations: relations.map((relation) => ({
                         targetUserId: String(relation.target_user_id),
                         username: relation.username,
                         relationship: relation.relationship,
                         muted: relation.muted
-                    }))
+                    })),
+                    mutedUsernames: mutes.map((mute) => mute.username)
                 });
             } catch (error) {
                 console.error('Could not load profile management data:', getSafeErrorCode(error));
@@ -1061,12 +1070,28 @@ async function startServer() {
         });
 
         socket.on('profile-mute-toggle', async (payload) => {
-            const targetUserId = payload && payload.targetUserId;
+            const playerId = payload && payload.playerId;
             if (
                 !activeSocketIds.has(socket.id) ||
-                !/^[1-9]\d{0,18}$/.test(String(targetUserId || '')) ||
-                String(targetUserId) === String(socket.data.user.id)
+                typeof playerId !== 'string' ||
+                playerId.length > 128 ||
+                playerId === socket.id
             ) return;
+
+            let target;
+            try {
+                target = await getProfileTarget(playerId);
+                if (!target || String(target.profile.id) === String(socket.data.user.id)) {
+                    socket.emit('profile-management-error', { message: 'Du kan ikke mute dig selv eller en bruger, der er gået.' });
+                    return;
+                }
+            } catch (error) {
+                console.error('Could not find mute target:', getSafeErrorCode(error));
+                socket.emit('profile-management-error', { message: 'Mute kunne ikke ændres. Prøv igen.' });
+                return;
+            }
+
+            const targetUserId = target.profile.id;
             let client;
             try {
                 client = await pool.connect();
@@ -1075,18 +1100,6 @@ async function startServer() {
                     'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
                     [`profile-relationship:${socket.data.user.id}:${targetUserId}`]
                 );
-                const { rows: [friend] } = await client.query(
-                    `SELECT 1 FROM chat_profile_relationships
-                     WHERE user_id = $1 AND target_user_id = $2 AND relationship = 'friend'`,
-                    [socket.data.user.id, targetUserId]
-                );
-                if (!friend) {
-                    await client.query('ROLLBACK');
-                    socket.emit('profile-management-error', {
-                        message: 'Mute kan kun ændres for personer på din venneliste.'
-                    });
-                    return;
-                }
                 const { rows: [mute] } = await client.query(
                     'SELECT 1 FROM chat_profile_mutes WHERE user_id = $1 AND target_user_id = $2 FOR UPDATE',
                     [socket.data.user.id, targetUserId]
@@ -1105,8 +1118,9 @@ async function startServer() {
                 await client.query('COMMIT');
                 socket.emit('profile-management-updated', {
                     targetUserId: String(targetUserId),
+                    username: target.profile.username,
                     muted: !mute,
-                    message: mute ? 'Mute er slået fra.' : 'Vennen er muted.'
+                    message: mute ? `Mute er slået fra for ${target.profile.username}.` : `${target.profile.username} er muted.`
                 });
             } catch (error) {
                 if (client) await client.query('ROLLBACK');
