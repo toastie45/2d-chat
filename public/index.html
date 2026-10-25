@@ -1585,8 +1585,8 @@
 
             function positionFor(player) {
                 return {
-                    x: (player.col + 0.5) * cellSize,
-                    y: (player.row + 0.5) * cellSize
+                    x: canvas.width / 2 + (player.col - player.row) * cellSize / 2,
+                    y: cellSize / 2 + (player.col + player.row) * cellSize / 2
                 };
             }
 
@@ -1780,10 +1780,12 @@
                 const bounds = canvas.getBoundingClientRect();
                 const x = (event.clientX - bounds.left) * canvas.width / bounds.width;
                 const y = (event.clientY - bounds.top) * canvas.height / bounds.height;
-                return {
-                    col: Math.max(0, Math.min(gridCount - 1, Math.floor(x / cellSize))),
-                    row: Math.max(0, Math.min(gridCount - 1, Math.floor(y / cellSize)))
-                };
+                const diagonalX = (x - canvas.width / 2) / (cellSize / 2);
+                const diagonalY = (y - cellSize / 2) / (cellSize / 2);
+                const col = Math.round((diagonalX + diagonalY) / 2);
+                const row = Math.round((diagonalY - diagonalX) / 2);
+                if (col < 0 || col >= gridCount || row < 0 || row >= gridCount) return null;
+                return { col, row };
             }
 
             function moveToCell(col, row) {
@@ -1796,20 +1798,21 @@
                 ctx.fillStyle = '#11130f';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                for (let row = 0; row < gridCount; row++) {
-                    for (let col = 0; col < gridCount; col++) {
-                        const x = col * cellSize;
-                        const y = row * cellSize;
-                        if (hoveredCell && hoveredCell.col === col && hoveredCell.row === row) {
-                            ctx.fillStyle = '#c1f07812';
-                            ctx.fillRect(x, y, cellSize, cellSize);
-                        }
-                    }
+                if (hoveredCell) {
+                    const hoveredPosition = positionFor(hoveredCell);
+                    ctx.beginPath();
+                    ctx.moveTo(hoveredPosition.x, hoveredPosition.y - cellSize / 2);
+                    ctx.lineTo(hoveredPosition.x + cellSize / 2, hoveredPosition.y);
+                    ctx.lineTo(hoveredPosition.x, hoveredPosition.y + cellSize / 2);
+                    ctx.lineTo(hoveredPosition.x - cellSize / 2, hoveredPosition.y);
+                    ctx.closePath();
+                    ctx.fillStyle = '#c1f07812';
+                    ctx.fill();
                 }
 
                 ctx.strokeStyle = '#292d25';
                 ctx.lineWidth = 1;
-                for (let offset = -canvas.height + cellSize / 2; offset <= canvas.width - cellSize / 2; offset += cellSize) {
+                for (let offset = -canvas.height; offset <= canvas.width; offset += cellSize) {
                     ctx.beginPath();
                     const startX = Math.max(0, offset);
                     const endX = Math.min(canvas.width, canvas.height + offset);
@@ -1817,7 +1820,7 @@
                     ctx.lineTo(endX, endX - offset);
                     ctx.stroke();
                 }
-                for (let offset = cellSize / 2; offset <= canvas.width + canvas.height - cellSize / 2; offset += cellSize) {
+                for (let offset = 0; offset <= canvas.width + canvas.height; offset += cellSize) {
                     ctx.beginPath();
                     const startX = Math.max(0, offset - canvas.height);
                     const endX = Math.min(canvas.width, offset);
@@ -2140,6 +2143,7 @@
             canvas.addEventListener('click', (event) => {
                 closeAvatarContextMenu();
                 const cell = getCellFromPointer(event);
+                if (!cell) return;
                 canvas.focus({ preventScroll: true });
                 moveToCell(cell.col, cell.row);
             });
