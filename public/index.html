@@ -1592,7 +1592,9 @@
                     ? userSearchServerResults : null;
                 let entries;
                 let status = '';
-                if (serverResults && !serverResults.error) {
+                if (!query) {
+                    entries = [];
+                } else if (serverResults && !serverResults.error) {
                     entries = serverResults.results;
                     if (!entries.length) status = 'Ingen brugere matcher din søgning.';
                 } else {
