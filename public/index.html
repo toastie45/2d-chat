@@ -418,6 +418,10 @@
             text-align: left;
             cursor: pointer;
         }
+        .member-dot.offline {
+            border: 1px solid var(--muted);
+            background-color: transparent !important;
+        }
         .user-search-result:hover, .user-search-result:focus-visible {
             border-color: #3a3d34;
             background: #20221d;
@@ -764,7 +768,7 @@
                             <button class="toolbar-button" id="members-nav-button" type="button" aria-pressed="true" aria-controls="members-panel" aria-label="Vis online i rummet" title="Online i rummet">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19v-1.3A4.7 4.7 0 0 1 8.2 13h1.6a4.7 4.7 0 0 1 4.7 4.7V19z"/><path d="M16 5.3a3 3 0 0 1 0 5.8M17 13.3a4.7 4.7 0 0 1 3.5 4.5V19"/></svg>
                             </button>
-                            <button class="toolbar-button" id="search-nav-button" type="button" aria-pressed="false" aria-controls="search-panel" aria-label="Søg efter brugere i rummet" title="Søg efter brugere">
+                            <button class="toolbar-button" id="search-nav-button" type="button" aria-pressed="false" aria-controls="search-panel" aria-label="Søg efter brugere" title="Søg efter brugere">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.4-4.4"/></svg>
                             </button>
                             <button class="toolbar-button" id="profile-nav-button" type="button" aria-pressed="false" aria-controls="profile-editor-panel" aria-label="Rediger min profil" title="Min profil">
@@ -780,7 +784,7 @@
                         </section>
                         <section class="side-panel" id="search-panel" aria-labelledby="search-title" hidden>
                             <h2 class="side-title" id="search-title">Søg efter brugere</h2>
-                            <input class="user-search-input" id="user-search-input" type="search" maxlength="18" autocomplete="off" placeholder="Skriv et brugernavn" aria-label="Søg efter brugere i rummet" aria-controls="user-search-results">
+                            <input class="user-search-input" id="user-search-input" type="search" maxlength="18" autocomplete="off" placeholder="Skriv et brugernavn" aria-label="Søg efter brugere" aria-controls="user-search-results">
                             <div class="member-list" id="user-search-results" role="list" aria-live="polite"></div>
                             <p class="member-empty hidden" id="user-search-empty" role="status" aria-live="polite"></p>
                         </section>
@@ -932,6 +936,8 @@
             const userSearchInput = document.getElementById('user-search-input');
             const userSearchResults = document.getElementById('user-search-results');
             const userSearchEmpty = document.getElementById('user-search-empty');
+            let userSearchServerResults = null;
+            let userSearchTimer = null;
             const memberList = document.getElementById('member-list');
             const memberEmpty = document.getElementById('member-empty');
             const membersPanel = document.getElementById('members-panel');
@@ -1007,6 +1013,7 @@
             let roomNoticeTimer = null;
             let contextPlayerId = null;
             let viewingProfilePlayerId = null;
+            let viewingProfileUserId = null;
             let sessionKickMessage = '';
             let viewingOwnProfile = false;
             let profileManagement = { relations: [] };
@@ -1135,7 +1142,10 @@
             }
 
             function selectSidePanel(panel) {
-                if (panel !== 'profile-view') viewingProfilePlayerId = null;
+                if (panel !== 'profile-view') {
+                    viewingProfilePlayerId = null;
+                    viewingProfileUserId = null;
+                }
                 membersPanel.hidden = panel !== 'members';
                 chatPanel.hidden = panel !== 'chat';
                 searchPanel.hidden = panel !== 'search';
@@ -1355,6 +1365,7 @@
 
             function showPublicProfile(playerId) {
                 viewingProfilePlayerId = playerId;
+                viewingProfileUserId = null;
                 viewingOwnProfile = playerId === myId;
                 selectSidePanel('profile-view');
                 viewProfileName.textContent = 'Henter profil…';
@@ -1471,30 +1482,74 @@
                 return row;
             }
 
+            function getUserSearchQuery() {
+                return userSearchInput.value.normalize('NFKC').trim().toLocaleLowerCase('en-US');
+            }
+
+            function findOnlinePlayerByName(username) {
+                const normalized = username.toLocaleLowerCase('en-US');
+                return Object.values(players)
+                    .find((player) => player.name.toLocaleLowerCase('en-US') === normalized) || null;
+            }
+
+            function createUserSearchResult({ username, playerId, userId }) {
+                const player = players[playerId] || findOnlinePlayerByName(username);
+                const target = player || { id: `user:${userId}`, name: username };
+                const result = createMemberRow(target, 'button');
+                if (!player) {
+                    result.querySelector('.member-dot').classList.add('offline');
+                    const offlineTag = document.createElement('span');
+                    offlineTag.className = 'you-tag';
+                    offlineTag.textContent = 'offline';
+                    result.append(offlineTag);
+                }
+                result.type = 'button';
+                result.classList.add('user-search-result');
+                result.setAttribute('role', 'listitem');
+                result.setAttribute('aria-label', `Vis profil for ${target.name}${player ? '' : ', offline'}`);
+                result.addEventListener('click', () => showPublicProfile(target.id));
+                return result;
+            }
+
             function renderUserSearchResults() {
-                const query = userSearchInput.value.normalize('NFKC').trim().toLocaleLowerCase('da');
-                const matches = Object.values(players)
-                    .filter((player) => player.name.toLocaleLowerCase('da').includes(query))
-                    .sort((first, second) => first.name.localeCompare(second.name, 'da'));
-                userSearchResults.replaceChildren();
-                matches.forEach((player) => {
-                    const result = createMemberRow(player, 'button');
-                    result.type = 'button';
-                    result.classList.add('user-search-result');
-                    result.setAttribute('role', 'listitem');
-                    result.setAttribute('aria-label', `Vis profil for ${player.name}`);
-                    result.addEventListener('click', () => showPublicProfile(player.id));
-                    userSearchResults.append(result);
-                });
-                userSearchEmpty.textContent = query
-                    ? 'Ingen brugere i rummet matcher din søgning.'
-                    : 'Der er ingen brugere her endnu.';
-                userSearchEmpty.classList.toggle('hidden', matches.length > 0);
+                const query = getUserSearchQuery();
+                const serverResults = query && userSearchServerResults?.query === query ? userSearchServerResults : null;
+                let entries;
+                let status = '';
+                if (serverResults && !serverResults.error) {
+                    entries = serverResults.results;
+                    if (!entries.length) status = 'Ingen brugere matcher din søgning.';
+                } else {
+                    entries = Object.values(players)
+                        .filter((player) => player.name.normalize('NFKC').toLocaleLowerCase('en-US').includes(query))
+                        .sort((first, second) => first.name.localeCompare(second.name, 'da'))
+                        .map((player) => ({ username: player.name, playerId: player.id }));
+                    if (serverResults) status = serverResults.error;
+                    else if (query) status = 'Søger også efter offline brugere…';
+                    else if (!entries.length) status = 'Der er ingen brugere her endnu.';
+                }
+                userSearchResults.replaceChildren(...entries.map(createUserSearchResult));
+                userSearchEmpty.textContent = status;
+                userSearchEmpty.classList.toggle('hidden', !status);
+            }
+
+            function scheduleUserSearch() {
+                clearTimeout(userSearchTimer);
+                const query = getUserSearchQuery();
+                if (!query || [...query].length > 18) return;
+                userSearchTimer = setTimeout(() => socket.emit('user-search', { query }), 300);
+            }
+
+            function resetUserSearch() {
+                clearTimeout(userSearchTimer);
+                userSearchInput.value = '';
+                userSearchServerResults = null;
             }
 
             function openUserSearch() {
                 selectSidePanel('search');
                 renderUserSearchResults();
+                scheduleUserSearch();
                 userSearchInput.focus({ preventScroll: true });
             }
 
@@ -1821,7 +1876,10 @@
             chatNavButton.addEventListener('click', () => selectSidePanel('chat'));
             profileNavButton.addEventListener('click', openProfileEditor);
             searchNavButton.addEventListener('click', openUserSearch);
-            userSearchInput.addEventListener('input', renderUserSearchResults);
+            userSearchInput.addEventListener('input', () => {
+                renderUserSearchResults();
+                scheduleUserSearch();
+            });
             userSearchInput.addEventListener('keydown', (event) => {
                 if (event.key !== 'Enter') return;
                 event.preventDefault();
@@ -1922,7 +1980,7 @@
                     resetPendingAuthentication();
                     setRoomNotice('');
                     updateDraftText('');
-                    userSearchInput.value = '';
+                    resetUserSearch();
                 } catch (error) {
                     setRoomNotice(error.message || 'Kunne ikke logge ud. Prøv igen.');
                 } finally {
@@ -2085,7 +2143,7 @@
                 resetPendingAuthentication();
                 players = {};
                 myId = null;
-                userSearchInput.value = '';
+                resetUserSearch();
                 updateOnlineList();
                 selectSidePanel('members');
                 gameSection.classList.add('hidden');
@@ -2141,9 +2199,20 @@
                 setRoomNotice(message || 'Feltet er allerede optaget.');
             });
 
+            socket.on('user-search-results', ({ query, results, error } = {}) => {
+                if (!query || query !== getUserSearchQuery()) return;
+                userSearchServerResults = {
+                    query,
+                    results: Array.isArray(results) ? results : [],
+                    error: typeof error === 'string' ? error : ''
+                };
+                renderUserSearchResults();
+            });
+
             socket.on('profile-info', (profile) => {
                 if (profile.playerId !== viewingProfilePlayerId) return;
-                viewProfileName.textContent = profile.avatarName;
+                viewingProfileUserId = profile.userId || null;
+                viewProfileName.textContent = profile.online ? profile.avatarName : `${profile.avatarName} (offline)`;
                 viewingOwnProfile = profile.isOwnProfile;
                 guestbookForm.hidden = viewingOwnProfile;
                 updateProfileRelationship(profile.relationship);
@@ -2152,6 +2221,7 @@
                 viewProfileDiscord.textContent = profile.discordName || 'Ikke angivet';
                 viewProfileCreatedAt.textContent = formatProfileDate(profile.createdAt);
                 setOnlineDuration(viewProfileOnlineDuration, profile.totalOnlineMs);
+                if (!profile.online) freezeOnlineDuration(viewProfileOnlineDuration);
                 viewProfileInterests.textContent = profile.interests || 'Ikke angivet';
                 viewProfileText.textContent = profile.profileText || 'Ingen profiltekst endnu.';
             });
@@ -2296,7 +2366,13 @@
                 const player = players[id];
                 delete players[id];
                 if (id === myId) freezeOnlineDuration(profileOnlineDuration);
-                if (id === viewingProfilePlayerId) freezeOnlineDuration(viewProfileOnlineDuration);
+                if (id === viewingProfilePlayerId) {
+                    freezeOnlineDuration(viewProfileOnlineDuration);
+                    if (viewingProfileUserId) {
+                        viewingProfilePlayerId = `user:${viewingProfileUserId}`;
+                        viewProfileName.textContent = `${player ? player.name : viewProfileName.textContent} (offline)`;
+                    }
+                }
                 updateOnlineList();
                 if (player) addChatSystemEntry(`${player.name} har forladt chatten.`);
             });
