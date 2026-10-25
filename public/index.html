@@ -308,7 +308,7 @@
             gap: 9px;
             margin: 10px -15px -15px;
             padding: 9px 15px;
-            border: 1px solid #252525;
+            border: 1px solid #292b26;
             border-bottom: 0;
             border-radius: 0 0 15px 15px;
             background: #080909;
@@ -322,24 +322,24 @@
             align-items: center;
             justify-content: center;
             padding: 0;
-            border: 1px solid #bd1914;
+            border: 1px solid #4a5534;
             border-radius: 2px;
-            background: #970b08;
-            color: #fff;
+            background: #20231b;
+            color: #c1f078;
             cursor: pointer;
             transition: background .16s ease, border-color .16s ease, transform .16s ease;
         }
 
-        .toolbar-button:hover { border-color: #f24a3f; background: #bd120e; }
+        .toolbar-button:hover { border-color: #9fc65f; background: #2c3027; color: #d5f59c; }
         .toolbar-button:active { transform: translateY(1px); }
         .toolbar-button[aria-pressed="true"] {
-            border-color: #d83229;
-            background: #a90e0a;
+            border-color: #c1f078;
+            background: #303729;
             color: #fff;
         }
 
         .toolbar-button:focus-visible {
-            outline: 2px solid #ff8379;
+            outline: 2px solid #c1f078;
             outline-offset: 2px;
         }
 
@@ -442,10 +442,10 @@
         .profile-section-title {
             margin: 0 -17px 14px;
             padding: 8px 17px;
-            border-top: 1px solid #353943;
-            border-bottom: 1px solid #353943;
-            background: #282b32;
-            color: #f0f1f3;
+            border-top: 1px solid #292b26;
+            border-bottom: 1px solid #292b26;
+            background: #1b1d19;
+            color: #f2f0e9;
             font-size: 11px;
             font-weight: 700;
         }
@@ -475,9 +475,9 @@
             flex: 0 0 auto;
             min-height: 28px;
             padding: 0 8px;
-            border: 1px solid #454850;
+            border: 1px solid #393b33;
             border-radius: 5px;
-            background: #2a2c32;
+            background: #20211d;
             color: #d9d8d1;
             font: inherit;
             font-size: 10px;
@@ -497,10 +497,10 @@
             width: 100%;
             min-height: 34px;
             padding: 7px 9px;
-            border: 1px solid #3a3d44;
+            border: 1px solid #363831;
             border-radius: 5px;
             outline: none;
-            background: #202228;
+            background: #10110f;
             color: #f2f0e9;
             font-size: 11px;
             font-weight: 400;
@@ -512,14 +512,14 @@
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
             overflow: hidden;
-            border: 1px solid #363941;
+            border: 1px solid #292b26;
             border-radius: 7px;
-            background: #22242a;
+            background: #171815;
         }
-        .profile-fact { min-width: 0; padding: 10px 11px; border-bottom: 1px solid #383b42; }
-        .profile-fact:nth-child(odd) { border-right: 1px solid #383b42; }
-        .profile-fact dt { margin-bottom: 4px; color: #aeb2ba; font-size: 10px; font-weight: 650; }
-        .profile-fact dd { margin: 0; color: #f0f1f3; font-size: 11px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .profile-fact { min-width: 0; padding: 10px 11px; border-bottom: 1px solid #292b26; }
+        .profile-fact:nth-child(odd) { border-right: 1px solid #292b26; }
+        .profile-fact dt { margin-bottom: 4px; color: #96988f; font-size: 10px; font-weight: 650; }
+        .profile-fact dd { margin: 0; color: #f2f0e9; font-size: 11px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
         .profile-fact-wide { grid-column: 1 / -1; border-right: 0 !important; }
         .profile-actions { display: flex; gap: 7px; margin: -5px 0 12px; }
         .profile-action {
@@ -528,10 +528,10 @@
             height: 32px;
             place-items: center;
             padding: 0;
-            border: 1px solid #3a3d44;
+            border: 1px solid #363831;
             border-radius: 5px;
-            background: #202228;
-            color: #f0f1f3;
+            background: #10110f;
+            color: #f2f0e9;
             font-size: 17px;
             cursor: pointer;
         }
@@ -546,10 +546,10 @@
             min-height: 34px;
             margin: 0 0 12px;
             padding: 6px 9px;
-            border: 1px solid #3a3d44;
+            border: 1px solid #363831;
             border-radius: 5px;
-            background: #202228;
-            color: #f0f1f3;
+            background: #10110f;
+            color: #f2f0e9;
             font: inherit;
             font-size: 11px;
         }
@@ -557,20 +557,20 @@
         .guestbook-list { display: grid; gap: 9px; margin-bottom: 12px; }
         .guestbook-entry {
             padding: 10px;
-            border: 1px solid #363941;
+            border: 1px solid #292b26;
             border-radius: 6px;
-            background: #22242a;
+            background: #171815;
         }
         .guestbook-entry-header { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
-        .guestbook-author { min-width: 0; color: #f0f1f3; font-size: 10px; font-weight: 650; overflow-wrap: anywhere; }
-        .guestbook-date { margin-left: auto; color: #aeb2ba; font-size: 9px; white-space: nowrap; }
+        .guestbook-author { min-width: 0; color: #f2f0e9; font-size: 10px; font-weight: 650; overflow-wrap: anywhere; }
+        .guestbook-date { margin-left: auto; color: #96988f; font-size: 9px; white-space: nowrap; }
         .guestbook-message { margin: 0; color: #d9d8d1; font-size: 11px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
         .guestbook-delete {
             margin-left: 4px;
             padding: 2px 5px;
-            border: 1px solid #454850;
+            border: 1px solid #393b33;
             border-radius: 4px;
-            background: #2a2c32;
+            background: #20211d;
             color: #d9d8d1;
             font-size: 9px;
             cursor: pointer;
@@ -581,9 +581,9 @@
             width: 100%;
             min-height: 76px;
             padding: 8px 9px;
-            border: 1px solid #3a3d44;
+            border: 1px solid #363831;
             border-radius: 5px;
-            background: #202228;
+            background: #10110f;
             color: #f2f0e9;
             font: inherit;
             font-size: 11px;
@@ -602,9 +602,64 @@
             cursor: pointer;
         }
         .guestbook-form button:disabled { cursor: wait; opacity: .6; }
-        .profile-meta { color: #d9d8d1; font-size: 10px; }
-        .profile-meta dt { margin-bottom: 5px; font-size: 10px; font-weight: 650; }
-        .profile-meta dd { min-height: 34px; margin: 0; padding: 8px 9px; border: 1px solid #3a3d44; border-radius: 5px; background: #202228; color: #f0f1f3; font-size: 11px; font-weight: 400; }
+        .profile-field input[readonly] { border-color: #363831; background: #1b1d19; color: #b7b7ae; cursor: default; }
+        .profile-birthdate { margin: 0; padding: 0; border: 0; }
+        .profile-birthdate legend { margin-bottom: 5px; padding: 0; }
+        .profile-birthdate div { display: grid; grid-template-columns: 1.2fr 1fr 1.4fr; gap: 6px; }
+        .profile-birthdate select {
+            min-width: 0;
+            min-height: 34px;
+            padding: 0 6px;
+            border: 1px solid #363831;
+            border-radius: 5px;
+            background: #10110f;
+            color: #f2f0e9;
+            font: inherit;
+            font-size: 11px;
+            font-weight: 400;
+        }
+        .profile-postal-town { min-height: 14px; color: var(--muted); font-weight: 400; }
+        .profile-level-row { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; color: #d9d8d1; font-size: 10px; font-weight: 650; }
+        .profile-level-icon {
+            display: grid;
+            width: 34px;
+            height: 32px;
+            place-items: center;
+            border: 1px solid #9fc65f;
+            border-radius: 7px;
+            background: linear-gradient(#3a4a25, #26301a);
+            color: #e6f8c4;
+            font-size: 14px;
+            font-weight: 800;
+            cursor: default;
+        }
+        .profile-facts-title {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin: 12px 0 0;
+            padding: 7px 11px;
+            border: 1px solid #292b26;
+            border-bottom: 0;
+            border-radius: 7px 7px 0 0;
+            background: #20231b;
+            color: #f2f0e9;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        .profile-facts-title + .profile-facts-view { margin-top: 0; border-radius: 0 0 7px 7px; }
+        .profile-about {
+            margin: 0;
+            padding: 10px 11px;
+            border: 1px solid #292b26;
+            border-radius: 0 0 7px 7px;
+            background: #171815;
+            color: #f2f0e9;
+            font-size: 11px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
         .profile-status { min-height: 16px; margin: 0; color: var(--muted); font-size: 11px; }
         .profile-save {
             min-height: 36px;
@@ -826,18 +881,42 @@
                             </div>
                             <div class="profile-details" id="manage-profile-panel">
                                 <form class="profile-form" id="profile-form">
-                                    <dl class="profile-facts profile-meta">
-                                        <div><dt>Oprettet</dt><dd id="profile-created-at">Henter…</dd></div>
-                                        <div><dt>Samlet online</dt><dd id="profile-online-duration">Henter…</dd></div>
-                                    </dl>
+                                    <p class="profile-level-row">
+                                        <span>Timer online: <span id="profile-online-duration">Henter…</span></span>
+                                    </p>
                                     <div class="profile-facts">
                                         <label class="profile-field" for="profile-real-name">
-                                            Rigtigt navn
-                                            <input id="profile-real-name" name="realName" maxlength="80" autocomplete="name">
+                                            Alias
+                                            <input id="profile-real-name" name="realName" maxlength="80" autocomplete="nickname">
+                                        </label>
+                                        <label class="profile-field" for="profile-created-at">
+                                            Dit første login
+                                            <input id="profile-created-at" value="Henter…" readonly tabindex="-1">
+                                        </label>
+                                        <label class="profile-field" for="profile-steam-name">
+                                            Steam
+                                            <input id="profile-steam-name" name="steamName" maxlength="64" autocomplete="off" placeholder="Steam">
+                                        </label>
+                                        <label class="profile-field" for="profile-last-login">
+                                            Dit sidste login
+                                            <input id="profile-last-login" value="Henter…" readonly tabindex="-1">
                                         </label>
                                         <label class="profile-field" for="profile-discord-name">
                                             Discord
-                                            <input id="profile-discord-name" name="discordName" maxlength="64" autocomplete="off">
+                                            <input id="profile-discord-name" name="discordName" maxlength="64" autocomplete="off" placeholder="Discord">
+                                        </label>
+                                        <fieldset class="profile-field profile-birthdate">
+                                            <legend>Fødselsdag</legend>
+                                            <div>
+                                                <select id="profile-birth-month" aria-label="Fødselsmåned"></select>
+                                                <select id="profile-birth-day" aria-label="Fødselsdag"></select>
+                                                <select id="profile-birth-year" aria-label="Fødselsår"></select>
+                                            </div>
+                                        </fieldset>
+                                        <label class="profile-field" for="profile-postal-code">
+                                            Postnummer
+                                            <input id="profile-postal-code" name="postalCode" maxlength="4" inputmode="numeric" pattern="[0-9]{4}" autocomplete="postal-code" placeholder="fx 7560">
+                                            <span class="profile-postal-town" id="profile-postal-town"></span>
                                         </label>
                                         <label class="profile-field profile-field-wide" for="profile-interests">
                                             Interesser
@@ -857,6 +936,7 @@
                             <h2 class="side-title" id="profile-view-title">Profil</h2>
                             <p class="profile-section-title" id="profile-view-name">Henter profil…</p>
                             <div class="profile-actions" aria-label="Profilhandlinger">
+                                <span class="profile-level-icon" id="view-profile-level" title="Level 1" aria-label="Level 1">1</span>
                                 <button class="profile-action" id="profile-friend-button" type="button" aria-label="Tilføj til venneliste" title="Tilføj til venneliste" aria-pressed="false">🫂</button>
                                 <button class="profile-action" id="profile-enemy-button" type="button" aria-label="Tilføj til fjendeliste" title="Tilføj til fjendeliste" aria-pressed="false">⚔️</button>
                             </div>
@@ -867,15 +947,21 @@
                                 <option value="guestbook">Gæstebog</option>
                             </select>
                             <div class="profile-info-page" id="profile-info-page">
+                                <p class="profile-facts-title"><span>Facts:</span></p>
                                 <dl class="profile-facts-view">
-                                    <div class="profile-fact"><dt>Level</dt><dd id="view-profile-room">1</dd></div>
-                                    <div class="profile-fact"><dt>Rigtigt navn</dt><dd id="view-profile-real-name"></dd></div>
-                                    <div class="profile-fact"><dt>Discord</dt><dd id="view-profile-discord"></dd></div>
-                                    <div class="profile-fact"><dt>Interesser</dt><dd id="view-profile-interests"></dd></div>
-                                    <div class="profile-fact"><dt>Oprettet</dt><dd id="view-profile-created-at"></dd></div>
-                                    <div class="profile-fact"><dt>Samlet online</dt><dd id="view-profile-online-duration"></dd></div>
-                                    <div class="profile-fact profile-fact-wide"><dt>Profiltekst</dt><dd id="view-profile-text"></dd></div>
+                                    <div class="profile-fact"><dt>Alias:</dt><dd id="view-profile-real-name"></dd></div>
+                                    <div class="profile-fact"><dt>Lejlighed:</dt><dd id="view-profile-apartment">Ingen endnu</dd></div>
+                                    <div class="profile-fact"><dt>Alder:</dt><dd id="view-profile-age"></dd></div>
+                                    <div class="profile-fact"><dt>Timer online:</dt><dd id="view-profile-online-duration"></dd></div>
+                                    <div class="profile-fact"><dt>Første login:</dt><dd id="view-profile-created-at"></dd></div>
+                                    <div class="profile-fact"><dt>Sidste login:</dt><dd id="view-profile-last-login"></dd></div>
+                                    <div class="profile-fact"><dt>Discord:</dt><dd id="view-profile-discord"></dd></div>
+                                    <div class="profile-fact"><dt>Steam:</dt><dd id="view-profile-steam"></dd></div>
+                                    <div class="profile-fact"><dt>Bopæl:</dt><dd id="view-profile-residence"></dd></div>
+                                    <div class="profile-fact"><dt>Interesser:</dt><dd id="view-profile-interests"></dd></div>
                                 </dl>
+                                <p class="profile-facts-title" id="view-profile-text-title">Derudover vil brugeren gerne fortælle:</p>
+                                <p class="profile-about" id="view-profile-text"></p>
                             </div>
                             <section class="guestbook-page" id="guestbook-page" aria-label="Gæstebog" hidden>
                                 <div class="guestbook-list" id="guestbook-list" role="list" aria-live="polite"></div>
@@ -977,15 +1063,26 @@
                 enemies: document.getElementById('manage-enemies-empty')
             };
             const profileCreatedAt = document.getElementById('profile-created-at');
+            const profileLastLogin = document.getElementById('profile-last-login');
+            const profileSteamName = document.getElementById('profile-steam-name');
+            const profileBirthDay = document.getElementById('profile-birth-day');
+            const profileBirthMonth = document.getElementById('profile-birth-month');
+            const profileBirthYear = document.getElementById('profile-birth-year');
+            const profilePostalCode = document.getElementById('profile-postal-code');
+            const profilePostalTown = document.getElementById('profile-postal-town');
             const profileOnlineDuration = document.getElementById('profile-online-duration');
             const viewProfileName = document.getElementById('profile-view-name');
-            const viewProfileRoom = document.getElementById('view-profile-room');
             const viewProfileRealName = document.getElementById('view-profile-real-name');
             const viewProfileDiscord = document.getElementById('view-profile-discord');
             const viewProfileCreatedAt = document.getElementById('view-profile-created-at');
             const viewProfileOnlineDuration = document.getElementById('view-profile-online-duration');
             const viewProfileInterests = document.getElementById('view-profile-interests');
             const viewProfileText = document.getElementById('view-profile-text');
+            const viewProfileTextTitle = document.getElementById('view-profile-text-title');
+            const viewProfileAge = document.getElementById('view-profile-age');
+            const viewProfileLastLogin = document.getElementById('view-profile-last-login');
+            const viewProfileSteam = document.getElementById('view-profile-steam');
+            const viewProfileResidence = document.getElementById('view-profile-residence');
             const profileFriendButton = document.getElementById('profile-friend-button');
             const profileEnemyButton = document.getElementById('profile-enemy-button');
             const profilePageSelect = document.getElementById('profile-page-select');
@@ -1043,14 +1140,53 @@
                 draftText = text.slice(0, maxMessageLength);
             }
 
-            function formatProfileDate(value) {
+            function formatProfileDateTime(value) {
+                if (!value) return 'Ukendt';
                 const date = new Date(value);
-                if (Number.isNaN(date.getTime())) return 'Ikke angivet';
-                return new Intl.DateTimeFormat('da-DK', {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric'
-                }).format(date);
+                if (Number.isNaN(date.getTime())) return 'Ukendt';
+                const pad = (number) => String(number).padStart(2, '0');
+                return `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()} ` +
+                    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+            }
+
+            function fillSelect(select, placeholder, options) {
+                select.replaceChildren(new Option(placeholder, ''), ...options.map(([value, label]) => new Option(label, value)));
+            }
+
+            const BIRTH_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Maj', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dec'];
+            fillSelect(profileBirthMonth, 'Måned', BIRTH_MONTHS.map((label, index) => [String(index + 1).padStart(2, '0'), label]));
+            fillSelect(profileBirthDay, 'Dag', Array.from({ length: 31 }, (_, index) => [String(index + 1).padStart(2, '0'), String(index + 1)]));
+            fillSelect(profileBirthYear, 'År', Array.from({ length: new Date().getFullYear() - 1899 }, (_, index) => {
+                const year = String(new Date().getFullYear() - index);
+                return [year, year];
+            }));
+
+            function setProfileBirthDate(value) {
+                const [year = '', month = '', day = ''] = value ? value.split('-') : [];
+                profileBirthYear.value = year;
+                profileBirthMonth.value = month;
+                profileBirthDay.value = day;
+            }
+
+            function getProfileBirthDate() {
+                const parts = [profileBirthYear.value, profileBirthMonth.value, profileBirthDay.value];
+                if (parts.every((part) => !part)) return '';
+                if (parts.some((part) => !part)) throw new Error('Vælg både måned, dag og år for din fødselsdag.');
+                const date = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+                if (date.getDate() !== Number(parts[2])) throw new Error('Fødselsdagen er ikke en gyldig dato.');
+                if (date > new Date()) throw new Error('Fødselsdagen kan ikke ligge i fremtiden.');
+                return parts.join('-');
+            }
+
+            function applyOwnProfile(result) {
+                profileRealName.value = result.realName;
+                profileSteamName.value = result.steamName;
+                profileDiscordName.value = result.discordName;
+                profileInterests.value = result.interests;
+                profileText.value = result.profileText;
+                profilePostalCode.value = result.postalCode;
+                profilePostalTown.textContent = result.postalTown;
+                setProfileBirthDate(result.birthDate);
             }
 
             function formatOnlineDuration(value) {
@@ -1356,11 +1492,9 @@
                     const response = await authFetch('/api/profile');
                     const result = await response.json();
                     if (!response.ok) throw new Error(result.error || 'Profilen kunne ikke hentes.');
-                    profileRealName.value = result.realName;
-                    profileDiscordName.value = result.discordName;
-                    profileInterests.value = result.interests;
-                    profileText.value = result.profileText;
-                    profileCreatedAt.textContent = formatProfileDate(result.createdAt);
+                    applyOwnProfile(result);
+                    profileCreatedAt.value = formatProfileDateTime(result.createdAt);
+                    profileLastLogin.value = formatProfileDateTime(result.lastLoginAt);
                     setOnlineDuration(profileOnlineDuration, result.totalOnlineMs);
                     profileStatus.textContent = 'Profiloplysningerne er indlæst.';
                     profileLoaded = true;
@@ -1387,10 +1521,14 @@
                 guestbookMessage.value = '';
                 guestbookForm.hidden = viewingOwnProfile;
                 updateProfileRelationship(null);
-                viewProfileRoom.textContent = '1';
                 viewProfileRealName.textContent = '';
                 viewProfileDiscord.textContent = '';
                 viewProfileCreatedAt.textContent = '';
+                viewProfileLastLogin.textContent = '';
+                viewProfileAge.textContent = '';
+                viewProfileSteam.textContent = '';
+                viewProfileResidence.textContent = '';
+                viewProfileTextTitle.textContent = 'Derudover vil brugeren gerne fortælle:';
                 viewProfileOnlineDuration.textContent = '';
                 delete viewProfileOnlineDuration.dataset.onlineTotalMs;
                 delete viewProfileOnlineDuration.dataset.onlineUpdatedAt;
@@ -1930,6 +2068,8 @@
                 profileSaveButton.disabled = true;
                 profileStatus.textContent = 'Gemmer…';
                 try {
+                    const postalCode = profilePostalCode.value.trim();
+                    if (postalCode && !/^\d{4}$/.test(postalCode)) throw new Error('Postnummeret skal være 4 cifre.');
                     const response = await authFetch('/api/profile', {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
@@ -1937,15 +2077,15 @@
                             realName: profileRealName.value,
                             profileText: profileText.value,
                             discordName: profileDiscordName.value,
-                            interests: profileInterests.value
+                            interests: profileInterests.value,
+                            steamName: profileSteamName.value,
+                            birthDate: getProfileBirthDate(),
+                            postalCode
                         })
                     });
                     const result = await response.json();
                     if (!response.ok) throw new Error(result.error || 'Profilen kunne ikke gemmes.');
-                    profileRealName.value = result.realName;
-                    profileDiscordName.value = result.discordName;
-                    profileInterests.value = result.interests;
-                    profileText.value = result.profileText;
+                    applyOwnProfile(result);
                     profileStatus.textContent = 'Profilen er gemt.';
                 } catch (error) {
                     profileStatus.textContent = error.message || 'Profilen kunne ikke gemmes. Prøv igen.';
@@ -2212,13 +2352,17 @@
                 viewingOwnProfile = profile.isOwnProfile;
                 guestbookForm.hidden = viewingOwnProfile;
                 updateProfileRelationship(profile.relationship);
-                viewProfileRoom.textContent = '1';
-                viewProfileRealName.textContent = profile.realName || 'Ikke angivet';
-                viewProfileDiscord.textContent = profile.discordName || 'Ikke angivet';
-                viewProfileCreatedAt.textContent = formatProfileDate(profile.createdAt);
+                viewProfileRealName.textContent = profile.realName || 'Ikke angivet.';
+                viewProfileAge.textContent = Number.isInteger(profile.age) ? `${profile.age} år` : 'Ikke angivet.';
+                viewProfileDiscord.textContent = profile.discordName || 'Ikke angivet.';
+                viewProfileSteam.textContent = profile.steamName || 'Ikke angivet.';
+                viewProfileResidence.textContent = profile.residence || 'Ikke angivet.';
+                viewProfileCreatedAt.textContent = formatProfileDateTime(profile.createdAt);
+                viewProfileLastLogin.textContent = formatProfileDateTime(profile.lastLoginAt);
+                viewProfileTextTitle.textContent = `Derudover vil ${profile.avatarName} gerne fortælle:`;
                 setOnlineDuration(viewProfileOnlineDuration, profile.totalOnlineMs);
                 if (!profile.online) freezeOnlineDuration(viewProfileOnlineDuration);
-                viewProfileInterests.textContent = profile.interests || 'Ikke angivet';
+                viewProfileInterests.textContent = profile.interests || 'Ikke angivet.';
                 viewProfileText.textContent = profile.profileText || 'Ingen profiltekst endnu.';
             });
 
