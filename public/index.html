@@ -1800,8 +1800,6 @@
                     for (let col = 0; col < gridCount; col++) {
                         const x = col * cellSize;
                         const y = row * cellSize;
-                        ctx.fillStyle = (row + col) % 2 === 0 ? '#191c16' : '#151813';
-                        ctx.fillRect(x, y, cellSize, cellSize);
                         if (hoveredCell && hoveredCell.col === col && hoveredCell.row === row) {
                             ctx.fillStyle = '#c1f07812';
                             ctx.fillRect(x, y, cellSize, cellSize);
@@ -1811,15 +1809,20 @@
 
                 ctx.strokeStyle = '#292d25';
                 ctx.lineWidth = 1;
-                for (let index = 0; index <= gridCount; index++) {
-                    const point = Math.round(index * cellSize) + 0.5;
+                for (let offset = -canvas.height + cellSize / 2; offset <= canvas.width - cellSize / 2; offset += cellSize) {
                     ctx.beginPath();
-                    ctx.moveTo(point, 0);
-                    ctx.lineTo(point, canvas.height);
+                    const startX = Math.max(0, offset);
+                    const endX = Math.min(canvas.width, canvas.height + offset);
+                    ctx.moveTo(startX, startX - offset);
+                    ctx.lineTo(endX, endX - offset);
                     ctx.stroke();
+                }
+                for (let offset = cellSize / 2; offset <= canvas.width + canvas.height - cellSize / 2; offset += cellSize) {
                     ctx.beginPath();
-                    ctx.moveTo(0, point);
-                    ctx.lineTo(canvas.width, point);
+                    const startX = Math.max(0, offset - canvas.height);
+                    const endX = Math.min(canvas.width, offset);
+                    ctx.moveTo(startX, offset - startX);
+                    ctx.lineTo(endX, offset - endX);
                     ctx.stroke();
                 }
 
