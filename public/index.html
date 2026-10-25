@@ -841,7 +841,7 @@
                 </div>
                 <div class="room">
                     <section class="board-card" aria-label="Chatrum">
-                        <canvas id="game-canvas" width="408" height="373" tabindex="0" aria-label="Et diamantgrid med 73 felter. Klik på et felt for at flytte din avatar. Højreklik på en anden avatar for at se profilen. Skriv for at chatte, og tryk Enter for at sende.">
+                        <canvas id="game-canvas" width="480" height="400" tabindex="0" aria-label="Et diamantgrid med 30 primære felter og 20 mellemliggende felter. Klik på et felt for at flytte din avatar. Højreklik på en anden avatar for at se profilen. Skriv for at chatte, og tryk Enter for at sende.">
                             Dit browserprogram understøtter ikke canvas.
                         </canvas>
                         <p class="room-notice" id="room-notice" aria-live="polite"></p>
@@ -1164,12 +1164,11 @@
             const logoutButton = document.getElementById('logout-button');
             const chatLog = document.getElementById('chat-log');
             const chatEmpty = document.getElementById('chat-empty');
-            const cellSize = 40;
+            const cellSize = 80;
             const gridRows = Math.floor(canvas.height / cellSize);
-            const gridColumns = Math.floor(Math.min(canvas.width, canvas.height) / cellSize);
+            const gridColumns = Math.floor(canvas.width / cellSize);
+            const gridLeft = (canvas.width - gridColumns * cellSize) / 2;
             const gridTop = (canvas.height - gridRows * cellSize) / 2;
-            const gridRowCounts = Array.from({ length: gridRows }, (_, row) =>
-                gridColumns - 1 + (row === Math.floor(gridRows / 2) ? 1 : 0));
             const avatarRadius = 19;
             const messageDuration = 10000;
             const maxMessageLength = 100;
@@ -1779,13 +1778,13 @@
 
             function positionFor(player) {
                 return {
-                    x: canvas.width / 2 + (player.col - player.row) * cellSize / 2,
+                    x: canvas.width / 2 - cellSize / 2 + (player.col - player.row) * cellSize / 2,
                     y: gridTop + cellSize / 2 + (player.col + player.row) * cellSize / 2
                 };
             }
 
             function coordinateForGridCenter(x, y) {
-                const offsetX = x - canvas.width / 2;
+                const offsetX = x - (canvas.width / 2 - cellSize / 2);
                 const offsetY = y - gridTop - cellSize / 2;
                 return {
                     col: Math.round((offsetX + offsetY) / cellSize),
@@ -1795,16 +1794,17 @@
 
             const gridCells = [];
             for (let row = 0; row < gridRows; row++) {
-                const rowCount = gridRowCounts[row];
-                for (let col = 0; col < rowCount; col++) {
-                    const x = canvas.width / 2 + (col - (rowCount - 1) / 2) * cellSize;
+                for (let col = 0; col < gridColumns; col++) {
+                    const x = gridLeft + cellSize / 2 + col * cellSize;
                     const y = gridTop + cellSize / 2 + row * cellSize;
-                    gridCells.push({
-                        ...coordinateForGridCenter(x, y),
-                        x,
-                        y,
-                        kind: row % 2 === 0 ? 'primary' : 'intermediate'
-                    });
+                    gridCells.push({ ...coordinateForGridCenter(x, y), x, y, kind: 'primary' });
+                }
+            }
+            for (let row = 0; row < gridRows - 1; row++) {
+                for (let col = 0; col < gridColumns - 1; col++) {
+                    const x = gridLeft + cellSize + col * cellSize;
+                    const y = gridTop + cellSize + row * cellSize;
+                    gridCells.push({ ...coordinateForGridCenter(x, y), x, y, kind: 'intermediate' });
                 }
             }
 
@@ -2052,7 +2052,7 @@
 
             function drawBoard() {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = '#edf4f8';
+                ctx.fillStyle = '#080a08';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
                 for (const cell of gridCells) {
@@ -2062,9 +2062,9 @@
                     ctx.lineTo(cell.x, cell.y + cellSize / 2);
                     ctx.lineTo(cell.x - cellSize / 2, cell.y);
                     ctx.closePath();
-                    ctx.fillStyle = cell.kind === 'primary' ? '#a9cce4' : '#e5c58b';
+                    ctx.fillStyle = cell.kind === 'primary' ? '#11130f' : '#172012';
                     ctx.fill();
-                    ctx.strokeStyle = cell.kind === 'primary' ? '#4d82a4' : '#bd8d42';
+                    ctx.strokeStyle = cell.kind === 'primary' ? '#293126' : '#3e5532';
                     ctx.lineWidth = 1.5;
                     ctx.stroke();
                 }
