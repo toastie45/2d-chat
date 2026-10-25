@@ -402,6 +402,27 @@
         }
 
         .you-tag { margin-left: auto; color: var(--muted); font-size: 10px; }
+        .user-search-input {
+            width: 100%;
+            margin-bottom: 12px;
+            padding: 9px 11px;
+            border-radius: 7px;
+            font-size: 12px;
+        }
+        .user-search-result {
+            width: 100%;
+            padding: 5px 7px;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            background: transparent;
+            text-align: left;
+            cursor: pointer;
+        }
+        .user-search-result:hover, .user-search-result:focus-visible {
+            border-color: #3a3d34;
+            background: #20221d;
+            outline: none;
+        }
         .visually-hidden {
             position: absolute;
             width: 1px;
@@ -743,6 +764,9 @@
                             <button class="toolbar-button" id="members-nav-button" type="button" aria-pressed="true" aria-controls="members-panel" aria-label="Vis online i rummet" title="Online i rummet">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19v-1.3A4.7 4.7 0 0 1 8.2 13h1.6a4.7 4.7 0 0 1 4.7 4.7V19z"/><path d="M16 5.3a3 3 0 0 1 0 5.8M17 13.3a4.7 4.7 0 0 1 3.5 4.5V19"/></svg>
                             </button>
+                            <button class="toolbar-button" id="search-nav-button" type="button" aria-pressed="false" aria-controls="search-panel" aria-label="Søg efter brugere i rummet" title="Søg efter brugere">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.4-4.4"/></svg>
+                            </button>
                             <button class="toolbar-button" id="profile-nav-button" type="button" aria-pressed="false" aria-controls="profile-editor-panel" aria-label="Rediger min profil" title="Min profil">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 6.5 3-3 3 3-3 3"/><path d="m3 21 4.5-1 11-11-3.5-3.5-11 11L3 21Z"/><path d="m13 8 3.5 3.5"/></svg>
                             </button>
@@ -753,6 +777,12 @@
                             <h2 class="side-title" id="members-title">Her lige nu</h2>
                             <div class="member-list" id="member-list" role="list" aria-live="polite"></div>
                             <p class="member-empty hidden" id="member-empty" role="status" aria-live="polite">Der er ingen brugere her endnu.</p>
+                        </section>
+                        <section class="side-panel" id="search-panel" aria-labelledby="search-title" hidden>
+                            <h2 class="side-title" id="search-title">Søg efter brugere</h2>
+                            <input class="user-search-input" id="user-search-input" type="search" maxlength="18" autocomplete="off" placeholder="Skriv et brugernavn" aria-label="Søg efter brugere i rummet" aria-controls="user-search-results">
+                            <div class="member-list" id="user-search-results" role="list" aria-live="polite"></div>
+                            <p class="member-empty hidden" id="user-search-empty" role="status" aria-live="polite"></p>
                         </section>
                         <section class="side-panel chat-section" id="chat-panel" aria-labelledby="chat-title" hidden>
                             <h2 class="side-title" id="chat-title">Velkommen i Fællesrum</h2>
@@ -897,6 +927,11 @@
             const membersNavButton = document.getElementById('members-nav-button');
             const chatNavButton = document.getElementById('chat-nav-button');
             const profileNavButton = document.getElementById('profile-nav-button');
+            const searchNavButton = document.getElementById('search-nav-button');
+            const searchPanel = document.getElementById('search-panel');
+            const userSearchInput = document.getElementById('user-search-input');
+            const userSearchResults = document.getElementById('user-search-results');
+            const userSearchEmpty = document.getElementById('user-search-empty');
             const memberList = document.getElementById('member-list');
             const memberEmpty = document.getElementById('member-empty');
             const membersPanel = document.getElementById('members-panel');
@@ -1086,6 +1121,7 @@
                 membersNavButton.setAttribute('aria-pressed', String(!membersPanel.hidden));
                 chatNavButton.setAttribute('aria-pressed', String(!chatPanel.hidden));
                 profileNavButton.setAttribute('aria-pressed', String(!profileEditorPanel.hidden));
+                searchNavButton.setAttribute('aria-pressed', String(!searchPanel.hidden));
             }
 
             function selectAuthMode(mode) {
@@ -1102,6 +1138,7 @@
                 if (panel !== 'profile-view') viewingProfilePlayerId = null;
                 membersPanel.hidden = panel !== 'members';
                 chatPanel.hidden = panel !== 'chat';
+                searchPanel.hidden = panel !== 'search';
                 profileEditorPanel.hidden = panel !== 'profile-editor';
                 profileViewPanel.hidden = panel !== 'profile-view';
                 updateToolbarState();
@@ -1407,25 +1444,58 @@
                 memberEmpty.classList.toggle('hidden', sortedPlayers.length > 0);
 
                 sortedPlayers.forEach((player) => {
-                    const row = document.createElement('div');
-                    row.className = 'member';
+                    const row = createMemberRow(player);
                     row.setAttribute('role', 'listitem');
-                    const dot = document.createElement('span');
-                    dot.className = 'member-dot';
-                    dot.style.backgroundColor = colorForPlayer(player.id);
-                    const name = document.createElement('span');
-                    name.className = 'member-name';
-                    name.textContent = player.name;
                     row.setAttribute('aria-label', player.id === myId ? `${player.name}, dig` : player.name);
-                    row.append(dot, name);
-                    if (player.id === myId) {
-                        const you = document.createElement('span');
-                        you.className = 'you-tag';
-                        you.textContent = 'dig';
-                        row.append(you);
-                    }
                     memberList.append(row);
                 });
+                renderUserSearchResults();
+            }
+
+            function createMemberRow(player, element = 'div') {
+                const row = document.createElement(element);
+                row.className = 'member';
+                const dot = document.createElement('span');
+                dot.className = 'member-dot';
+                dot.style.backgroundColor = colorForPlayer(player.id);
+                const name = document.createElement('span');
+                name.className = 'member-name';
+                name.textContent = player.name;
+                row.append(dot, name);
+                if (player.id === myId) {
+                    const you = document.createElement('span');
+                    you.className = 'you-tag';
+                    you.textContent = 'dig';
+                    row.append(you);
+                }
+                return row;
+            }
+
+            function renderUserSearchResults() {
+                const query = userSearchInput.value.normalize('NFKC').trim().toLocaleLowerCase('da');
+                const matches = Object.values(players)
+                    .filter((player) => player.name.toLocaleLowerCase('da').includes(query))
+                    .sort((first, second) => first.name.localeCompare(second.name, 'da'));
+                userSearchResults.replaceChildren();
+                matches.forEach((player) => {
+                    const result = createMemberRow(player, 'button');
+                    result.type = 'button';
+                    result.classList.add('user-search-result');
+                    result.setAttribute('role', 'listitem');
+                    result.setAttribute('aria-label', `Vis profil for ${player.name}`);
+                    result.addEventListener('click', () => showPublicProfile(player.id));
+                    userSearchResults.append(result);
+                });
+                userSearchEmpty.textContent = query
+                    ? 'Ingen brugere i rummet matcher din søgning.'
+                    : 'Der er ingen brugere her endnu.';
+                userSearchEmpty.classList.toggle('hidden', matches.length > 0);
+            }
+
+            function openUserSearch() {
+                selectSidePanel('search');
+                renderUserSearchResults();
+                userSearchInput.focus({ preventScroll: true });
             }
 
             function addChatTime(entry, value = Date.now()) {
@@ -1750,6 +1820,13 @@
             membersNavButton.addEventListener('click', () => selectSidePanel('members'));
             chatNavButton.addEventListener('click', () => selectSidePanel('chat'));
             profileNavButton.addEventListener('click', openProfileEditor);
+            searchNavButton.addEventListener('click', openUserSearch);
+            userSearchInput.addEventListener('input', renderUserSearchResults);
+            userSearchInput.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter') return;
+                event.preventDefault();
+                userSearchResults.querySelector('.user-search-result')?.click();
+            });
             friendMenuTrigger.addEventListener('click', () => {
                 setFriendMenuOpen(friendMenu.hidden);
             });
@@ -1845,6 +1922,7 @@
                     resetPendingAuthentication();
                     setRoomNotice('');
                     updateDraftText('');
+                    userSearchInput.value = '';
                 } catch (error) {
                     setRoomNotice(error.message || 'Kunne ikke logge ud. Prøv igen.');
                 } finally {
@@ -2007,7 +2085,9 @@
                 resetPendingAuthentication();
                 players = {};
                 myId = null;
+                userSearchInput.value = '';
                 updateOnlineList();
+                selectSidePanel('members');
                 gameSection.classList.add('hidden');
                 loginSection.classList.remove('hidden');
                 loginError.textContent = `${sessionKickMessage} Log ind igen med din adgangskode for at gå ind i rummet.`;
