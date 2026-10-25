@@ -1672,6 +1672,64 @@ async function startServer() {
             }
         });
 
+        socket.on('private-whisper-send', async (payload) => {
+            const targetPlayerId = payload && payload.playerId;
+            const message = sanitizeChatMessage(payload && payload.message);
+            if (
+                !activeSocketIds.has(socket.id) ||
+                typeof targetPlayerId !== 'string' || targetPlayerId.length > 128 ||
+                targetPlayerId === socket.id || !message
+            ) {
+                socket.emit('private-whisper-error', { message: 'Vælg en anden avatar, der står tæt på dig, og skriv en besked.' });
+                return;
+            }
+
+            const burst = registerChatMessage(socket.data.whisperMessageTimestamps, Date.now());
+            socket.data.whisperMessageTimestamps = burst.timestamps;
+            if (!burst.allowed) {
+                socket.emit('private-whisper-error', { message: 'Vent lidt, før du hvisker igen.' });
+                return;
+            }
+
+            try {
+                const [senderJson, targetJson] = await Promise.all([
+                    redis.hGet(playersKey, socket.id),
+                    redis.hGet(playersKey, targetPlayerId)
+                ]);
+                if (!senderJson || !targetJson) {
+                    socket.emit('private-whisper-error', { message: 'Avataren er ikke længere i rummet.' });
+                    return;
+                }
+                const sender = JSON.parse(senderJson);
+                const target = JSON.parse(targetJson);
+                const colDistance = Math.abs(sender.col - target.col);
+                const rowDistance = Math.abs(sender.row - target.row);
+                if (Math.max(colDistance, rowDistance) > 1 || (colDistance === 0 && rowDistance === 0)) {
+                    socket.emit('private-whisper-error', { message: 'I skal stå ved siden af hinanden for at hviske.' });
+                    return;
+                }
+
+                const sentAt = Date.now();
+                socket.emit('private-whisper-message', {
+                    playerId: targetPlayerId,
+                    playerName: target.name,
+                    message,
+                    sentAt,
+                    own: true
+                });
+                io.to(targetPlayerId).emit('private-whisper-message', {
+                    playerId: socket.id,
+                    playerName: sender.name,
+                    message,
+                    sentAt,
+                    own: false
+                });
+            } catch (error) {
+                console.error('Could not send private whisper:', getSafeErrorCode(error));
+                socket.emit('private-whisper-error', { message: 'Hvisken kunne ikke sendes. Prøv igen.' });
+            }
+        });
+
         socket.on('chat-message', async (text) => {
             if (!activeSocketIds.has(socket.id) || typeof text !== 'string') return;
             const cleanText = sanitizeChatMessage(text);
