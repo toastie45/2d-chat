@@ -460,6 +460,17 @@
         .profile-management-list { display: grid; gap: 7px; }
         .profile-management-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
         .profile-management-name { min-width: 0; flex: 1; color: #e4e3dc; font-size: 11px; overflow-wrap: anywhere; }
+        button.profile-management-name {
+            padding: 0;
+            border: 0;
+            background: none;
+            font: inherit;
+            font-size: 11px;
+            text-align: left;
+            cursor: pointer;
+        }
+        button.profile-management-name:hover,
+        button.profile-management-name:focus-visible { color: #fff; text-decoration: underline; }
         .profile-manage-action {
             flex: 0 0 auto;
             min-height: 28px;
@@ -1206,6 +1217,11 @@
                 }
             }
 
+            function openRelationProfile(relation) {
+                const player = findOnlinePlayerByName(relation.username);
+                showPublicProfile(player ? player.id : `user:${relation.targetUserId}`);
+            }
+
             function renderFriendMenu() {
                 const friends = profileManagement.relations
                     .filter((relation) => relation.relationship === 'friend')
@@ -1216,23 +1232,15 @@
                 friends.forEach((friend) => {
                     const row = document.createElement('div');
                     row.className = 'friend-menu-row';
-                    const online = Object.values(players).some((player) =>
-                        player.name.toLocaleLowerCase('en-US') === friend.username.toLocaleLowerCase('en-US')
-                    );
+                    const online = Boolean(findOnlinePlayerByName(friend.username));
                     const name = document.createElement('button');
                     name.className = 'friend-menu-name';
                     name.type = 'button';
-                    name.textContent = `${friend.username}${online ? ' · online' : ''}`;
-                    name.setAttribute('aria-label', online ? `Åbn profilen for ${friend.username}` : `${friend.username} er offline`);
-                    name.disabled = !online;
+                    name.textContent = `${friend.username} · ${online ? 'online' : 'offline'}`;
+                    name.setAttribute('aria-label', `Åbn profilen for ${friend.username}, ${online ? 'online' : 'offline'}`);
                     name.addEventListener('click', () => {
-                        const player = Object.values(players).find((item) =>
-                            item.name.toLocaleLowerCase('en-US') === friend.username.toLocaleLowerCase('en-US')
-                        );
-                        if (player) {
-                            setFriendMenuOpen(false);
-                            showPublicProfile(player.id);
-                        }
+                        setFriendMenuOpen(false);
+                        openRelationProfile(friend);
                     });
                     row.append(name);
                     friendMenuList.append(row);
@@ -1255,9 +1263,12 @@
                     const row = document.createElement('div');
                     row.className = 'profile-management-row';
                     row.setAttribute('role', 'listitem');
-                    const name = document.createElement('span');
+                    const name = document.createElement('button');
                     name.className = 'profile-management-name';
+                    name.type = 'button';
                     name.textContent = entry.username;
+                    name.setAttribute('aria-label', `Åbn profilen for ${entry.username}`);
+                    name.addEventListener('click', () => openRelationProfile(entry));
                     const remove = document.createElement('button');
                     remove.className = 'profile-manage-action';
                     remove.type = 'button';
