@@ -1886,6 +1886,7 @@
                     ctx.fillText(player.name, position.x, position.y + 31, labelWidth - 8);
                 }
 
+                // Draw speech bubbles after every avatar so they stay in front on the canvas.
                 for (const player of Object.values(players)) {
                     drawSpeechBubble(player, now);
                 }
