@@ -172,6 +172,7 @@ return true
 
 const HEARTBEAT_SCRIPT = `
 local now = tonumber(ARGV[1])
+local missing = {}
 for index = 2, #ARGV do
     local id = ARGV[index]
     local encoded = redis.call('HGET', KEYS[1], id)
@@ -179,9 +180,11 @@ for index = 2, #ARGV do
         local player = cjson.decode(encoded)
         player.lastSeen = now
         redis.call('HSET', KEYS[1], id, cjson.encode(player))
+    else
+        table.insert(missing, id)
     end
 end
-return #ARGV - 1
+return missing
 `;
 
 const CLEAN_STALE_PLAYERS_SCRIPT = `
@@ -960,12 +963,6 @@ async function startServer() {
                         `, [socket.data.user.id, target.profile.id, relationship]);
                         nextRelationship = relationship;
                     }
-                    if (nextRelationship !== 'friend') {
-                        await client.query(
-                            'DELETE FROM chat_profile_mutes WHERE user_id = $1 AND target_user_id = $2',
-                            [socket.data.user.id, target.profile.id]
-                        );
-                    }
                     await client.query('COMMIT');
                 } catch (error) {
                     await client.query('ROLLBACK');
@@ -1047,10 +1044,6 @@ async function startServer() {
                         socket.emit('profile-management-error', { message: 'Personen er ikke længere på din liste.' });
                         return;
                     }
-                    await client.query(
-                        'DELETE FROM chat_profile_mutes WHERE user_id = $1 AND target_user_id = $2',
-                        [socket.data.user.id, targetUserId]
-                    );
                     await client.query('COMMIT');
                 } catch (error) {
                     await client.query('ROLLBACK');
@@ -1188,10 +1181,15 @@ async function startServer() {
                     socket.emit('guestbook-error', { playerId, message: 'Vent lidt, før du skriver en hilsen mere.' });
                     return;
                 }
-                await pool.query(
-                    'INSERT INTO chat_guestbook_entries (profile_user_id, author_user_id, message) VALUES ($1, $2, $3)',
-                    [target.profile.id, socket.data.user.id, message]
-                );
+                try {
+                    await pool.query(
+                        'INSERT INTO chat_guestbook_entries (profile_user_id, author_user_id, message) VALUES ($1, $2, $3)',
+                        [target.profile.id, socket.data.user.id, message]
+                    );
+                } catch (error) {
+                    await redis.del(cooldownKey).catch(() => {});
+                    throw error;
+                }
                 socket.emit('guestbook-added', { playerId });
             } catch (error) {
                 console.error('Could not save guestbook entry:', getSafeErrorCode(error));
@@ -1215,10 +1213,14 @@ async function startServer() {
                     socket.emit('guestbook-error', { playerId, message: 'Kun gæstebogens ejer kan slette hilsner.' });
                     return;
                 }
-                await pool.query(
+                const { rowCount } = await pool.query(
                     'DELETE FROM chat_guestbook_entries WHERE id = $1 AND profile_user_id = $2',
                     [entryId, target.profile.id]
                 );
+                if (!rowCount) {
+                    socket.emit('guestbook-error', { playerId, message: 'Hilsnen findes ikke længere.' });
+                    return;
+                }
                 socket.emit('guestbook-deleted', { playerId, entryId: String(entryId) });
             } catch (error) {
                 console.error('Could not delete guestbook entry:', getSafeErrorCode(error));
@@ -1227,7 +1229,8 @@ async function startServer() {
         });
 
         socket.on('join', async () => {
-            if (activeSocketIds.has(socket.id)) return;
+            if (activeSocketIds.has(socket.id) || socket.data.joining) return;
+            socket.data.joining = true;
             try {
                 await cleanupStalePlayers();
                 const { rows: mutedUsers } = await pool.query(`
@@ -1284,6 +1287,8 @@ async function startServer() {
             } catch (error) {
                 console.error('Could not add chat participant:', getSafeErrorCode(error));
                 socket.emit('room-error', { message: 'Kunne ikke komme ind i chatten. Prøv igen.' });
+            } finally {
+                socket.data.joining = false;
             }
         });
 
@@ -1408,10 +1413,20 @@ async function startServer() {
         if (heartbeatRunning || activeSocketIds.size === 0) return;
         heartbeatRunning = true;
         try {
-            await redis.eval(HEARTBEAT_SCRIPT, {
+            const missingIds = await redis.eval(HEARTBEAT_SCRIPT, {
                 keys: [playersKey],
                 arguments: [String(Date.now()), ...activeSocketIds]
             });
+            for (const id of missingIds) {
+                if (!activeSocketIds.delete(id)) continue;
+                io.emit('playerDisconnected', id);
+                try {
+                    await accountOnlineSession(id, true);
+                } catch (error) {
+                    console.error('Could not account for missing chat session:', getSafeErrorCode(error));
+                }
+                io.in(id).disconnectSockets(true);
+            }
         } catch (error) {
             console.error('Could not refresh chat presence:', getSafeErrorCode(error));
         }
