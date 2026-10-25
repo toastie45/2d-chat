@@ -27,9 +27,11 @@ const { hashRegistrationIp, MAX_ACCOUNTS_PER_IP } = require('./lib/account-ip-li
 const { normalizePublicProfile } = require('./lib/public-profile');
 const { registerChatMessage } = require('./lib/chat-rate-limit');
 const { GUESTBOOK_MESSAGE_MAX_LENGTH, normalizeGuestbookMessage } = require('./lib/guestbook');
+const { USER_SEARCH_RESULT_LIMIT, getUserSearchPatterns } = require('./lib/user-search');
 
 const GRID_COUNT = 6;
 const MESSAGE_DURATION = 10_000;
+const OFFLINE_PROFILE_PREFIX = 'user:';
 const HISTORY_LIMIT = 500;
 const PRESENCE_HEARTBEAT_INTERVAL = 10_000;
 const PRESENCE_EXPIRY = 45_000;
@@ -854,8 +856,22 @@ async function startServer() {
         return getPublicPlayers(await redis.hGetAll(playersKey));
     }
 
+    function getMissingTargetMessage(targetId) {
+        return targetId.startsWith(OFFLINE_PROFILE_PREFIX)
+            ? 'Brugeren findes ikke længere.'
+            : 'Brugeren er ikke længere i rummet.';
+    }
+
     async function getProfileTarget(playerId) {
         if (typeof playerId !== 'string' || playerId.length > 128) return null;
+        const accountMatch = /^user:([1-9]\d{0,18})$/.exec(playerId);
+        if (accountMatch) {
+            const { rows: [profile] } = await pool.query(
+                'SELECT id, username, real_name, profile_text, discord_name, interests, created_at FROM chat_users WHERE id = $1',
+                [accountMatch[1]]
+            );
+            return profile ? { player: null, profile } : null;
+        }
         const playerJson = await redis.hGet(playersKey, playerId);
         if (!playerJson) return null;
         const player = JSON.parse(playerJson);
@@ -883,7 +899,7 @@ async function startServer() {
                 await cleanupStalePlayers();
                 const target = await getProfileTarget(playerId);
                 if (!target) {
-                    socket.emit('profile-error', { playerId, message: 'Brugeren er ikke længere i rummet.' });
+                    socket.emit('profile-error', { playerId, message: getMissingTargetMessage(playerId) });
                     return;
                 }
                 const { player, profile } = target;
@@ -893,7 +909,9 @@ async function startServer() {
                 );
                 socket.emit('profile-info', {
                     playerId,
-                    avatarName: player.name,
+                    userId: String(profile.id),
+                    avatarName: player ? player.name : profile.username,
+                    online: Boolean(player),
                     room: 'Fællesrum',
                     realName: profile.real_name || '',
                     profileText: profile.profile_text || '',
@@ -925,7 +943,7 @@ async function startServer() {
                 if (!target) {
                     socket.emit('profile-relationship-result', {
                         playerId,
-                        error: 'Brugeren er ikke længere i rummet.'
+                        error: getMissingTargetMessage(playerId)
                     });
                     return;
                 }
@@ -1131,7 +1149,7 @@ async function startServer() {
                 await cleanupStalePlayers();
                 const target = await getProfileTarget(playerId);
                 if (!target) {
-                    socket.emit('guestbook-error', { playerId, message: 'Brugeren er ikke længere i rummet.' });
+                    socket.emit('guestbook-error', { playerId, message: getMissingTargetMessage(playerId) });
                     return;
                 }
                 const { rows: entries } = await pool.query(`
@@ -1168,7 +1186,7 @@ async function startServer() {
             try {
                 const target = await getProfileTarget(playerId);
                 if (!target) {
-                    socket.emit('guestbook-error', { playerId, message: 'Brugeren er ikke længere i rummet.' });
+                    socket.emit('guestbook-error', { playerId, message: getMissingTargetMessage(playerId) });
                     return;
                 }
                 if (String(target.profile.id) === String(socket.data.user.id)) {
@@ -1225,6 +1243,45 @@ async function startServer() {
             } catch (error) {
                 console.error('Could not delete guestbook entry:', getSafeErrorCode(error));
                 socket.emit('guestbook-error', { playerId, message: 'Hilsnen kunne ikke slettes. Prøv igen.' });
+            }
+        });
+
+        socket.on('user-search', async (payload) => {
+            const patterns = getUserSearchPatterns(payload && payload.query);
+            if (!activeSocketIds.has(socket.id) || !patterns) return;
+            const now = Date.now();
+            if (now - Number(socket.data.lastUserSearchAt || 0) < 200) return;
+            socket.data.lastUserSearchAt = now;
+            try {
+                const [{ rows }, players] = await Promise.all([
+                    pool.query(`
+                        SELECT id, username, username_normalized
+                        FROM chat_users
+                        WHERE username_normalized LIKE $1 ESCAPE '\\'
+                        ORDER BY username_normalized LIKE $2 ESCAPE '\\' DESC, username_normalized
+                        LIMIT $3
+                    `, [patterns.contains, patterns.prefix, USER_SEARCH_RESULT_LIMIT]),
+                    getPlayers()
+                ]);
+                const onlinePlayerIds = new Map();
+                for (const [id, player] of Object.entries(players)) {
+                    const account = normalizeUsername(player.name);
+                    if (account) onlinePlayerIds.set(account.normalized, id);
+                }
+                socket.emit('user-search-results', {
+                    query: patterns.query,
+                    results: rows.map((row) => ({
+                        userId: String(row.id),
+                        username: row.username,
+                        playerId: onlinePlayerIds.get(row.username_normalized) || null
+                    }))
+                });
+            } catch (error) {
+                console.error('Could not search users:', getSafeErrorCode(error));
+                socket.emit('user-search-results', {
+                    query: patterns.query,
+                    error: 'Søgningen mislykkedes. Prøv igen.'
+                });
             }
         });
 

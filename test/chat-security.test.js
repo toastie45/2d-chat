@@ -17,6 +17,7 @@ const { hashRegistrationIp, MAX_ACCOUNTS_PER_IP } = require('../lib/account-ip-l
 const { normalizePublicProfile } = require('../lib/public-profile');
 const { CHAT_BURST_LIMIT, CHAT_BURST_WINDOW_MS, registerChatMessage } = require('../lib/chat-rate-limit');
 const { GUESTBOOK_MESSAGE_MAX_LENGTH, normalizeGuestbookMessage } = require('../lib/guestbook');
+const { USER_SEARCH_RESULT_LIMIT, getUserSearchPatterns } = require('../lib/user-search');
 
 test('redacts Render and GitHub tokens before a message is stored', () => {
     const message = redactSecrets('Render rnd_exampleToken123456789 GitHub ghp_abcdefghijklmnopqrstuvwxyz');
@@ -181,4 +182,18 @@ test('hashes registration IPs without storing their raw address', () => {
 test('requires a usable IP and secret to create an IP hash', () => {
     assert.throws(() => hashRegistrationIp('', 'secret'), TypeError);
     assert.throws(() => hashRegistrationIp('192.0.2.10', ''), TypeError);
+});
+
+test('builds escaped username search patterns', () => {
+    assert.deepEqual(getUserSearchPatterns('  BoD '), { query: 'bod', contains: '%bod%', prefix: 'bod%' });
+    assert.deepEqual(getUserSearchPatterns('a_b%c\\'), {
+        query: 'a_b%c\\',
+        contains: '%a\\_b\\%c\\\\%',
+        prefix: 'a\\_b\\%c\\\\%'
+    });
+    assert.equal(getUserSearchPatterns('ＢＯＤ').query, 'bod');
+    assert.equal(getUserSearchPatterns('   '), null);
+    assert.equal(getUserSearchPatterns('x'.repeat(19)), null);
+    assert.equal(getUserSearchPatterns(42), null);
+    assert.equal(USER_SEARCH_RESULT_LIMIT, 20);
 });
