@@ -333,6 +333,21 @@
 
         .toolbar-button:hover { border-color: #9fc65f; background: #2c3027; color: #d5f59c; }
         .toolbar-button:active { transform: translateY(1px); }
+        .navigator-room-list { display: grid; gap: 9px; }
+        .navigator-room-button {
+            width: 100%;
+            padding: 12px 13px;
+            border: 1px solid #393b33;
+            border-radius: 8px;
+            background: #20211d;
+            color: #e6e6df;
+            font: inherit;
+            text-align: left;
+            cursor: pointer;
+        }
+        .navigator-room-button:hover { border-color: #9fc65f; background: #292c23; }
+        .navigator-room-button[aria-current="true"] { border-color: #8cae53; background: #252a1e; color: #c1f078; }
+        .navigator-room-description { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; }
         .toolbar-button[aria-pressed="true"] {
             border-color: #c1f078;
             background: #303729;
@@ -821,7 +836,7 @@
 
             <section class="game hidden" id="game-section">
                 <div class="room-strip hidden" id="room-strip" aria-label="Rummets status">
-                    <span class="room-strip-name">Fællesrum</span>
+                    <span class="room-strip-name" id="room-strip-name">Fællesrum</span>
                     <span class="room-strip-divider" aria-hidden="true"></span>
                     <span class="room-strip-tagline">Deus er en skat</span>
                     <span class="room-strip-spacer"></span>
@@ -856,6 +871,9 @@
                         <button class="toolbar-button" id="members-nav-button" type="button" aria-pressed="false" aria-controls="members-panel" aria-label="Vis online i rummet" title="Online i rummet">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19v-1.3A4.7 4.7 0 0 1 8.2 13h1.6a4.7 4.7 0 0 1 4.7 4.7V19z"/><path d="M16 5.3a3 3 0 0 1 0 5.8M17 13.3a4.7 4.7 0 0 1 3.5 4.5V19"/></svg>
                             </button>
+                            <button class="toolbar-button" id="navigator-nav-button" type="button" aria-pressed="false" aria-controls="navigator-panel" aria-label="Navigator" title="Navigator">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.8 8.2-2.4 5.2-5.2 2.4 2.4-5.2z"/></svg>
+                            </button>
                             <button class="toolbar-button" id="search-nav-button" type="button" aria-pressed="false" aria-controls="search-panel" aria-label="Søg efter brugere" title="Søg efter brugere">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.4-4.4"/></svg>
                             </button>
@@ -866,6 +884,13 @@
                         </nav>
                     </section>
                     <aside class="side-card">
+                        <section class="side-panel" id="navigator-panel" aria-labelledby="navigator-title" hidden>
+                            <h2 class="side-title" id="navigator-title">Navigator</h2>
+                            <div class="navigator-room-list" role="group" aria-label="Vælg rum">
+                                <button class="navigator-room-button" type="button" data-room="common" aria-current="true">Fællesrum<span class="navigator-room-description">Det fælles chatrum</span></button>
+                                <button class="navigator-room-button" type="button" data-room="disco" aria-current="false">Diskoteket<span class="navigator-room-description">Et nyt rum</span></button>
+                            </div>
+                        </section>
                         <section class="side-panel" id="members-panel" aria-labelledby="members-title" hidden>
                             <h2 class="side-title" id="members-title">Her lige nu</h2>
                             <div class="member-list" id="member-list" role="list" aria-live="polite"></div>
@@ -1071,6 +1096,7 @@
             const authSwitchButton = document.getElementById('auth-switch-button');
             const pageWrapper = document.querySelector('.page');
             const roomStrip = document.getElementById('room-strip');
+            const roomStripName = document.getElementById('room-strip-name');
             const roomStripCount = document.getElementById('room-strip-count');
             const roomStripUser = document.getElementById('room-strip-user');
             const friendMenuTrigger = document.getElementById('friend-menu-trigger');
@@ -1080,6 +1106,10 @@
             const bottomToolbar = document.getElementById('bottom-toolbar');
             const refreshNavButton = document.getElementById('refresh-nav-button');
             const membersNavButton = document.getElementById('members-nav-button');
+            const navigatorNavButton = document.getElementById('navigator-nav-button');
+            const navigatorPanel = document.getElementById('navigator-panel');
+            const navigatorRoomButtons = document.querySelectorAll('.navigator-room-button');
+            const chatTitle = document.getElementById('chat-title');
             const chatNavButton = document.getElementById('chat-nav-button');
             const profileNavButton = document.getElementById('profile-nav-button');
             const searchNavButton = document.getElementById('search-nav-button');
@@ -1184,6 +1214,7 @@
             let authMode = 'login';
             let currentUser = null;
             let roomNoticeTimer = null;
+            let activeRoom = 'common';
             let contextPlayerId = null;
             let activeWhisperPlayerId = null;
             let whisperSending = false;
@@ -1352,6 +1383,7 @@
 
             function updateToolbarState() {
                 membersNavButton.setAttribute('aria-pressed', String(!membersPanel.hidden));
+                navigatorNavButton.setAttribute('aria-pressed', String(!navigatorPanel.hidden));
                 chatNavButton.setAttribute('aria-pressed', String(!chatPanel.hidden));
                 profileNavButton.setAttribute('aria-pressed', String(!profileEditorPanel.hidden));
                 searchNavButton.setAttribute('aria-pressed', String(!searchPanel.hidden));
@@ -1374,12 +1406,26 @@
                     viewingProfileUserId = null;
                 }
                 membersPanel.hidden = panel !== 'members';
+                navigatorPanel.hidden = panel !== 'navigator';
                 chatPanel.hidden = panel !== 'chat';
                 searchPanel.hidden = panel !== 'search';
                 privateMailPanel.hidden = panel !== 'private-mail';
                 profileEditorPanel.hidden = panel !== 'profile-editor';
                 profileViewPanel.hidden = panel !== 'profile-view';
                 updateToolbarState();
+            }
+
+            function selectRoom(roomId) {
+                if (roomId !== 'common' && roomId !== 'disco') return;
+                activeRoom = roomId;
+                const roomName = roomId === 'disco' ? 'Diskoteket' : 'Fællesrum';
+                roomStripName.textContent = roomName;
+                chatTitle.textContent = `Velkommen i ${roomName}`;
+                document.querySelectorAll('.avatar-context-room').forEach((label) => { label.textContent = roomName; });
+                navigatorRoomButtons.forEach((button) => {
+                    button.setAttribute('aria-current', String(button.dataset.room === roomId));
+                });
+                drawBoard();
             }
 
             function updateMailUnreadBadge(count) {
@@ -2034,7 +2080,8 @@
 
             function drawBoard() {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = '#080a08';
+                const discoRoom = activeRoom === 'disco';
+                ctx.fillStyle = discoRoom ? '#090812' : '#080a08';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
                 for (const cell of gridCells) {
@@ -2044,9 +2091,13 @@
                     ctx.lineTo(cell.x, cell.y + cellSize / 2);
                     ctx.lineTo(cell.x - cellSize / 2, cell.y);
                     ctx.closePath();
-                    ctx.fillStyle = cell.kind === 'primary' ? '#11130f' : '#172012';
+                    ctx.fillStyle = discoRoom
+                        ? (cell.kind === 'primary' ? '#12101b' : '#20162a')
+                        : (cell.kind === 'primary' ? '#11130f' : '#172012');
                     ctx.fill();
-                    ctx.strokeStyle = cell.kind === 'primary' ? '#293126' : '#3e5532';
+                    ctx.strokeStyle = discoRoom
+                        ? (cell.kind === 'primary' ? '#302743' : '#624276')
+                        : (cell.kind === 'primary' ? '#293126' : '#3e5532');
                     ctx.lineWidth = 1.5;
                     ctx.stroke();
                 }
@@ -2381,6 +2432,10 @@
             authSwitchButton.addEventListener('click', () => selectAuthMode(authMode === 'register' ? 'login' : 'register'));
             refreshNavButton.addEventListener('click', () => window.location.reload());
             membersNavButton.addEventListener('click', () => selectSidePanel('members'));
+            navigatorNavButton.addEventListener('click', () => selectSidePanel('navigator'));
+            navigatorRoomButtons.forEach((button) => {
+                button.addEventListener('click', () => selectRoom(button.dataset.room));
+            });
             chatNavButton.addEventListener('click', () => selectSidePanel('chat'));
             profileNavButton.addEventListener('click', openProfileEditor);
             searchNavButton.addEventListener('click', openUserSearch);
