@@ -29,6 +29,7 @@ const { registerChatMessage } = require('./lib/chat-rate-limit');
 const { GUESTBOOK_MESSAGE_MAX_LENGTH, normalizeGuestbookMessage } = require('./lib/guestbook');
 const { USER_SEARCH_RESULT_LIMIT, getUserSearchPatterns } = require('./lib/user-search');
 const GRID_LAYOUT = require('./public/grid-layout');
+const { LEVEL_REQUIREMENTS, getUserLevel } = require('./public/level-progression');
 const PRIVATE_MAIL_SUBJECT_MAX_LENGTH = 100;
 const PRIVATE_MAIL_MESSAGE_MAX_LENGTH = 2000;
 
@@ -39,6 +40,7 @@ const PRESENCE_HEARTBEAT_INTERVAL = 10_000;
 const PRESENCE_EXPIRY = 45_000;
 const PRESENCE_CLEANUP_INTERVAL = 15_000;
 const ONLINE_TIME_ACCOUNTING_INTERVAL = 10_000;
+const PROGRESSION_UPDATE_INTERVAL = 60_000;
 const PLAYER_IDLE_TIMEOUT = 20 * 60 * 1000;
 const PLAYER_IDLE_CHECK_INTERVAL = 10_000;
 const LOGIN_ATTEMPT_LIMIT = 10;
@@ -51,7 +53,6 @@ GRID_CELLS.sort((first, second) => {
     return firstDistance - secondDistance;
 });
 const GRID_CELL_KEYS = new Set(GRID_CELLS.map(({ col, row }) => `${col}:${row}`));
-
 const PLAYER_JOIN_SCRIPT = `
 local existing = redis.call('HGET', KEYS[1], ARGV[1])
 if existing then
@@ -332,8 +333,14 @@ async function startServer() {
     const getHttpTabId = (request) => request.get('x-chat-tab-id');
     const getSocketTabId = (request) => request._query && request._query.tabId;
     const activeSocketIds = new Set();
-    const playersKey = 'chat:players';
-    const cellsKey = 'chat:cells';
+    const activeSocketRooms = new Map();
+    const activeSocketUsers = new Map();
+    const roomChannel = (roomId) => `chatroom:${roomId}`;
+    const roomKeys = (roomId) => ({ players: `chat:${roomId}:players`, cells: `chat:${roomId}:cells` });
+    async function getAllRoomIds() {
+        const { rows } = await pool.query('SELECT id FROM chat_apartments');
+        return ['common', 'disco', ...rows.map((row) => `apartment:${row.id}`)];
+    }
 
     await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_users (
@@ -357,6 +364,21 @@ async function startServer() {
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS postal_code VARCHAR(4)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS region VARCHAR(32)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ');
+    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS accepted_chat_messages BIGINT NOT NULL DEFAULT 0');
+    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS last_progression_message_at TIMESTAMPTZ');
+    await pool.query(`
+        CREATE SEQUENCE IF NOT EXISTS chat_apartment_number_seq START WITH 101
+    `);
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS chat_apartments (
+            id BIGSERIAL PRIMARY KEY,
+            room_type VARCHAR(16) NOT NULL DEFAULT 'apartment' CHECK (room_type = 'apartment'),
+            owner_id BIGINT NOT NULL UNIQUE REFERENCES chat_users(id) ON DELETE CASCADE,
+            apartment_number BIGINT NOT NULL UNIQUE DEFAULT nextval('chat_apartment_number_seq'),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await pool.query("ALTER TABLE chat_apartments ADD COLUMN IF NOT EXISTS room_type VARCHAR(16) NOT NULL DEFAULT 'apartment'");
     await pool.query('CREATE INDEX IF NOT EXISTS chat_users_registration_ip_hash_idx ON chat_users (registration_ip_hash) WHERE registration_ip_hash IS NOT NULL');
     await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_online_sessions (
@@ -426,6 +448,13 @@ async function startServer() {
 
     await redisPublisher.connect();
     await redisSubscriber.connect();
+    const publicRoomKeys = roomKeys('common');
+    if (await redis.exists('chat:players') && !(await redis.exists(publicRoomKeys.players))) {
+        await redis.rename('chat:players', publicRoomKeys.players);
+    }
+    if (await redis.exists('chat:cells') && !(await redis.exists(publicRoomKeys.cells))) {
+        await redis.rename('chat:cells', publicRoomKeys.cells);
+    }
     io.adapter(createAdapter(redisPublisher, redisSubscriber));
     app.set('trust proxy', 1);
     app.use(express.static(path.join(__dirname, 'public')));
@@ -460,7 +489,7 @@ async function startServer() {
         const { rows: [row] } = await pool.query(`
             SELECT
                 u.total_online_ms::text AS total_online_ms,
-                COALESCE(SUM(GREATEST(
+                COALESCE(MAX(GREATEST(
                     0,
                     FLOOR(EXTRACT(EPOCH FROM (NOW() - s.last_accounted_at)) * 1000)
                 )), 0)::text AS pending_online_ms
@@ -473,15 +502,38 @@ async function startServer() {
         return Number(row.total_online_ms) + Number(row.pending_online_ms);
     }
 
+    async function getApartmentForUser(userId) {
+        const { rows: [apartment] } = await pool.query(
+            'SELECT id, apartment_number FROM chat_apartments WHERE owner_id = $1',
+            [userId]
+        );
+        return apartment || null;
+    }
+
     async function accountOnlineSession(socketId, finish = false, accountedUntil = new Date()) {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
-            const { rows: [onlineSession] } = await client.query(
-                'SELECT user_id, last_accounted_at FROM chat_online_sessions WHERE socket_id = $1 FOR UPDATE',
-                [socketId]
+            const { rows: [targetSession] } = await client.query(
+                'SELECT user_id FROM chat_online_sessions WHERE socket_id = $1', [socketId]
             );
-            if (onlineSession) {
+            if (targetSession) {
+                await client.query('SELECT pg_advisory_xact_lock($1::bigint)', [targetSession.user_id]);
+                const { rows: onlineSessions } = await client.query(`
+                    SELECT socket_id, last_accounted_at
+                    FROM chat_online_sessions
+                    WHERE user_id = $1
+                    ORDER BY socket_id
+                    FOR UPDATE
+                `, [targetSession.user_id]);
+                if (!onlineSessions.some((row) => row.socket_id === socketId)) {
+                    await client.query('COMMIT');
+                    return false;
+                }
+                const previousAccountedAt = onlineSessions.reduce((earliest, row) =>
+                    !earliest || new Date(row.last_accounted_at) < earliest
+                        ? new Date(row.last_accounted_at)
+                        : earliest, null);
                 await client.query(`
                     UPDATE chat_users
                     SET total_online_ms = total_online_ms + GREATEST(
@@ -489,18 +541,17 @@ async function startServer() {
                         FLOOR(EXTRACT(EPOCH FROM ($2::timestamptz - $3::timestamptz)) * 1000)::bigint
                     )
                     WHERE id = $1
-                `, [onlineSession.user_id, accountedUntil, onlineSession.last_accounted_at]);
+                `, [targetSession.user_id, accountedUntil, previousAccountedAt]);
+                await client.query(
+                    'UPDATE chat_online_sessions SET last_accounted_at = $2 WHERE user_id = $1 AND last_accounted_at <= $2',
+                    [targetSession.user_id, accountedUntil]
+                );
                 if (finish) {
                     await client.query('DELETE FROM chat_online_sessions WHERE socket_id = $1', [socketId]);
-                } else {
-                    await client.query(
-                        'UPDATE chat_online_sessions SET last_accounted_at = $2 WHERE socket_id = $1',
-                        [socketId, accountedUntil]
-                    );
                 }
             }
             await client.query('COMMIT');
-            return Boolean(onlineSession);
+            return Boolean(targetSession);
         } catch (error) {
             await client.query('ROLLBACK');
             throw error;
@@ -510,10 +561,21 @@ async function startServer() {
     }
 
     async function startOnlineSession(socketId, userId) {
-        await pool.query(`
-            INSERT INTO chat_online_sessions (socket_id, user_id, last_accounted_at)
-            VALUES ($1, $2, NOW())
-        `, [socketId, userId]);
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            await client.query('SELECT pg_advisory_xact_lock($1::bigint)', [userId]);
+            await client.query(`
+                INSERT INTO chat_online_sessions (socket_id, user_id, last_accounted_at)
+                VALUES ($1, $2, NOW())
+            `, [socketId, userId]);
+            await client.query('COMMIT');
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
     }
 
     const requireTabId = (request, response) => {
@@ -799,29 +861,37 @@ async function startServer() {
         next();
     });
 
-    async function cleanupStalePlayers() {
-        const removedIds = await redis.eval(CLEAN_STALE_PLAYERS_SCRIPT, {
-            keys: [playersKey, cellsKey],
-            arguments: [String(Date.now() - PRESENCE_EXPIRY)]
-        });
-        for (const id of removedIds) {
-            activeSocketIds.delete(id);
-            try {
-                await accountOnlineSession(id, true, new Date(Date.now() - PRESENCE_EXPIRY));
-            } catch (error) {
-                console.error('Could not account for expired chat session:', getSafeErrorCode(error));
+    async function cleanupStalePlayers(roomId = null) {
+        const roomIds = roomId ? [roomId] : await getAllRoomIds();
+        for (const currentRoomId of roomIds) {
+            const keys = roomKeys(currentRoomId);
+            const removedIds = await redis.eval(CLEAN_STALE_PLAYERS_SCRIPT, {
+                keys: [keys.players, keys.cells],
+                arguments: [String(Date.now() - PRESENCE_EXPIRY)]
+            });
+            for (const id of removedIds) {
+                activeSocketIds.delete(id);
+                activeSocketRooms.delete(id);
+                activeSocketUsers.delete(id);
+                try {
+                    await accountOnlineSession(id, true, new Date(Date.now() - PRESENCE_EXPIRY));
+                } catch (error) {
+                    console.error('Could not account for expired chat session:', getSafeErrorCode(error));
+                }
+                io.to(roomChannel(currentRoomId)).emit('playerDisconnected', id);
             }
-            io.emit('playerDisconnected', id);
         }
         await cleanupOrphanedOnlineSessions();
     }
 
     async function cleanupOrphanedOnlineSessions() {
-        const [players, { rows: onlineSessions }] = await Promise.all([
-            redis.hGetAll(playersKey),
-            pool.query('SELECT socket_id, last_accounted_at FROM chat_online_sessions')
+        const [roomIds, { rows: onlineSessions }] = await Promise.all([
+            getAllRoomIds(), pool.query('SELECT socket_id, last_accounted_at FROM chat_online_sessions')
         ]);
-        const playerIds = new Set(Object.keys(players));
+        const playerIds = new Set();
+        for (const roomId of roomIds) {
+            Object.keys(await redis.hGetAll(roomKeys(roomId).players)).forEach((id) => playerIds.add(id));
+        }
         for (const onlineSession of onlineSessions) {
             if (playerIds.has(onlineSession.socket_id)) continue;
             const lastAccountedAt = new Date(onlineSession.last_accounted_at).getTime();
@@ -849,12 +919,16 @@ async function startServer() {
     }
 
     async function kickIdlePlayers() {
-        const removedIds = await redis.eval(KICK_IDLE_PLAYERS_SCRIPT, {
-            keys: [playersKey, cellsKey],
-            arguments: [String(Date.now() - PLAYER_IDLE_TIMEOUT)]
-        });
-        for (const id of removedIds) {
+        for (const roomId of await getAllRoomIds()) {
+            const keys = roomKeys(roomId);
+            const removedIds = await redis.eval(KICK_IDLE_PLAYERS_SCRIPT, {
+                keys: [keys.players, keys.cells],
+                arguments: [String(Date.now() - PLAYER_IDLE_TIMEOUT)]
+            });
+            for (const id of removedIds) {
             activeSocketIds.delete(id);
+            activeSocketRooms.delete(id);
+            activeSocketUsers.delete(id);
             try {
                 await accountOnlineSession(id, true);
             } catch (error) {
@@ -866,19 +940,24 @@ async function startServer() {
                 console.error('Could not invalidate inactive participant session:', getSafeErrorCode(error));
             }
             io.to(id).emit('session-kicked', { message: 'Du blev fjernet fra rummet efter 20 minutters inaktivitet.' });
-            io.emit('playerDisconnected', id);
+            io.to(roomChannel(roomId)).emit('playerDisconnected', id);
             setTimeout(() => io.in(id).disconnectSockets(true), 100);
+            }
         }
     }
 
     async function kickPlayer(socketId, message) {
+        const roomId = activeSocketRooms.get(socketId) || 'common';
+        const keys = roomKeys(roomId);
         activeSocketIds.delete(socketId);
+        activeSocketRooms.delete(socketId);
+        activeSocketUsers.delete(socketId);
         try {
             const removed = await redis.eval(REMOVE_PLAYER_SCRIPT, {
-                keys: [playersKey, cellsKey],
+                keys: [keys.players, keys.cells],
                 arguments: [socketId]
             });
-            if (removed) io.emit('playerDisconnected', socketId);
+            if (removed) io.to(roomChannel(roomId)).emit('playerDisconnected', socketId);
         } catch (error) {
             console.error('Could not remove kicked chat participant:', getSafeErrorCode(error));
         }
@@ -896,9 +975,9 @@ async function startServer() {
         setTimeout(() => io.in(socketId).disconnectSockets(true), 100);
     }
 
-    async function getPlayers() {
-        await cleanupStalePlayers();
-        return getPublicPlayers(await redis.hGetAll(playersKey));
+    async function getPlayers(roomId = 'common') {
+        await cleanupStalePlayers(roomId);
+        return getPublicPlayers(await redis.hGetAll(roomKeys(roomId).players));
     }
 
     function getMissingTargetMessage(targetId) {
@@ -907,7 +986,7 @@ async function startServer() {
             : 'Brugeren er ikke længere i rummet.';
     }
 
-    async function getProfileTarget(playerId) {
+    async function getProfileTarget(playerId, roomId = 'common') {
         if (typeof playerId !== 'string' || playerId.length > 128) return null;
         const accountMatch = /^user:([1-9]\d{0,18})$/.exec(playerId);
         if (accountMatch) {
@@ -917,7 +996,7 @@ async function startServer() {
             );
             return profile ? { player: null, profile } : null;
         }
-        const playerJson = await redis.hGet(playersKey, playerId);
+        const playerJson = await redis.hGet(roomKeys(roomId).players, playerId);
         if (!playerJson) return null;
         const player = JSON.parse(playerJson);
         const account = normalizeUsername(player.name);
@@ -929,8 +1008,222 @@ async function startServer() {
         return profile ? { player, profile } : null;
     }
 
+    async function isValidRoomId(roomId) {
+        if (roomId === 'common' || roomId === 'disco') return true;
+        const match = /^apartment:([1-9]\d{0,18})$/.exec(String(roomId || ''));
+        if (!match) return false;
+        const { rowCount } = await pool.query('SELECT 1 FROM chat_apartments WHERE id = $1', [match[1]]);
+        return rowCount > 0;
+    }
+
+    async function placeSocketInRoom(socket, roomId) {
+        const keys = roomKeys(roomId);
+        const joined = await redis.eval(PLAYER_JOIN_SCRIPT, {
+            keys: [keys.players, keys.cells],
+            arguments: [socket.id, socket.data.user.username, String(Date.now()),
+                ...GRID_CELLS.map((cell) => `${cell.col}:${cell.row}`)]
+        });
+        if (!joined) return null;
+        const previousRoom = activeSocketRooms.get(socket.id);
+        if (previousRoom && previousRoom !== roomId) {
+            const previousKeys = roomKeys(previousRoom);
+            await redis.eval(REMOVE_PLAYER_SCRIPT, { keys: [previousKeys.players, previousKeys.cells], arguments: [socket.id] });
+            socket.leave(roomChannel(previousRoom));
+            io.to(roomChannel(previousRoom)).emit('playerDisconnected', socket.id);
+        }
+        activeSocketRooms.set(socket.id, roomId);
+        socket.data.roomId = roomId;
+        await socket.join(roomChannel(roomId));
+        const players = await getPlayers(roomId);
+        for (const player of Object.values(players)) {
+            player.text = '';
+            player.messageTime = 0;
+        }
+        let roomName = roomId === 'common' ? 'Fællesrum' : roomId === 'disco' ? 'Diskoteket' : 'Lejlighed';
+        if (roomId.startsWith('apartment:')) {
+            const { rows: [apartment] } = await pool.query(`
+                SELECT u.username, a.apartment_number FROM chat_apartments a
+                JOIN chat_users u ON u.id = a.owner_id WHERE a.id = $1
+            `, [roomId.slice('apartment:'.length)]);
+            if (apartment) roomName = `${apartment.username}s Lejlighed (#${apartment.apartment_number})`;
+        }
+        socket.emit('room-changed', { roomId, roomName, players });
+        socket.to(roomChannel(roomId)).emit('newPlayer', publicPlayer(JSON.parse(joined)));
+        io.emit('navigator-refresh');
+        return publicPlayer(JSON.parse(joined));
+    }
+
     io.on('connection', (socket) => {
         socket.join(`session:${socket.request.sessionID}`);
+        socket.on('room-switch', async (payload = {}) => {
+            if (!activeSocketIds.has(socket.id) || socket.data.switchingRoom) return;
+            const roomId = String(payload.roomId || '');
+            if (!await isValidRoomId(roomId)) return;
+            socket.data.switchingRoom = true;
+            try {
+                const apartmentMatch = /^apartment:([1-9]\d{0,18})$/.exec(roomId);
+                if (apartmentMatch) {
+                    const { rows: [apartment] } = await pool.query('SELECT owner_id FROM chat_apartments WHERE id = $1', [apartmentMatch[1]]);
+                    if (!apartment) return;
+                    if (String(apartment.owner_id) !== String(socket.data.user.id)) {
+                        const admissionKey = `chat:apartment-admission:${socket.id}:${apartment.id}`;
+                        const admission = await redis.getDel(admissionKey);
+                        if (!admission) {
+                            socket.emit('room-error', { message: 'Du skal banke på og blive lukket ind først.' });
+                            return;
+                        }
+                    }
+                }
+                const moved = await placeSocketInRoom(socket, roomId);
+                if (!moved) socket.emit('room-error', { message: 'Rummet er fyldt. Prøv igen senere.' });
+            } catch (error) {
+                console.error('Could not switch chat room:', getSafeErrorCode(error));
+                socket.emit('room-error', { message: 'Kunne ikke skifte rum. Prøv igen.' });
+            } finally {
+                socket.data.switchingRoom = false;
+            }
+        });
+
+        socket.on('navigator-request', async () => {
+            if (!activeSocketIds.has(socket.id)) return;
+            try {
+                await cleanupStalePlayers();
+                const rooms = [
+                    { id: 'common', name: 'Fællesrum', type: 'public' },
+                    { id: 'disco', name: 'Diskoteket', type: 'public' }
+                ];
+                const { rows: apartments } = await pool.query(`
+                    SELECT DISTINCT a.id, a.apartment_number, u.username
+                    FROM chat_apartments a
+                    JOIN chat_users u ON u.id = a.owner_id
+                    JOIN chat_online_sessions s ON s.user_id = a.owner_id
+                    ORDER BY a.apartment_number
+                `);
+                for (const apartment of apartments) {
+                    const id = `apartment:${apartment.id}`;
+                    const presentCount = await redis.hLen(roomKeys(id).players);
+                    rooms.push({
+                        id,
+                        name: `${apartment.username}s Lejlighed (#${apartment.apartment_number})`,
+                        type: 'apartment',
+                        count: presentCount,
+                        ownerUsername: apartment.username,
+                        apartmentNumber: Number(apartment.apartment_number)
+                    });
+                }
+                socket.emit('navigator-rooms', { rooms, activeRoomId: socket.data.roomId || 'common' });
+            } catch (error) {
+                console.error('Could not list navigator rooms:', getSafeErrorCode(error));
+                socket.emit('navigator-rooms', { rooms: [], error: 'Rumlisten kunne ikke hentes.' });
+            }
+        });
+
+        socket.on('apartment-info-request', async ({ playerId } = {}) => {
+            if (!activeSocketIds.has(socket.id) || typeof playerId !== 'string' || playerId.length > 128) return;
+            try {
+                const target = await getProfileTarget(playerId, socket.data.roomId || 'common');
+                const apartment = target ? await getApartmentForUser(target.profile.id) : null;
+                socket.emit('apartment-info', {
+                    playerId,
+                    apartmentId: apartment ? String(apartment.id) : null,
+                    apartmentNumber: apartment ? Number(apartment.apartment_number) : null
+                });
+            } catch (error) {
+                console.error('Could not look up avatar apartment:', getSafeErrorCode(error));
+            }
+        });
+
+        socket.on('apartment-create', async () => {
+            if (!activeSocketIds.has(socket.id)) return;
+            try {
+                const [totalOnlineMs, { rows: [progress] }] = await Promise.all([
+                    getTotalOnlineMs(socket.data.user.id),
+                    pool.query('SELECT accepted_chat_messages FROM chat_users WHERE id = $1', [socket.data.user.id])
+                ]);
+                const level = getUserLevel(totalOnlineMs, Number(progress?.accepted_chat_messages || 0));
+                if (level < 6) {
+                    socket.emit('apartment-create-result', { error: 'Du skal nå level 6 for at få din egen lejlighed.' });
+                    return;
+                }
+                const { rows: [apartment] } = await pool.query(`
+                    INSERT INTO chat_apartments (owner_id) VALUES ($1)
+                    ON CONFLICT (owner_id) DO UPDATE SET owner_id = EXCLUDED.owner_id
+                    RETURNING id, apartment_number
+                `, [socket.data.user.id]);
+                socket.emit('apartment-create-result', {
+                    apartmentId: String(apartment.id), apartmentNumber: Number(apartment.apartment_number)
+                });
+                io.emit('navigator-refresh');
+            } catch (error) {
+                console.error('Could not create apartment:', getSafeErrorCode(error));
+                socket.emit('apartment-create-result', { error: 'Lejligheden kunne ikke oprettes. Prøv igen.' });
+            }
+        });
+
+        socket.on('apartment-visit', async (payload = {}) => {
+            if (!activeSocketIds.has(socket.id)) return;
+            const apartmentId = String(payload.apartmentId || '');
+            if (!/^[1-9]\d{0,18}$/.test(apartmentId)) return;
+            try {
+                const { rows: [apartment] } = await pool.query(`
+                    SELECT a.id, a.apartment_number, a.owner_id, u.username
+                    FROM chat_apartments a JOIN chat_users u ON u.id = a.owner_id WHERE a.id = $1
+                `, [apartmentId]);
+                if (!apartment) return;
+                if (String(apartment.owner_id) === String(socket.data.user.id)) {
+                    socket.emit('apartment-enter-approved', { roomId: `apartment:${apartment.id}` });
+                    return;
+                }
+                const apartmentRoomId = `apartment:${apartment.id}`;
+                const occupants = await getPlayers(apartmentRoomId);
+                const ownerPlayer = Object.values(occupants).find((player) => player.name.toLocaleLowerCase('en-US') === apartment.username.toLocaleLowerCase('en-US'));
+                if (!ownerPlayer) {
+                    socket.emit('apartment-visit-result', { message: 'Ejeren er ikke hjemme lige nu.' });
+                    return;
+                }
+                const knockId = crypto.randomUUID();
+                const knock = {
+                    guestSocketId: socket.id,
+                    guestName: socket.data.user.username,
+                    ownerId: String(apartment.owner_id),
+                    apartmentId: String(apartment.id),
+                    apartmentNumber: Number(apartment.apartment_number),
+                    expiresAt: Date.now() + 30_000
+                };
+                const knockKey = `chat:apartment-knock:${knockId}`;
+                await redis.set(knockKey, JSON.stringify(knock), { EX: 30 });
+                setTimeout(async () => {
+                    if (await redis.getDel(knockKey)) {
+                        io.to(socket.id).emit('apartment-visit-result', { message: 'Der blev ikke lukket op.' });
+                    }
+                }, 30_000);
+                io.to(ownerPlayer.id).emit('apartment-door-knock', {
+                    knockId,
+                    guestName: socket.data.user.username,
+                    apartmentNumber: Number(apartment.apartment_number)
+                });
+                socket.emit('apartment-visit-result', { message: 'Du banker på. Venter på svar…' });
+            } catch (error) {
+                console.error('Could not request apartment access:', getSafeErrorCode(error));
+                socket.emit('apartment-visit-result', { message: 'Kunne ikke banke på. Prøv igen.' });
+            }
+        });
+
+        socket.on('apartment-door-answer', async ({ knockId, accepted } = {}) => {
+            const key = `chat:apartment-knock:${String(knockId || '')}`;
+            const encodedPending = await redis.getDel(key);
+            if (!encodedPending) return;
+            const pending = JSON.parse(encodedPending);
+            if (pending.expiresAt < Date.now() || pending.ownerId !== String(socket.data.user.id)) return;
+            const roomId = `apartment:${pending.apartmentId}`;
+            if (socket.data.roomId !== roomId || accepted !== true) {
+                io.to(pending.guestSocketId).emit('apartment-visit-result', { message: 'Der blev ikke lukket op.' });
+                return;
+            }
+            await redis.set(`chat:apartment-admission:${pending.guestSocketId}:${pending.apartmentId}`, '1', { EX: 30 });
+            io.to(pending.guestSocketId).emit('apartment-enter-approved', { roomId });
+        });
+
         socket.on('profile-request', async (payload) => {
             const playerId = payload && payload.playerId;
             if (!activeSocketIds.has(socket.id) || typeof playerId !== 'string' || playerId.length > 128) return;
@@ -942,7 +1235,7 @@ async function startServer() {
             socket.data.lastProfileRequestAt = now;
             try {
                 await cleanupStalePlayers();
-                const target = await getProfileTarget(playerId);
+                const target = await getProfileTarget(playerId, socket.data.roomId || 'common');
                 if (!target) {
                     socket.emit('profile-error', { playerId, message: getMissingTargetMessage(playerId) });
                     return;
@@ -952,6 +1245,12 @@ async function startServer() {
                     'SELECT relationship FROM chat_profile_relationships WHERE user_id = $1 AND target_user_id = $2',
                     [socket.data.user.id, profile.id]
                 );
+                const [totalOnlineMs, progression, apartment] = await Promise.all([
+                    getTotalOnlineMs(profile.id),
+                    pool.query('SELECT accepted_chat_messages FROM chat_users WHERE id = $1', [profile.id]),
+                    getApartmentForUser(profile.id)
+                ]);
+                const acceptedChatMessages = Number(progression.rows[0]?.accepted_chat_messages || 0);
                 socket.emit('profile-info', {
                     playerId,
                     userId: String(profile.id),
@@ -968,7 +1267,14 @@ async function startServer() {
                     residence: profile.region || '',
                     createdAt: profile.created_at,
                     lastLoginAt: profile.last_login_at,
-                    totalOnlineMs: await getTotalOnlineMs(profile.id),
+                    totalOnlineMs,
+                    acceptedChatMessages,
+                    level: getUserLevel(totalOnlineMs, acceptedChatMessages),
+                    levelRequirements: LEVEL_REQUIREMENTS.map(([timeMs, messageCount], index) => ({
+                        level: index + 1, timeMs, messageCount
+                    })),
+                    apartmentNumber: apartment ? Number(apartment.apartment_number) : null,
+                    apartmentId: apartment ? String(apartment.id) : null,
                     relationship: relationship ? relationship.relationship : null,
                     isOwnProfile: String(profile.id) === String(socket.data.user.id)
                 });
@@ -989,7 +1295,7 @@ async function startServer() {
             ) return;
 
             try {
-                const target = await getProfileTarget(playerId);
+                const target = await getProfileTarget(playerId, socket.data.roomId || 'common');
                 if (!target) {
                     socket.emit('profile-relationship-result', {
                         playerId,
@@ -1141,7 +1447,7 @@ async function startServer() {
 
             let target;
             try {
-                target = await getProfileTarget(playerId);
+                target = await getProfileTarget(playerId, socket.data.roomId || 'common');
                 if (!target || String(target.profile.id) === String(socket.data.user.id)) {
                     socket.emit('profile-management-error', { message: 'Du kan ikke mute dig selv eller en bruger, der er gået.' });
                     return;
@@ -1197,7 +1503,7 @@ async function startServer() {
             if (!activeSocketIds.has(socket.id) || typeof playerId !== 'string' || playerId.length > 128) return;
             try {
                 await cleanupStalePlayers();
-                const target = await getProfileTarget(playerId);
+                const target = await getProfileTarget(playerId, socket.data.roomId || 'common');
                 if (!target) {
                     socket.emit('guestbook-error', { playerId, message: getMissingTargetMessage(playerId) });
                     return;
@@ -1450,7 +1756,7 @@ async function startServer() {
             }
 
             try {
-                const target = await getProfileTarget(playerId);
+                const target = await getProfileTarget(playerId, socket.data.roomId || 'common');
                 if (!target) {
                     socket.emit('guestbook-error', { playerId, message: getMissingTargetMessage(playerId) });
                     return;
@@ -1492,7 +1798,7 @@ async function startServer() {
             ) return;
 
             try {
-                const target = await getProfileTarget(playerId);
+                const target = await getProfileTarget(playerId, socket.data.roomId || 'common');
                 if (!target || String(target.profile.id) !== String(socket.data.user.id)) {
                     socket.emit('guestbook-error', { playerId, message: 'Kun gæstebogens ejer kan slette hilsner.' });
                     return;
@@ -1522,7 +1828,7 @@ async function startServer() {
                 const [{ rows }, players] = await Promise.all([
                     pool.query(`
                         SELECT u.id, u.username, u.username_normalized,
-                               (u.total_online_ms + COALESCE(SUM(GREATEST(
+                               (u.total_online_ms + COALESCE(MAX(GREATEST(
                                    0, FLOOR(EXTRACT(EPOCH FROM (NOW() - s.last_accounted_at)) * 1000)
                                )), 0))::text AS total_online_ms
                         FROM chat_users u
@@ -1531,14 +1837,14 @@ async function startServer() {
                         GROUP BY u.id
                         ORDER BY
                             CASE WHEN $2 = 'onlineTime' THEN
-                                (u.total_online_ms + COALESCE(SUM(GREATEST(
+                                (u.total_online_ms + COALESCE(MAX(GREATEST(
                                     0, FLOOR(EXTRACT(EPOCH FROM (NOW() - s.last_accounted_at)) * 1000)
                                 )), 0))
                             END DESC NULLS LAST,
                             u.username_normalized ASC
                         LIMIT $3
                     `, [patterns.mode === 'prefix' ? patterns.prefix : patterns.contains, payload && payload.sortBy === 'onlineTime' ? 'onlineTime' : 'name', USER_SEARCH_RESULT_LIMIT]),
-                    getPlayers()
+                    getPlayers(socket.data.roomId || 'common')
                 ]);
                 const onlinePlayerIds = new Map();
                 for (const [id, player] of Object.entries(players)) {
@@ -1571,6 +1877,8 @@ async function startServer() {
             if (activeSocketIds.has(socket.id) || socket.data.joining) return;
             socket.data.joining = true;
             try {
+                socket.data.roomId = 'common';
+                const initialRoomKeys = roomKeys('common');
                 await cleanupStalePlayers();
                 const { rows: mutedUsers } = await pool.query(`
                     SELECT target.username
@@ -1585,13 +1893,13 @@ async function startServer() {
                     ...GRID_CELLS.map((cell) => `${cell.col}:${cell.row}`)
                 ];
                 const joinedPlayerJson = await redis.eval(PLAYER_JOIN_SCRIPT, {
-                    keys: [playersKey, cellsKey],
+                    keys: [initialRoomKeys.players, initialRoomKeys.cells],
                     arguments: joinArguments
                 });
                 if (!joinedPlayerJson) {
                     const [playerCount, occupiedCellCount] = await Promise.all([
-                        redis.hLen(playersKey),
-                        redis.hLen(cellsKey)
+                        redis.hLen(initialRoomKeys.players),
+                        redis.hLen(initialRoomKeys.cells)
                     ]);
                     console.warn('Chat room has no available grid cells:', {
                         players: playerCount,
@@ -1605,7 +1913,7 @@ async function startServer() {
                     await startOnlineSession(socket.id, socket.data.user.id);
                 } catch (error) {
                     await redis.eval(REMOVE_PLAYER_SCRIPT, {
-                        keys: [playersKey, cellsKey],
+                        keys: [initialRoomKeys.players, initialRoomKeys.cells],
                         arguments: [socket.id]
                     });
                     throw error;
@@ -1613,17 +1921,24 @@ async function startServer() {
 
                 const player = publicPlayer(JSON.parse(joinedPlayerJson));
                 activeSocketIds.add(socket.id);
+                activeSocketRooms.set(socket.id, 'common');
+                activeSocketUsers.set(socket.id, String(socket.data.user.id));
+                await socket.join(roomChannel('common'));
                 await socket.join(`private-mail:${socket.data.user.id}`);
-                const currentPlayers = await getPlayers();
+                await socket.join(`chat-progress:${socket.data.user.id}`);
+                const currentPlayers = await getPlayers('common');
                 for (const player of Object.values(currentPlayers)) {
                     player.text = '';
                     player.messageTime = 0;
                 }
                 socket.emit('join-success', {
                     players: currentPlayers,
-                    mutedUsernames: mutedUsers.map((mutedUser) => mutedUser.username)
+                    mutedUsernames: mutedUsers.map((mutedUser) => mutedUser.username),
+                    roomId: 'common',
+                    roomName: 'Fællesrum'
                 });
-                socket.broadcast.emit('newPlayer', player);
+                socket.to(roomChannel('common')).emit('newPlayer', player);
+                io.emit('navigator-refresh');
             } catch (error) {
                 console.error('Could not add chat participant:', getSafeErrorCode(error));
                 socket.emit('room-error', { message: 'Kunne ikke komme ind i chatten. Prøv igen.' });
@@ -1638,15 +1953,16 @@ async function startServer() {
             if (!isGridCoordinate(position.col, position.row)) return;
 
             try {
+                const keys = roomKeys(socket.data.roomId || 'common');
                 const movedPlayerJson = await redis.eval(PLAYER_MOVE_SCRIPT, {
-                    keys: [playersKey, cellsKey],
+                    keys: [keys.players, keys.cells],
                     arguments: [socket.id, String(position.col), String(position.row), String(Date.now())]
                 });
                 if (!movedPlayerJson) {
                     return;
                 }
                 const player = publicPlayer(JSON.parse(movedPlayerJson));
-                io.emit('playerMoved', {
+                io.to(roomChannel(socket.data.roomId || 'common')).emit('playerMoved', {
                     id: player.id,
                     col: player.col,
                     row: player.row
@@ -1677,9 +1993,10 @@ async function startServer() {
             }
 
             try {
+                const keys = roomKeys(socket.data.roomId || 'common');
                 const [senderJson, targetJson] = await Promise.all([
-                    redis.hGet(playersKey, socket.id),
-                    redis.hGet(playersKey, targetPlayerId)
+                    redis.hGet(keys.players, socket.id),
+                    redis.hGet(keys.players, targetPlayerId)
                 ]);
                 if (!senderJson || !targetJson) {
                     socket.emit('private-whisper-error', { message: 'Avataren er ikke længere i rummet.' });
@@ -1728,7 +2045,8 @@ async function startServer() {
             }
 
             try {
-                const currentPlayerJson = await redis.hGet(playersKey, socket.id);
+                const keys = roomKeys(socket.data.roomId || 'common');
+                const currentPlayerJson = await redis.hGet(keys.players, socket.id);
                 if (!currentPlayerJson) return;
                 const currentPlayer = JSON.parse(currentPlayerJson);
                 const messageTime = Math.max(Date.now(), Number(currentPlayer.messageTime || 0) + 1);
@@ -1746,6 +2064,16 @@ async function startServer() {
                         'DELETE FROM chat_messages WHERE id NOT IN (SELECT id FROM chat_messages ORDER BY id DESC LIMIT $1)',
                         [HISTORY_LIMIT]
                     );
+                    if (Array.from(cleanText).length >= 3) {
+                        await client.query(`
+                            UPDATE chat_users
+                            SET accepted_chat_messages = accepted_chat_messages + 1,
+                                last_progression_message_at = NOW()
+                            WHERE id = $1
+                              AND (last_progression_message_at IS NULL
+                                   OR last_progression_message_at <= NOW() - INTERVAL '60 seconds')
+                        `, [socket.data.user.id]);
+                    }
                     await client.query('COMMIT');
                     savedMessage = insertResult.rows[0];
                 } catch (error) {
@@ -1756,12 +2084,12 @@ async function startServer() {
                 }
 
                 const updatedPlayerJson = await redis.eval(UPDATE_PLAYER_MESSAGE_SCRIPT, {
-                    keys: [playersKey],
+                    keys: [keys.players],
                     arguments: [socket.id, cleanText, String(messageTime), String(Date.now())]
                 });
                 if (!updatedPlayerJson) return;
 
-                io.emit('playerChatMessage', {
+                io.to(roomChannel(socket.data.roomId || 'common')).emit('playerChatMessage', {
                     id: socket.id,
                     text: cleanText,
                     messageTime,
@@ -1772,10 +2100,10 @@ async function startServer() {
                 setTimeout(async () => {
                     try {
                         const expired = await redis.eval(EXPIRE_PLAYER_MESSAGE_SCRIPT, {
-                            keys: [playersKey],
+                            keys: [keys.players],
                             arguments: [socket.id, String(messageTime)]
                         });
-                        if (expired) io.emit('playerChatExpired', { id: socket.id, messageTime });
+                        if (expired) io.to(roomChannel(socket.data.roomId || 'common')).emit('playerChatExpired', { id: socket.id, messageTime });
                     } catch (error) {
                         console.error('Could not expire chat bubble:', getSafeErrorCode(error));
                     }
@@ -1788,12 +2116,17 @@ async function startServer() {
 
         socket.on('disconnect', async () => {
             activeSocketIds.delete(socket.id);
+            activeSocketUsers.delete(socket.id);
+            const roomId = activeSocketRooms.get(socket.id) || socket.data.roomId || 'common';
+            const keys = roomKeys(roomId);
+            activeSocketRooms.delete(socket.id);
             try {
                 const removed = await redis.eval(REMOVE_PLAYER_SCRIPT, {
-                    keys: [playersKey, cellsKey],
+                    keys: [keys.players, keys.cells],
                     arguments: [socket.id]
                 });
-                if (removed) io.emit('playerDisconnected', socket.id);
+                if (removed) io.to(roomChannel(roomId)).emit('playerDisconnected', socket.id);
+                if (removed) io.emit('navigator-refresh');
             } catch (error) {
                 console.error('Could not remove chat participant:', getSafeErrorCode(error));
             }
@@ -1810,19 +2143,22 @@ async function startServer() {
         if (heartbeatRunning || activeSocketIds.size === 0) return;
         heartbeatRunning = true;
         try {
-            const missingIds = await redis.eval(HEARTBEAT_SCRIPT, {
-                keys: [playersKey],
-                arguments: [String(Date.now()), ...activeSocketIds]
-            });
-            for (const id of missingIds) {
-                if (!activeSocketIds.delete(id)) continue;
-                io.emit('playerDisconnected', id);
-                try {
-                    await accountOnlineSession(id, true);
-                } catch (error) {
-                    console.error('Could not account for missing chat session:', getSafeErrorCode(error));
+            for (const roomId of await getAllRoomIds()) {
+                const roomSocketIds = [...activeSocketIds].filter((id) => activeSocketRooms.get(id) === roomId);
+                if (!roomSocketIds.length) continue;
+                const missingIds = await redis.eval(HEARTBEAT_SCRIPT, {
+                    keys: [roomKeys(roomId).players],
+                    arguments: [String(Date.now()), ...roomSocketIds]
+                });
+                for (const id of missingIds) {
+                    if (!activeSocketIds.delete(id)) continue;
+                    activeSocketRooms.delete(id);
+                    activeSocketUsers.delete(id);
+                    io.to(roomChannel(roomId)).emit('playerDisconnected', id);
+                    try { await accountOnlineSession(id, true); }
+                    catch (error) { console.error('Could not account for missing chat session:', getSafeErrorCode(error)); }
+                    io.in(id).disconnectSockets(true);
                 }
-                io.in(id).disconnectSockets(true);
             }
         } catch (error) {
             console.error('Could not refresh chat presence:', getSafeErrorCode(error));
@@ -1847,6 +2183,36 @@ async function startServer() {
             console.error('Could not remove inactive chat participants:', getSafeErrorCode(error));
         });
     }, PLAYER_IDLE_CHECK_INTERVAL);
+    const progressionTimer = setInterval(async () => {
+        const userIds = [...new Set(activeSocketUsers.values())];
+        if (!userIds.length) return;
+        try {
+            const { rows } = await pool.query(`
+                SELECT u.id, u.accepted_chat_messages::text AS accepted_chat_messages,
+                       (u.total_online_ms + COALESCE(MAX(GREATEST(
+                           0, FLOOR(EXTRACT(EPOCH FROM (NOW() - s.last_accounted_at)) * 1000)
+                       )), 0))::text AS total_online_ms
+                FROM chat_users u
+                LEFT JOIN chat_online_sessions s ON s.user_id = u.id
+                WHERE u.id = ANY($1::bigint[])
+                GROUP BY u.id
+            `, [userIds]);
+            for (const row of rows) {
+                const totalOnlineMs = Number(row.total_online_ms) || 0;
+                const acceptedChatMessages = Number(row.accepted_chat_messages) || 0;
+                io.to(`chat-progress:${row.id}`).emit('user-progress', {
+                    totalOnlineMs,
+                    acceptedChatMessages,
+                    level: getUserLevel(totalOnlineMs, acceptedChatMessages),
+                    levelRequirements: LEVEL_REQUIREMENTS.map(([timeMs, messageCount], index) => ({
+                        level: index + 1, timeMs, messageCount
+                    }))
+                });
+            }
+        } catch (error) {
+            console.error('Could not update user level progress:', getSafeErrorCode(error));
+        }
+    }, PROGRESSION_UPDATE_INTERVAL);
 
     await new Promise((resolve, reject) => {
         server.once('error', reject);
@@ -1861,6 +2227,7 @@ async function startServer() {
         clearInterval(heartbeatTimer);
         clearInterval(cleanupTimer);
         clearInterval(idleKickTimer);
+        clearInterval(progressionTimer);
         await new Promise((resolve) => io.close(resolve));
         if (redisSubscriber.isOpen) await redisSubscriber.quit();
         if (redisPublisher.isOpen) await redisPublisher.quit();

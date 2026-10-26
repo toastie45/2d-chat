@@ -348,6 +348,8 @@
         .navigator-room-button:hover { border-color: #9fc65f; background: #292c23; }
         .navigator-room-button[aria-current="true"] { border-color: #8cae53; background: #252a1e; color: #c1f078; }
         .navigator-room-description { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; }
+        .apartment-enter-button { padding: 0; border: 0; background: none; color: #c1f078; text-align: left; text-decoration: underline; cursor: pointer; font: inherit; }
+        .apartment-status { min-height: 18px; color: var(--muted); font-size: 11px; }
         .toolbar-button[aria-pressed="true"] {
             border-color: #c1f078;
             background: #303729;
@@ -663,7 +665,35 @@
             color: #e6f8c4;
             font-size: 14px;
             font-weight: 800;
-            cursor: default;
+            cursor: pointer;
+        }
+        .profile-level-icon:hover { filter: brightness(1.14); }
+        .profile-level-icon:focus-visible { outline: 2px solid #d5f59c; outline-offset: 2px; }
+        .level-overview-dialog {
+            width: min(760px, calc(100vw - 32px));
+            max-height: min(84vh, 760px);
+            padding: 20px;
+            border: 1px solid #44483b;
+            border-radius: 14px;
+            background: #171914;
+            color: #f2f0e9;
+            box-shadow: 0 24px 90px #000a;
+        }
+        .level-overview-dialog::backdrop { background: #050605c9; }
+        .level-overview-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .level-overview-header h2 { margin: 0; font-size: 18px; }
+        .level-overview-close { width: 32px; height: 32px; border: 1px solid #44483b; border-radius: 7px; background: #24271f; color: #eee; cursor: pointer; }
+        .level-overview-stats { margin: 13px 0; color: #c7c9bf; font-size: 12px; line-height: 1.7; }
+        .level-overview-next { margin-bottom: 13px; padding: 10px; border: 1px solid #38432a; border-radius: 7px; color: #c1f078; font-size: 12px; }
+        .level-overview-table-wrap { max-height: 52vh; overflow: auto; border: 1px solid #34372f; border-radius: 8px; }
+        .level-overview-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        .level-overview-table th, .level-overview-table td { padding: 8px 9px; border-bottom: 1px solid #30332b; text-align: left; }
+        .level-overview-table th { position: sticky; top: 0; background: #23261f; color: #c1f078; }
+        .level-overview-table tr[data-state="current"] { background: #2a3320; }
+        .level-overview-table tr[data-state="reached"] { color: #a9ad9e; }
+        @media (max-width: 520px) {
+            .level-overview-dialog { padding: 14px; }
+            .level-overview-table th, .level-overview-table td { padding: 7px 5px; font-size: 10px; }
         }
         .profile-facts-title {
             display: flex;
@@ -1010,7 +1040,7 @@
                             <h2 class="side-title" id="profile-view-title">Profil</h2>
                             <p class="profile-section-title" id="profile-view-name">Henter profil…</p>
                             <div class="profile-actions" aria-label="Profilhandlinger">
-                                <span class="profile-level-icon" id="view-profile-level" title="Level 1" aria-label="Level 1">1</span>
+                                <button class="profile-level-icon" id="view-profile-level" type="button" title="Vis leveloversigt" aria-label="Vis leveloversigt" aria-haspopup="dialog" aria-controls="level-overview-dialog" disabled>1</button>
                                 <button class="profile-action" id="profile-friend-button" type="button" aria-label="Tilføj til venneliste" title="Tilføj til venneliste" aria-pressed="false">🫂</button>
                                 <button class="profile-action" id="profile-enemy-button" type="button" aria-label="Tilføj til fjendeliste" title="Tilføj til fjendeliste" aria-pressed="false">⚔️</button>
                                 <button class="profile-action" id="profile-mail-button" type="button" aria-label="Skriv privat mail" title="Skriv privat mail" hidden>✉</button></div>
@@ -1019,6 +1049,7 @@
                                 <option value="">Vælg infoside:</option>
                                 <option value="info">Info</option>
                                 <option value="guestbook">Gæstebog</option>
+                                <option value="apartment">Lejlighed</option>
                             </select>
                             <div class="profile-info-page" id="profile-info-page">
                                 <p class="profile-facts-title"><span>Facts:</span></p>
@@ -1048,6 +1079,11 @@
                                     <p class="guestbook-status" id="guestbook-status" aria-live="polite"></p>
                                 </form>
                             </section>
+                            <section class="guestbook-page" id="apartment-page" aria-label="Lejlighed" hidden>
+                                <p id="apartment-profile-summary">Ingen lejlighed endnu.</p>
+                                <button class="profile-save" id="apartment-create-button" type="button" hidden>Få din lejlighed</button>
+                                <p class="apartment-status" id="apartment-status" aria-live="polite"></p>
+                            </section>
                         </section>
                     </aside>
                 </div>
@@ -1057,13 +1093,29 @@
             <p class="avatar-context-name" id="avatar-context-name"></p>
             <p class="avatar-context-room">Fællesrum</p>
             <button class="avatar-context-action" id="avatar-context-profile" type="button" role="menuitem">Se profilinfo</button>
+            <button class="avatar-context-action" id="avatar-context-apartment" type="button" role="menuitem" hidden></button>
             <div class="avatar-context-separator" role="separator"></div>
             <button class="avatar-context-action" id="avatar-context-whisper" type="button" role="menuitem" hidden>Hvisk</button>
             <button class="avatar-context-action" id="avatar-context-mute" type="button" role="menuitem" hidden></button>
             <button class="avatar-context-action" id="avatar-context-highlight" type="button" role="menuitem" aria-pressed="false">Fremhæv</button>
         </div>
+        <dialog class="level-overview-dialog" id="level-overview-dialog" aria-labelledby="level-overview-title">
+            <div class="level-overview-header">
+                <h2 id="level-overview-title">Leveloversigt</h2>
+                <button class="level-overview-close" id="level-overview-close" type="button" aria-label="Luk">×</button>
+            </div>
+            <p class="level-overview-stats" id="level-overview-stats"></p>
+            <p class="level-overview-next" id="level-overview-next"></p>
+            <div class="level-overview-table-wrap">
+                <table class="level-overview-table">
+                    <thead><tr><th>Level</th><th>Samlet online-tid</th><th>Godkendte beskeder</th><th>Oplåsning</th></tr></thead>
+                    <tbody id="level-overview-rows"></tbody>
+                </table>
+            </div>
+        </dialog>
     </div>
     <script src="/grid-layout.js"></script>
+    <script src="/level-progression.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <script>
         (() => {
@@ -1108,8 +1160,20 @@
             const membersNavButton = document.getElementById('members-nav-button');
             const navigatorNavButton = document.getElementById('navigator-nav-button');
             const navigatorPanel = document.getElementById('navigator-panel');
-            const navigatorRoomButtons = document.querySelectorAll('.navigator-room-button');
+            const navigatorRoomList = document.querySelector('.navigator-room-list');
             const chatTitle = document.getElementById('chat-title');
+            const apartmentPage = document.getElementById('apartment-page');
+            const apartmentCreateButton = document.getElementById('apartment-create-button');
+            const apartmentStatus = document.getElementById('apartment-status');
+            const apartmentProfileSummary = document.getElementById('apartment-profile-summary');
+            const viewProfileApartment = document.getElementById('view-profile-apartment');
+            const viewProfileLevel = document.getElementById('view-profile-level');
+            const levelOverviewDialog = document.getElementById('level-overview-dialog');
+            const levelOverviewClose = document.getElementById('level-overview-close');
+            const levelOverviewStats = document.getElementById('level-overview-stats');
+            const levelOverviewNext = document.getElementById('level-overview-next');
+            const levelOverviewRows = document.getElementById('level-overview-rows');
+            const levelProgression = window.ChatLevelProgression;
             const chatNavButton = document.getElementById('chat-nav-button');
             const profileNavButton = document.getElementById('profile-nav-button');
             const searchNavButton = document.getElementById('search-nav-button');
@@ -1136,6 +1200,7 @@
             const privateMailEmpty = document.getElementById('private-mail-empty');
             let activePrivateMailUsername = '';
             let viewingProfileMailUsername = '';
+            let viewedProfileProgress = null;
             const userSearchInput = document.getElementById('user-search-input');
             const userSearchMatch = document.getElementById('user-search-match');
             const userSearchSubmit = document.getElementById('user-search-submit');
@@ -1192,6 +1257,7 @@
             const avatarContextMenu = document.getElementById('avatar-context-menu');
             const avatarContextName = document.getElementById('avatar-context-name');
             const avatarContextProfile = document.getElementById('avatar-context-profile');
+            const avatarContextApartment = document.getElementById('avatar-context-apartment');
             const avatarContextWhisper = document.getElementById('avatar-context-whisper');
             const avatarContextHighlight = document.getElementById('avatar-context-highlight');
             const avatarContextMute = document.getElementById('avatar-context-mute');
@@ -1337,6 +1403,46 @@
                 });
             }
 
+            function renderLevelOverview(progress) {
+                if (!progress || !levelProgression) return;
+                const totalOnlineMs = Math.max(0, Number(progress.totalOnlineMs) || 0);
+                const acceptedChatMessages = Math.max(0, Number(progress.acceptedChatMessages) || 0);
+                const level = Math.min(20, Math.max(1, Number(progress.level) || 1));
+                const requirements = progress.levelRequirements || levelProgression.LEVEL_REQUIREMENTS.map(([timeMs, messageCount], index) => ({
+                    level: index + 1, timeMs, messageCount
+                }));
+                const formatCount = (value) => Number(value).toLocaleString('da-DK');
+                const formatRequirementTime = (timeMs) => formatOnlineDuration(timeMs);
+
+                levelOverviewStats.textContent = `Level ${level} · Samlet online-tid: ${formatOnlineDuration(totalOnlineMs)} · Godkendte beskeder: ${formatCount(acceptedChatMessages)}. Du skal opfylde både tidskravet og beskedkravet for at stige i level.`;
+                if (level >= 20) {
+                    levelOverviewNext.textContent = 'Du har nået Level 20 og Veteranstatus — det maksimale level.';
+                } else {
+                    const next = requirements[level];
+                    if (next) {
+                        levelOverviewNext.textContent = `Næste: Level ${next.level}. Du har ${formatOnlineDuration(totalOnlineMs)} af ${formatRequirementTime(next.timeMs)} og ${formatCount(acceptedChatMessages)} af ${formatCount(next.messageCount)} godkendte beskeder.`;
+                    }
+                }
+
+                levelOverviewRows.replaceChildren();
+                requirements.forEach((requirement) => {
+                    const row = document.createElement('tr');
+                    row.dataset.state = requirement.level === level ? 'current' : requirement.level < level ? 'reached' : 'locked';
+                    const cells = [
+                        `Level ${requirement.level}`,
+                        formatRequirementTime(requirement.timeMs),
+                        formatCount(requirement.messageCount),
+                        requirement.level === 6 ? 'Låser op for lejlighed' : requirement.level === 20 ? 'Maks. level · Veteranstatus' : '—'
+                    ];
+                    cells.forEach((value) => {
+                        const cell = document.createElement('td');
+                        cell.textContent = value;
+                        row.append(cell);
+                    });
+                    levelOverviewRows.append(row);
+                });
+            }
+
             setInterval(updateOnlineDurations, 60_000);
 
             function hideSensitiveData(text) {
@@ -1415,17 +1521,42 @@
                 updateToolbarState();
             }
 
-            function selectRoom(roomId) {
-                if (roomId !== 'common' && roomId !== 'disco') return;
+            function applyRoomState(roomId, roomName, serverPlayers = {}) {
                 activeRoom = roomId;
-                const roomName = roomId === 'disco' ? 'Diskoteket' : 'Fællesrum';
                 roomStripName.textContent = roomName;
                 chatTitle.textContent = `Velkommen i ${roomName}`;
                 document.querySelectorAll('.avatar-context-room').forEach((label) => { label.textContent = roomName; });
-                navigatorRoomButtons.forEach((button) => {
-                    button.setAttribute('aria-current', String(button.dataset.room === roomId));
-                });
+                players = {};
+                for (const player of Object.values(serverPlayers)) showPlayer(player);
+                clearChatLog();
+                addChatSystemEntry(`Du er gået ind i ${roomName}.`);
                 drawBoard();
+            }
+
+            function renderNavigatorRooms(rooms, activeRoomId) {
+                navigatorRoomList.replaceChildren();
+                rooms.forEach((room) => {
+                    const button = document.createElement('button');
+                    button.className = 'navigator-room-button';
+                    button.type = 'button';
+                    button.dataset.room = room.id;
+                    button.setAttribute('aria-current', String(room.id === activeRoomId));
+                    button.append(document.createTextNode(room.name));
+                    const detail = document.createElement('span');
+                    detail.className = 'navigator-room-description';
+                    detail.textContent = room.type === 'apartment'
+                        ? `${room.count} ${room.count === 1 ? 'bruger' : 'brugere'} i rummet`
+                        : (room.id === activeRoomId ? 'Du er her nu' : 'Offentligt rum');
+                    button.append(detail);
+                    button.addEventListener('click', () => {
+                        if (room.type === 'apartment') {
+                            socket.emit('apartment-visit', { apartmentId: room.id.slice('apartment:'.length) });
+                        } else {
+                            socket.emit('room-switch', { roomId: room.id });
+                        }
+                    });
+                    navigatorRoomList.append(button);
+                });
             }
 
             function updateMailUnreadBadge(count) {
@@ -1581,6 +1712,9 @@
                 avatarContextWhisper.hidden = !whisperInRange;
                 avatarContextWhisper.disabled = false;
                 avatarContextWhisper.title = 'Start en privat hvisken';
+                avatarContextApartment.hidden = !player || isSelf;
+                avatarContextApartment.disabled = true;
+                avatarContextApartment.textContent = 'Henter lejlighed…';
                 const highlighted = Boolean(player && highlightedSpeechBubblePlayers.has(contextPlayerId));
                 avatarContextHighlight.hidden = !player || isSelf;
                 avatarContextHighlight.disabled = !player || isSelf;
@@ -1639,8 +1773,10 @@
 
             function selectProfilePage(page) {
                 const showGuestbook = page === 'guestbook';
-                profileInfoPage.hidden = showGuestbook;
+                const showApartment = page === 'apartment';
+                profileInfoPage.hidden = showGuestbook || showApartment;
                 guestbookPage.hidden = !showGuestbook;
+                apartmentPage.hidden = !showApartment;
                 profilePageSelect.value = page;
                 if (showGuestbook && viewingProfilePlayerId) {
                     guestbookList.replaceChildren();
@@ -1726,9 +1862,12 @@
                 profileMailButton.hidden = true;
                 selectSidePanel('profile-view');
                 viewProfileName.textContent = 'Henter profil…';
+                viewedProfileProgress = null;
+                viewProfileLevel.disabled = true;
                 profilePageSelect.value = '';
                 profileInfoPage.hidden = false;
                 guestbookPage.hidden = true;
+                apartmentPage.hidden = true;
                 guestbookList.replaceChildren();
                 guestbookEmpty.classList.remove('hidden');
                 guestbookEmpty.textContent = 'Gæstebogen er tom endnu.';
@@ -2055,6 +2194,31 @@
                 chatLog.scrollTop = chatLog.scrollHeight;
             }
 
+            function addApartmentKnockPrompt({ knockId, guestName, apartmentNumber }) {
+                selectSidePanel('chat');
+                chatEmpty.classList.add('hidden');
+                const entry = document.createElement('div');
+                entry.className = 'chat-system';
+                const text = document.createElement('span');
+                text.textContent = `🔔 ${guestName} banker på din dør til lejlighed #${apartmentNumber}. Vil du lukke vedkommende ind? `;
+                const yes = document.createElement('button');
+                yes.type = 'button';
+                yes.textContent = 'Ja';
+                const no = document.createElement('button');
+                no.type = 'button';
+                no.textContent = 'Nej';
+                const answer = (accepted) => {
+                    yes.disabled = true;
+                    no.disabled = true;
+                    socket.emit('apartment-door-answer', { knockId, accepted });
+                };
+                yes.addEventListener('click', () => answer(true));
+                no.addEventListener('click', () => answer(false));
+                entry.append(text, yes, document.createTextNode(' / '), no);
+                chatLog.append(entry);
+                chatLog.scrollTop = chatLog.scrollHeight;
+            }
+
             function getCellFromPointer(event) {
                 const bounds = canvas.getBoundingClientRect();
                 const x = (event.clientX - bounds.left) * canvas.width / bounds.width;
@@ -2081,7 +2245,8 @@
             function drawBoard() {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 const discoRoom = activeRoom === 'disco';
-                ctx.fillStyle = discoRoom ? '#090812' : '#080a08';
+                const apartmentRoom = activeRoom.startsWith('apartment:');
+                ctx.fillStyle = discoRoom ? '#090812' : apartmentRoom ? '#100d09' : '#080a08';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
                 for (const cell of gridCells) {
@@ -2093,11 +2258,15 @@
                     ctx.closePath();
                     ctx.fillStyle = discoRoom
                         ? (cell.kind === 'primary' ? '#12101b' : '#20162a')
-                        : (cell.kind === 'primary' ? '#11130f' : '#172012');
+                        : apartmentRoom
+                            ? (cell.kind === 'primary' ? '#19130c' : '#282015')
+                            : (cell.kind === 'primary' ? '#11130f' : '#172012');
                     ctx.fill();
                     ctx.strokeStyle = discoRoom
                         ? (cell.kind === 'primary' ? '#302743' : '#624276')
-                        : (cell.kind === 'primary' ? '#293126' : '#3e5532');
+                        : apartmentRoom
+                            ? (cell.kind === 'primary' ? '#3b2e1b' : '#624a27')
+                            : (cell.kind === 'primary' ? '#293126' : '#3e5532');
                     ctx.lineWidth = 1.5;
                     ctx.stroke();
                 }
@@ -2432,9 +2601,9 @@
             authSwitchButton.addEventListener('click', () => selectAuthMode(authMode === 'register' ? 'login' : 'register'));
             refreshNavButton.addEventListener('click', () => window.location.reload());
             membersNavButton.addEventListener('click', () => selectSidePanel('members'));
-            navigatorNavButton.addEventListener('click', () => selectSidePanel('navigator'));
-            navigatorRoomButtons.forEach((button) => {
-                button.addEventListener('click', () => selectRoom(button.dataset.room));
+            navigatorNavButton.addEventListener('click', () => {
+                selectSidePanel('navigator');
+                socket.emit('navigator-request');
             });
             chatNavButton.addEventListener('click', () => selectSidePanel('chat'));
             profileNavButton.addEventListener('click', openProfileEditor);
@@ -2497,6 +2666,12 @@
             avatarContextProfile.addEventListener('click', () => {
                 if (contextPlayerId) showPublicProfile(contextPlayerId);
             });
+            avatarContextApartment.addEventListener('click', () => {
+                const playerId = contextPlayerId;
+                if (!playerId || avatarContextApartment.disabled) return;
+                socket.emit('apartment-visit', { apartmentId: avatarContextApartment.dataset.apartmentId });
+                closeAvatarContextMenu();
+            });
             avatarContextWhisper.addEventListener('click', () => {
                 const playerId = contextPlayerId;
                 if (!playerId || !canWhisperTo(playerId)) return;
@@ -2543,6 +2718,17 @@
             });
             profilePageSelect.addEventListener('change', () => {
                 selectProfilePage(profilePageSelect.value || 'info');
+            });
+            viewProfileLevel.addEventListener('click', () => {
+                if (!viewedProfileProgress) return;
+                renderLevelOverview(viewedProfileProgress);
+                if (!levelOverviewDialog.open) levelOverviewDialog.showModal();
+            });
+            levelOverviewClose.addEventListener('click', () => levelOverviewDialog.close());
+            apartmentCreateButton.addEventListener('click', () => {
+                apartmentCreateButton.disabled = true;
+                apartmentStatus.textContent = 'Opretter lejlighed…';
+                socket.emit('apartment-create');
             });
             guestbookForm.addEventListener('submit', (event) => {
                 event.preventDefault();
@@ -2638,6 +2824,7 @@
                 contextPlayerId = target.id;
                 avatarContextName.textContent = target.name;
                 updateAvatarContextMute();
+                socket.emit('apartment-info-request', { playerId: target.id });
                 avatarContextMenu.classList.remove('hidden');
                 avatarContextMenu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - avatarContextMenu.offsetWidth - 8))}px`;
                 avatarContextMenu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - avatarContextMenu.offsetHeight - 8))}px`;
@@ -2803,9 +2990,13 @@
                 socket.disconnect();
             });
 
-            socket.on('join-success', ({ players: serverPlayers, mutedUsernames: initialMutedUsernames = [] }) => {
+            socket.on('join-success', ({ players: serverPlayers, mutedUsernames: initialMutedUsernames = [], roomId = 'common', roomName = 'Fællesrum' }) => {
                 players = {};
                 myId = socket.id;
+                activeRoom = roomId;
+                roomStripName.textContent = roomName;
+                chatTitle.textContent = `Velkommen i ${roomName}`;
+                document.querySelectorAll('.avatar-context-room').forEach((label) => { label.textContent = roomName; });
                 profileManagement = { relations: [] };
                 mutedUsernames = new Set(initialMutedUsernames.map((username) => username.toLocaleLowerCase('en-US')));
                 sessionKickMessage = '';
@@ -2830,6 +3021,64 @@
                 startGameLoop();
                 canvas.focus();
             });
+
+            socket.on('room-changed', ({ roomId, roomName, players: serverPlayers = {} } = {}) => {
+                if (!roomId || !roomName) return;
+                applyRoomState(roomId, roomName, serverPlayers);
+                if (!navigatorPanel.hidden) socket.emit('navigator-request');
+            });
+
+            socket.on('navigator-rooms', ({ rooms = [], activeRoomId } = {}) => {
+                if (Array.isArray(rooms)) renderNavigatorRooms(rooms, activeRoomId || activeRoom);
+            });
+
+            socket.on('navigator-refresh', () => {
+                if (!navigatorPanel.hidden) socket.emit('navigator-request');
+            });
+
+            socket.on('apartment-info', ({ playerId, apartmentId, apartmentNumber } = {}) => {
+                if (playerId !== contextPlayerId) return;
+                avatarContextApartment.hidden = !apartmentId || playerId === myId;
+                avatarContextApartment.disabled = !apartmentId;
+                avatarContextApartment.textContent = apartmentId
+                    ? `Gå til lejlighed (#${apartmentNumber})`
+                    : 'Ingen lejlighed';
+                if (apartmentId) avatarContextApartment.dataset.apartmentId = apartmentId;
+                else delete avatarContextApartment.dataset.apartmentId;
+            });
+
+            socket.on('apartment-create-result', ({ error, apartmentId, apartmentNumber } = {}) => {
+                apartmentCreateButton.disabled = false;
+                if (error) {
+                    apartmentStatus.textContent = error;
+                    return;
+                }
+                apartmentStatus.textContent = `Lejlighed #${apartmentNumber} er oprettet.`;
+                apartmentProfileSummary.textContent = `Din lejlighed har nummer #${apartmentNumber}.`;
+                apartmentCreateButton.hidden = true;
+                const apartmentLink = document.createElement('button');
+                apartmentLink.className = 'apartment-enter-button';
+                apartmentLink.type = 'button';
+                apartmentLink.textContent = `Nr. ${apartmentNumber}`;
+                apartmentLink.addEventListener('click', () => socket.emit('apartment-visit', { apartmentId }));
+                viewProfileApartment.replaceChildren(apartmentLink);
+                socket.emit('navigator-request');
+            });
+
+            socket.on('apartment-visit-result', ({ message } = {}) => {
+                if (message) {
+                    selectSidePanel('chat');
+                    apartmentStatus.textContent = message;
+                    setRoomNotice(message);
+                    addChatSystemEntry(message);
+                }
+            });
+
+            socket.on('apartment-enter-approved', ({ roomId } = {}) => {
+                if (roomId) socket.emit('room-switch', { roomId });
+            });
+
+            socket.on('apartment-door-knock', (payload) => addApartmentKnockPrompt(payload));
 
             socket.on('newPlayer', (player) => {
                 showPlayer(player);
@@ -2935,12 +3184,40 @@
             });
             socket.on('profile-info', (profile) => {
                 if (profile.playerId !== viewingProfilePlayerId) return;
+                viewedProfileProgress = profile;
+                viewProfileLevel.disabled = false;
                 viewingProfileUserId = profile.userId || null;
                 viewProfileName.textContent = profile.online ? profile.avatarName : `${profile.avatarName} (offline)`;
                 viewingProfileMailUsername = profile.avatarName;
                 viewingOwnProfile = profile.isOwnProfile;
                 profileMailButton.hidden = viewingOwnProfile;
                 guestbookForm.hidden = viewingOwnProfile;
+                const level = Math.max(1, Number(profile.level) || 1);
+                viewProfileLevel.textContent = String(level);
+                viewProfileLevel.title = `Level ${level} · klik for leveloversigt`;
+                viewProfileLevel.setAttribute('aria-label', `Level ${level}, åbn leveloversigt`);
+                if (levelOverviewDialog.open) renderLevelOverview(viewedProfileProgress);
+                apartmentCreateButton.hidden = !viewingOwnProfile || level < 6 || Boolean(profile.apartmentId);
+                apartmentCreateButton.disabled = false;
+                apartmentStatus.textContent = '';
+                apartmentProfileSummary.textContent = profile.apartmentNumber
+                    ? (viewingOwnProfile
+                        ? `Din lejlighed har nummer #${profile.apartmentNumber}.`
+                        : `${profile.avatarName}s lejlighed har nummer #${profile.apartmentNumber}.`)
+                    : (viewingOwnProfile
+                        ? (level >= 6 ? 'Du kan oprette din egen lejlighed.' : `Lejligheden låses op ved level 6. Du er level ${level}.`)
+                        : 'Brugeren har ikke oprettet en lejlighed endnu.');
+                viewProfileApartment.replaceChildren();
+                if (profile.apartmentId) {
+                    const apartmentLink = document.createElement('button');
+                    apartmentLink.className = 'apartment-enter-button';
+                    apartmentLink.type = 'button';
+                    apartmentLink.textContent = `Nr. ${profile.apartmentNumber}`;
+                    apartmentLink.addEventListener('click', () => socket.emit('apartment-visit', { apartmentId: profile.apartmentId }));
+                    viewProfileApartment.append(apartmentLink);
+                } else {
+                    viewProfileApartment.textContent = 'Ingen endnu';
+                }
                 updateProfileRelationship(profile.relationship);
                 viewProfileRealName.textContent = profile.realName || 'Ikke angivet.';
                 viewProfileAge.textContent = Number.isInteger(profile.age) ? `${profile.age} år` : 'Ikke angivet.';
@@ -2963,6 +3240,19 @@
                 if (!profile.online) freezeOnlineDuration(viewProfileOnlineDuration);
                 viewProfileInterests.textContent = profile.interests || 'Ikke angivet.';
                 viewProfileText.textContent = profile.profileText || 'Ingen profiltekst endnu.';
+            });
+
+            socket.on('user-progress', (progress = {}) => {
+                if (!viewingOwnProfile || viewingProfilePlayerId !== myId || !viewedProfileProgress) return;
+                const previousLevel = Number(viewedProfileProgress.level) || 1;
+                viewedProfileProgress = { ...viewedProfileProgress, ...progress };
+                const nextLevel = Math.max(1, Number(progress.level) || previousLevel);
+                viewProfileLevel.textContent = String(nextLevel);
+                viewProfileLevel.title = `Level ${nextLevel} · klik for leveloversigt`;
+                viewProfileLevel.setAttribute('aria-label', `Level ${nextLevel}, åbn leveloversigt`);
+                setOnlineDuration(viewProfileOnlineDuration, progress.totalOnlineMs);
+                if (levelOverviewDialog.open) renderLevelOverview(viewedProfileProgress);
+                if (nextLevel > previousLevel) setRoomNotice(`Tillykke! Du er steget til Level ${nextLevel}.`);
             });
 
             socket.on('profile-relationship-result', ({ playerId, relationship, error } = {}) => {
