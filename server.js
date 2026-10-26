@@ -1370,7 +1370,9 @@ async function startServer() {
                     [socket.data.user.id, target.id, subject, message]
                 );
                 socket.emit('private-mail-sent', { recipientName: target.username });
-                io.to(`private-mail:${target.id}`).emit('private-mail-notification');
+                io.to(`private-mail:${target.id}`).emit('private-mail-notification', {
+                    username: socket.data.user.username
+                });
             } catch (error) {
                 console.error('Could not send private mail:', getSafeErrorCode(error));
                 socket.emit('private-mail-error', { message: 'Mailen kunne ikke sendes. Prøv igen.' });

@@ -1408,8 +1408,8 @@
                 privateMailInboxView.hidden = false;
                 privateMailThreadView.hidden = true;
                 activePrivateMailUsername = '';
-                requestPrivateMail();
                 if (recipientName) openPrivateConversation(recipientName);
+                else requestPrivateMail();
             }
 
             function openPrivateConversation(username) {
@@ -2848,11 +2848,18 @@
                 }
                 requestPrivateMail();
             });
-            socket.on('private-mail-notification', () => {
-                socket.emit('private-mail-unread-request');
-                if (!privateMailPanel.hidden) {
+            socket.on('private-mail-notification', ({ username } = {}) => {
+                if (privateMailPanel.hidden) {
+                    socket.emit('private-mail-unread-request');
+                } else if (!privateMailInboxView.hidden) {
                     requestPrivateMail();
-                    if (!privateMailThreadView.hidden) requestPrivateConversation();
+                } else if (
+                    username &&
+                    username.toLocaleLowerCase('en-US') === activePrivateMailUsername.toLocaleLowerCase('en-US')
+                ) {
+                    requestPrivateConversation();
+                } else {
+                    socket.emit('private-mail-unread-request');
                 }
             });
             socket.on('private-mail-sent', ({ recipientName } = {}) => {
@@ -2860,9 +2867,9 @@
                 if (recipientName && recipientName.toLocaleLowerCase('en-US') === activePrivateMailUsername.toLocaleLowerCase('en-US')) {
                     privateMailStatus.textContent = `Beskeden er sendt til ${recipientName}.`;
                     privateMailMessage.value = '';
-                    requestPrivateConversation();
+                    if (!privateMailPanel.hidden && !privateMailThreadView.hidden) requestPrivateConversation();
                 }
-                if (!privateMailPanel.hidden) requestPrivateMail();
+                if (!privateMailPanel.hidden && !privateMailInboxView.hidden) requestPrivateMail();
             });
             socket.on('private-mail-error', ({ message } = {}) => {
                 privateMailStatus.textContent = message || 'Beskeden kunne ikke sendes.';
