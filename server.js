@@ -1937,6 +1937,17 @@ async function startServer() {
                     roomId: 'common',
                     roomName: 'Fællesrum'
                 });
+                const [totalOnlineMs, { rows: [progress] }] = await Promise.all([
+                    getTotalOnlineMs(socket.data.user.id),
+                    pool.query('SELECT accepted_chat_messages FROM chat_users WHERE id = $1', [socket.data.user.id])
+                ]);
+                const acceptedChatMessages = Number(progress?.accepted_chat_messages || 0);
+                socket.emit('user-progress', {
+                    totalOnlineMs,
+                    acceptedChatMessages,
+                    level: getUserLevel(totalOnlineMs, acceptedChatMessages),
+                    levelRequirements: LEVEL_REQUIREMENTS.map(([timeMs, messageCount], index) => ({ level: index + 1, timeMs, messageCount }))
+                });
                 socket.to(roomChannel('common')).emit('newPlayer', player);
                 io.emit('navigator-refresh');
             } catch (error) {
@@ -2053,6 +2064,7 @@ async function startServer() {
 
                 const client = await pool.connect();
                 let savedMessage;
+                let acceptedChatMessages = null;
                 try {
                     await client.query('BEGIN');
                     await client.query('SELECT pg_advisory_xact_lock(202602201)');
@@ -2065,14 +2077,16 @@ async function startServer() {
                         [HISTORY_LIMIT]
                     );
                     if (Array.from(cleanText).length >= 3) {
-                        await client.query(`
+                        const { rows: [progress] } = await client.query(`
                             UPDATE chat_users
                             SET accepted_chat_messages = accepted_chat_messages + 1,
                                 last_progression_message_at = NOW()
                             WHERE id = $1
                               AND (last_progression_message_at IS NULL
                                    OR last_progression_message_at <= NOW() - INTERVAL '60 seconds')
+                            RETURNING accepted_chat_messages
                         `, [socket.data.user.id]);
+                        if (progress) acceptedChatMessages = Number(progress.accepted_chat_messages);
                     }
                     await client.query('COMMIT');
                     savedMessage = insertResult.rows[0];
@@ -2081,6 +2095,16 @@ async function startServer() {
                     throw error;
                 } finally {
                     client.release();
+                }
+
+                if (acceptedChatMessages !== null) {
+                    const totalOnlineMs = await getTotalOnlineMs(socket.data.user.id);
+                    io.to(`chat-progress:${socket.data.user.id}`).emit('user-progress', {
+                        totalOnlineMs,
+                        acceptedChatMessages,
+                        level: getUserLevel(totalOnlineMs, acceptedChatMessages),
+                        levelRequirements: LEVEL_REQUIREMENTS.map(([timeMs, messageCount], index) => ({ level: index + 1, timeMs, messageCount }))
+                    });
                 }
 
                 const updatedPlayerJson = await redis.eval(UPDATE_PLAYER_MESSAGE_SCRIPT, {

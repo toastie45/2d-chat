@@ -125,6 +125,13 @@
         .friend-menu-name:hover { border-color: #758c4d; background: #2c3027; }
         .friend-menu-name[disabled] { cursor: wait; opacity: .55; }
         .room-strip-count { font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .level-topbar-stats { display: flex; align-items: center; gap: 10px; }
+        .level-topbar-stats[hidden] { display: none; }
+        .level-topbar-progress { display: grid; width: 88px; gap: 3px; color: #d8dacd; font-size: 9px; font-variant-numeric: tabular-nums; }
+        .level-topbar-progress-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .level-topbar-track { height: 4px; overflow: hidden; border-radius: 5px; background: #363a30; }
+        .level-topbar-fill { display: block; width: 0; height: 100%; border-radius: inherit; background: #a9d66b; transition: width .25s ease; }
+        .level-topbar-total { color: #d8dacd; font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
         .room-strip-logout {
             min-height: 32px;
             padding: 0 11px;
@@ -820,6 +827,9 @@
             .room-strip { min-height: 40px; gap: 7px; padding: 0 11px; }
             .room-strip-tagline { display: none; }
             .room-strip-presence { gap: 6px; }
+            .level-topbar-stats { gap: 6px; }
+            .level-topbar-progress { width: 68px; font-size: 8px; }
+            .level-topbar-total { font-size: 9px; }
             .room-strip-user { max-width: 76px; }
             .friend-menu-trigger { padding: 0 6px; }
             .friend-menu-trigger span { display: none; }
@@ -872,6 +882,17 @@
                     <span class="room-strip-spacer"></span>
                     <div class="room-strip-presence">
                         <span class="room-strip-count" id="room-strip-count">0 online</span>
+                        <div class="level-topbar-stats" id="level-topbar-stats" aria-label="Din level-fremgang" hidden>
+                            <div class="level-topbar-progress" role="img" id="level-time-progress" aria-label="Online-tid til næste level">
+                                <span class="level-topbar-progress-label" id="level-time-progress-label">Tid 0/0t</span>
+                                <span class="level-topbar-track"><span class="level-topbar-fill" id="level-time-progress-fill"></span></span>
+                            </div>
+                            <div class="level-topbar-progress" role="img" id="level-message-progress" aria-label="Beskeder til næste level">
+                                <span class="level-topbar-progress-label" id="level-message-progress-label">Beskeder 0/0</span>
+                                <span class="level-topbar-track"><span class="level-topbar-fill" id="level-message-progress-fill"></span></span>
+                            </div>
+                            <span class="level-topbar-total" id="level-total-online">Total: 0t</span>
+                        </div>
                         <span class="room-strip-divider" aria-hidden="true"></span>
                         <div class="friend-menu-wrap">
                             <button class="friend-menu-trigger" id="friend-menu-trigger" type="button" aria-expanded="false" aria-controls="friend-menu">🤝 <span>Venner</span>⌄</button>
@@ -1150,6 +1171,14 @@
             const roomStrip = document.getElementById('room-strip');
             const roomStripName = document.getElementById('room-strip-name');
             const roomStripCount = document.getElementById('room-strip-count');
+            const levelTopbarStats = document.getElementById('level-topbar-stats');
+            const levelTimeProgress = document.getElementById('level-time-progress');
+            const levelTimeProgressLabel = document.getElementById('level-time-progress-label');
+            const levelTimeProgressFill = document.getElementById('level-time-progress-fill');
+            const levelMessageProgress = document.getElementById('level-message-progress');
+            const levelMessageProgressLabel = document.getElementById('level-message-progress-label');
+            const levelMessageProgressFill = document.getElementById('level-message-progress-fill');
+            const levelTotalOnline = document.getElementById('level-total-online');
             const roomStripUser = document.getElementById('room-strip-user');
             const friendMenuTrigger = document.getElementById('friend-menu-trigger');
             const friendMenu = document.getElementById('friend-menu');
@@ -1201,6 +1230,7 @@
             let activePrivateMailUsername = '';
             let viewingProfileMailUsername = '';
             let viewedProfileProgress = null;
+            let currentUserProgress = null;
             const userSearchInput = document.getElementById('user-search-input');
             const userSearchMatch = document.getElementById('user-search-match');
             const userSearchSubmit = document.getElementById('user-search-submit');
@@ -1384,6 +1414,37 @@
                 element.dataset.onlineTotalMs = String(Math.max(0, Number(totalMilliseconds) || 0));
                 element.dataset.onlineUpdatedAt = String(Date.now());
                 updateOnlineDurations();
+            }
+
+            function renderTopbarProgress(progress) {
+                if (!progress || !levelProgression) return;
+                const requirements = progress.levelRequirements || levelProgression.LEVEL_REQUIREMENTS.map(([timeMs, messageCount], index) => ({
+                    level: index + 1, timeMs, messageCount
+                }));
+                const level = Math.min(20, Math.max(1, Number(progress.level) || 1));
+                const nextRequirement = requirements[Math.min(level, requirements.length - 1)];
+                if (!nextRequirement) return;
+                const totalOnlineMs = Math.max(0, Number(progress.totalOnlineMs) || 0);
+                const acceptedMessages = Math.max(0, Number(progress.acceptedChatMessages) || 0);
+                const timePercent = Math.min(100, totalOnlineMs / nextRequirement.timeMs * 100);
+                const messagePercent = Math.min(100, acceptedMessages / nextRequirement.messageCount * 100);
+                const compactHourNumber = (milliseconds) => new Intl.NumberFormat('da-DK', { maximumFractionDigits: 1 }).format(milliseconds / 3_600_000);
+                const countLabel = (value) => Math.floor(value).toLocaleString('da-DK');
+                levelTimeProgressLabel.textContent = `Tid ${compactHourNumber(Math.min(totalOnlineMs, nextRequirement.timeMs))}/${compactHourNumber(nextRequirement.timeMs)}t`;
+                levelTimeProgressFill.style.width = `${timePercent}%`;
+                levelTimeProgress.setAttribute('aria-label', `Online-tid til level ${nextRequirement.level}: ${formatOnlineDuration(totalOnlineMs)} af ${formatOnlineDuration(nextRequirement.timeMs)}`);
+                levelMessageProgressLabel.textContent = `Beskeder ${countLabel(Math.min(acceptedMessages, nextRequirement.messageCount))}/${countLabel(nextRequirement.messageCount)}`;
+                levelMessageProgressFill.style.width = `${messagePercent}%`;
+                levelMessageProgress.setAttribute('aria-label', `Godkendte beskeder til level ${nextRequirement.level}: ${countLabel(acceptedMessages)} af ${countLabel(nextRequirement.messageCount)}`);
+                levelTotalOnline.textContent = `Total: ${compactHourNumber(totalOnlineMs)}t`;
+                levelTopbarStats.hidden = false;
+            }
+
+            function resetTopbarProgress() {
+                currentUserProgress = null;
+                levelTopbarStats.hidden = true;
+                levelTimeProgressFill.style.width = '0%';
+                levelMessageProgressFill.style.width = '0%';
             }
 
             function freezeOnlineDuration(element) {
@@ -1895,6 +1956,7 @@
             function resetPendingAuthentication() {
                 stopGameLoop();
                 currentUser = null;
+                resetTopbarProgress();
                 whisperBubbles.clear();
                 highlightedSpeechBubblePlayers.clear();
                 activeWhisperPlayerId = null;
@@ -3243,6 +3305,9 @@
             });
 
             socket.on('user-progress', (progress = {}) => {
+                if (!Number.isFinite(Number(progress.totalOnlineMs)) || !Number.isFinite(Number(progress.acceptedChatMessages))) return;
+                currentUserProgress = progress;
+                renderTopbarProgress(progress);
                 if (!viewingOwnProfile || viewingProfilePlayerId !== myId || !viewedProfileProgress) return;
                 const previousLevel = Number(viewedProfileProgress.level) || 1;
                 viewedProfileProgress = { ...viewedProfileProgress, ...progress };
