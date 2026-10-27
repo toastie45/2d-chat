@@ -3447,6 +3447,10 @@
                 if (nextLevel > previousLevel) setRoomNotice(`Tillykke! Du er steget til Level ${nextLevel}.`);
             });
 
+            socket.on('progression-message-filtered', () => {
+                setRoomNotice('Beskeden blev sendt, men tæller ikke til level, fordi den ligner gentagelse eller tegnspam.');
+            });
+
             socket.on('profile-relationship-result', ({ playerId, relationship, error } = {}) => {
                 requestProfileManagement();
                 if (playerId !== viewingProfilePlayerId) return;

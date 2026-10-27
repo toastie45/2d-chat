@@ -26,6 +26,7 @@ const {
 const { hashRegistrationIp, MAX_ACCOUNTS_PER_IP } = require('./lib/account-ip-limit');
 const { calculateAge, getDanishRegions, getSteamUrl, normalizePublicProfile } = require('./lib/public-profile');
 const { registerChatMessage } = require('./lib/chat-rate-limit');
+const { analyzeProgressionMessage, SPAM_HISTORY_LIMIT, SPAM_HISTORY_WINDOW_MS } = require('./lib/chat-spam-filter');
 const { GUESTBOOK_MESSAGE_MAX_LENGTH, normalizeGuestbookMessage } = require('./lib/guestbook');
 const { USER_SEARCH_RESULT_LIMIT, getUserSearchPatterns } = require('./lib/user-search');
 const GRID_LAYOUT = require('./public/grid-layout');
@@ -365,7 +366,6 @@ async function startServer() {
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS region VARCHAR(32)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS accepted_chat_messages BIGINT NOT NULL DEFAULT 0');
-    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS last_progression_message_at TIMESTAMPTZ');
     await pool.query(`
         CREATE SEQUENCE IF NOT EXISTS chat_apartment_number_seq START WITH 101
     `);
@@ -448,6 +448,7 @@ async function startServer() {
         )
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS chat_messages_recent_idx ON chat_messages (id DESC)');
+    await pool.query('CREATE INDEX IF NOT EXISTS chat_messages_user_recent_idx ON chat_messages (user_id, id DESC)');
 
     await redisPublisher.connect();
     await redisSubscriber.connect();
@@ -2167,9 +2168,22 @@ async function startServer() {
                 const client = await pool.connect();
                 let savedMessage;
                 let acceptedChatMessages = null;
+                let progressionFilterReason = null;
                 try {
                     await client.query('BEGIN');
                     await client.query('SELECT pg_advisory_xact_lock(202602201)');
+                    const { rows: recentMessages } = await client.query(`
+                        SELECT message, created_at AS "createdAt"
+                        FROM chat_messages
+                        WHERE user_id = $1
+                          AND created_at >= NOW() - ($2::int * INTERVAL '1 minute')
+                        ORDER BY id DESC
+                        LIMIT $3
+                    `, [socket.data.user.id, Math.ceil(SPAM_HISTORY_WINDOW_MS / 60_000), SPAM_HISTORY_LIMIT]);
+                    const progressionCheck = analyzeProgressionMessage(cleanText, recentMessages);
+                    if (!progressionCheck.countsForProgression && progressionCheck.reason !== 'too-short') {
+                        progressionFilterReason = progressionCheck.reason;
+                    }
                     const insertResult = await client.query(
                         'INSERT INTO chat_messages (user_id, username, message) VALUES ($1, $2, $3) RETURNING id, created_at',
                         [socket.data.user.id, socket.data.user.username, cleanText]
@@ -2178,14 +2192,11 @@ async function startServer() {
                         'DELETE FROM chat_messages WHERE id NOT IN (SELECT id FROM chat_messages ORDER BY id DESC LIMIT $1)',
                         [HISTORY_LIMIT]
                     );
-                    if (Array.from(cleanText).length >= 3) {
+                    if (progressionCheck.countsForProgression) {
                         const { rows: [progress] } = await client.query(`
                             UPDATE chat_users
-                            SET accepted_chat_messages = accepted_chat_messages + 1,
-                                last_progression_message_at = NOW()
+                            SET accepted_chat_messages = accepted_chat_messages + 1
                             WHERE id = $1
-                              AND (last_progression_message_at IS NULL
-                                   OR last_progression_message_at <= NOW() - INTERVAL '60 seconds')
                             RETURNING accepted_chat_messages
                         `, [socket.data.user.id]);
                         if (progress) acceptedChatMessages = Number(progress.accepted_chat_messages);
@@ -2222,6 +2233,10 @@ async function startServer() {
                     messageId: savedMessage.id,
                     createdAt: savedMessage.created_at
                 });
+
+                if (progressionFilterReason) {
+                    socket.emit('progression-message-filtered', { reason: progressionFilterReason });
+                }
 
                 setTimeout(async () => {
                     try {
