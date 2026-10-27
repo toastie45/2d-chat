@@ -1955,7 +1955,7 @@ async function startServer() {
         });
 
         socket.on('user-search', async (payload) => {
-            const patterns = getUserSearchPatterns(payload && payload.query, payload && payload.matchMode);
+            const patterns = getUserSearchPatterns(payload && payload.query);
             if (!activeSocketIds.has(socket.id) || !patterns) return;
             const now = Date.now();
             if (now - Number(socket.data.lastUserSearchAt || 0) < 200) return;
@@ -1963,23 +1963,12 @@ async function startServer() {
             try {
                 const [{ rows }, players] = await Promise.all([
                     pool.query(`
-                        SELECT u.id, u.username, u.username_normalized,
-                               (u.total_online_ms + COALESCE(MAX(GREATEST(
-                                   0, FLOOR(EXTRACT(EPOCH FROM (NOW() - s.last_accounted_at)) * 1000)
-                               )), 0))::text AS total_online_ms
-                        FROM chat_users u
-                        LEFT JOIN chat_online_sessions s ON s.user_id = u.id
-                        WHERE u.username_normalized LIKE $1 ESCAPE '\\'
-                        GROUP BY u.id
-                        ORDER BY
-                            CASE WHEN $2 = 'onlineTime' THEN
-                                (u.total_online_ms + COALESCE(MAX(GREATEST(
-                                    0, FLOOR(EXTRACT(EPOCH FROM (NOW() - s.last_accounted_at)) * 1000)
-                                )), 0))
-                            END DESC NULLS LAST,
-                            u.username_normalized ASC
-                        LIMIT $3
-                    `, [patterns.mode === 'prefix' ? patterns.prefix : patterns.contains, payload && payload.sortBy === 'onlineTime' ? 'onlineTime' : 'name', USER_SEARCH_RESULT_LIMIT]),
+                        SELECT id, username, username_normalized
+                        FROM chat_users
+                        WHERE username_normalized LIKE $1 ESCAPE '\\'
+                        ORDER BY username_normalized ASC
+                        LIMIT $2
+                    `, [patterns.contains, USER_SEARCH_RESULT_LIMIT]),
                     getPlayers(socket.data.roomId || 'common')
                 ]);
                 const onlinePlayerIds = new Map();
@@ -1989,21 +1978,16 @@ async function startServer() {
                 }
                 socket.emit('user-search-results', {
                     query: patterns.query,
-                    matchMode: patterns.mode,
-                    sortBy: payload && payload.sortBy === 'onlineTime' ? 'onlineTime' : 'name',
                     results: rows.map((row) => ({
                         userId: String(row.id),
                         username: row.username,
-                        playerId: onlinePlayerIds.get(row.username_normalized) || null,
-                        totalOnlineMs: Number(row.total_online_ms) || 0
+                        playerId: onlinePlayerIds.get(row.username_normalized) || null
                     }))
                 });
             } catch (error) {
                 console.error('Could not search users:', getSafeErrorCode(error));
                 socket.emit('user-search-results', {
                     query: patterns.query,
-                    matchMode: patterns.mode,
-                    sortBy: payload && payload.sortBy === 'onlineTime' ? 'onlineTime' : 'name',
                     error: 'Søgningen mislykkedes. Prøv igen.'
                 });
             }

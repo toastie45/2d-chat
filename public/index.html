@@ -464,11 +464,6 @@
             border-radius: 7px;
             font-size: 12px;
         }
-        .user-search-controls { display: grid; gap: 8px; margin-bottom: 10px; }
-        .user-search-controls label { color: var(--muted); font-size: 10px; }
-        .user-search-controls select { width: 100%; margin-top: 4px; padding: 7px 8px; border-radius: 6px; font-size: 11px; }
-        .user-search-sort { display: flex; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: 10px; }
-        .user-search-sort label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
         .user-search-submit { justify-self: start; padding: 6px 10px; border: 1px solid #087e60; border-radius: 5px; background: #087e60; color: #fff; font-size: 10px; font-weight: 700; cursor: pointer; }
         .user-search-result {
             width: 100%;
@@ -1026,19 +1021,8 @@
                         </section>
                         <section class="side-panel" id="search-panel" aria-labelledby="search-title" hidden>
                             <h2 class="side-title" id="search-title">Søg efter brugere</h2>
-                            <label class="user-search-controls">Brugernavn
-                                <select id="user-search-match" aria-label="Søgemetode">
-                                    <option value="prefix">Starter med</option>
-                                    <option value="contains">Indeholder</option>
-                                </select>
-                            </label>
+                            <label class="visually-hidden" for="user-search-input">Brugernavn</label>
                             <input class="user-search-input" id="user-search-input" type="search" maxlength="18" autocomplete="off" placeholder="Skriv et brugernavn" aria-label="Søg efter brugere" aria-controls="user-search-results">
-                            <div class="user-search-controls">
-                                <div class="user-search-sort">
-                                    <label><input type="radio" name="user-search-sort" value="name" checked> Navn</label>
-                                    <label><input type="radio" name="user-search-sort" value="onlineTime"> Online tid</label>
-                                </div>
-                            </div>
                             <button class="user-search-submit" id="user-search-submit" type="button">Start søgning</button>
                             <div class="member-list" id="user-search-results" role="list" aria-live="polite"></div>
                             <p class="member-empty hidden" id="user-search-empty" role="status" aria-live="polite"></p>
@@ -1327,9 +1311,7 @@
             let viewedProfileProgress = null;
             let currentUserProgress = null;
             const userSearchInput = document.getElementById('user-search-input');
-            const userSearchMatch = document.getElementById('user-search-match');
             const userSearchSubmit = document.getElementById('user-search-submit');
-            const userSearchSort = document.querySelectorAll('input[name="user-search-sort"]');
             const userSearchResults = document.getElementById('user-search-results');
             const userSearchEmpty = document.getElementById('user-search-empty');
             let userSearchServerResults = null;
@@ -2238,10 +2220,6 @@
                 return userSearchInput.value.normalize('NFKC').trim().toLocaleLowerCase('en-US');
             }
 
-            function getUserSearchSort() {
-                return document.querySelector('input[name="user-search-sort"]:checked')?.value || 'name';
-            }
-
             function findOnlinePlayerByName(username) {
                 const normalized = username.toLocaleLowerCase('en-US');
                 return Object.values(players)
@@ -2269,10 +2247,7 @@
 
             function renderUserSearchResults() {
                 const query = getUserSearchQuery();
-                const matchMode = userSearchMatch.value;
-                const sortBy = getUserSearchSort();
                 const serverResults = query && userSearchServerResults?.query === query
-                    && userSearchServerResults.matchMode === matchMode && userSearchServerResults.sortBy === sortBy
                     ? userSearchServerResults : null;
                 let entries;
                 let status = '';
@@ -2285,11 +2260,9 @@
                     entries = Object.values(players)
                         .filter((player) => {
                             const name = player.name.normalize('NFKC').toLocaleLowerCase('en-US');
-                            return matchMode === 'prefix' ? name.startsWith(query) : name.includes(query);
+                            return name.includes(query);
                         })
-                        .sort((first, second) => sortBy === 'name'
-                            ? first.name.localeCompare(second.name, 'da')
-                            : (second.totalOnlineMs || 0) - (first.totalOnlineMs || 0) || first.name.localeCompare(second.name, 'da'))
+                        .sort((first, second) => first.name.localeCompare(second.name, 'da'))
                         .map((player) => ({ username: player.name, playerId: player.id }));
                     if (serverResults) status = serverResults.error;
                     else if (query) status = 'Søger også efter offline brugere…';
@@ -2305,9 +2278,7 @@
                 const query = getUserSearchQuery();
                 if (!query || [...query].length > 18) return;
                 userSearchTimer = setTimeout(() => socket.emit('user-search', {
-                    query,
-                    matchMode: userSearchMatch.value,
-                    sortBy: getUserSearchSort()
+                    query
                 }), 300);
             }
 
@@ -2875,8 +2846,6 @@
                 renderUserSearchResults();
                 scheduleUserSearch();
             });
-            userSearchMatch.addEventListener('change', () => { renderUserSearchResults(); scheduleUserSearch(); });
-            userSearchSort.forEach((option) => option.addEventListener('change', () => { renderUserSearchResults(); scheduleUserSearch(); }));
             userSearchSubmit.addEventListener('click', scheduleUserSearch);
             userSearchInput.addEventListener('keydown', (event) => {
                 if (event.key !== 'Enter') return;
@@ -3371,12 +3340,10 @@
                 else setRoomNotice(message || 'Hvisken kunne ikke sendes.');
             });
 
-            socket.on('user-search-results', ({ query, matchMode, sortBy, results, error } = {}) => {
+            socket.on('user-search-results', ({ query, results, error } = {}) => {
                 if (!query || query !== getUserSearchQuery()) return;
                 userSearchServerResults = {
                     query,
-                    matchMode: matchMode || 'contains',
-                    sortBy: sortBy || 'name',
                     results: Array.isArray(results) ? results : [],
                     error: typeof error === 'string' ? error : ''
                 };
