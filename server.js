@@ -1278,7 +1278,7 @@ async function startServer() {
                     const presentCount = await redis.hLen(roomKeys(id).players);
                     rooms.push({
                         id,
-                        name: `${apartment.username}s Lejlighed (#${apartment.apartment_number})`,
+                        name: `#${apartment.apartment_number} ${apartment.username}s Lejlighed`,
                         type: 'apartment',
                         count: presentCount,
                         ownerUsername: apartment.username,
