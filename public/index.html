@@ -2759,11 +2759,17 @@
                     const muted = isMutedPlayer(player);
                     const visualHeight = avatarImageLoaded ? avatarHeight : avatarRadius * 2;
                     const visualWidth = avatarImageLoaded ? avatarWidth : avatarRadius * 2;
+                    const labelHeight = 19;
+                    const belowAvatarOffset = Math.min(
+                        0,
+                        canvas.height - labelHeight - 2 - (position.y + visualHeight / 2 + 3)
+                    );
+                    const avatarY = position.y + belowAvatarOffset;
 
                     ctx.save();
                     ctx.globalAlpha = 0.16;
                     ctx.beginPath();
-                    ctx.ellipse(position.x, position.y + visualHeight / 2 - 1, avatarImageLoaded ? 13 : 18, 5, 0, 0, Math.PI * 2);
+                    ctx.ellipse(position.x, avatarY + visualHeight / 2 - 1, avatarImageLoaded ? 13 : 18, 5, 0, 0, Math.PI * 2);
                     ctx.fillStyle = '#000';
                     ctx.fill();
                     ctx.restore();
@@ -2772,28 +2778,28 @@
                         ctx.drawImage(
                             avatarImage,
                             position.x - visualWidth / 2,
-                            position.y - visualHeight / 2,
+                            avatarY - visualHeight / 2,
                             visualWidth,
                             visualHeight
                         );
                     } else {
                         ctx.beginPath();
-                        ctx.arc(position.x, position.y, avatarRadius + 3, 0, Math.PI * 2);
+                        ctx.arc(position.x, avatarY, avatarRadius + 3, 0, Math.PI * 2);
                         ctx.fillStyle = '#10110f';
                         ctx.fill();
                         ctx.beginPath();
-                        ctx.arc(position.x, position.y, avatarRadius, 0, Math.PI * 2);
+                        ctx.arc(position.x, avatarY, avatarRadius, 0, Math.PI * 2);
                         ctx.fillStyle = colorForPlayer(player.id);
                         ctx.fill();
                         ctx.fillStyle = '#20231b';
                         ctx.beginPath();
-                        ctx.arc(position.x - 6, position.y - 2, 1.8, 0, Math.PI * 2);
-                        ctx.arc(position.x + 6, position.y - 2, 1.8, 0, Math.PI * 2);
+                        ctx.arc(position.x - 6, avatarY - 2, 1.8, 0, Math.PI * 2);
+                        ctx.arc(position.x + 6, avatarY - 2, 1.8, 0, Math.PI * 2);
                         ctx.fill();
                         ctx.strokeStyle = '#20231b';
                         ctx.lineWidth = 1.5;
                         ctx.beginPath();
-                        ctx.arc(position.x, position.y + 2, 5, .2, Math.PI - .2);
+                        ctx.arc(position.x, avatarY + 2, 5, .2, Math.PI - .2);
                         ctx.stroke();
                     }
 
@@ -2803,10 +2809,10 @@
                         ctx.lineWidth = 9;
                         ctx.strokeStyle = '#390808';
                         ctx.beginPath();
-                        ctx.moveTo(position.x - 12, position.y - 12);
-                        ctx.lineTo(position.x + 12, position.y + 12);
-                        ctx.moveTo(position.x + 12, position.y - 12);
-                        ctx.lineTo(position.x - 12, position.y + 12);
+                        ctx.moveTo(position.x - 12, avatarY - 12);
+                        ctx.lineTo(position.x + 12, avatarY + 12);
+                        ctx.moveTo(position.x + 12, avatarY - 12);
+                        ctx.lineTo(position.x - 12, avatarY + 12);
                         ctx.stroke();
                         ctx.lineWidth = 6;
                         ctx.strokeStyle = '#f04444';
@@ -2819,11 +2825,8 @@
                     ctx.textBaseline = 'top';
                     const nameWidth = ctx.measureText(player.name).width;
                     const labelWidth = Math.min(cellSize - 10, nameWidth + 14);
-                    const belowAvatarY = position.y + visualHeight / 2 + 3;
-                    const labelY = belowAvatarY + 19 <= canvas.height
-                        ? belowAvatarY
-                        : Math.max(0, position.y - visualHeight / 2 - 21);
-                    roundedRect(ctx, position.x - labelWidth / 2, labelY, labelWidth, 19, 6);
+                    const labelY = avatarY + visualHeight / 2 + 3;
+                    roundedRect(ctx, position.x - labelWidth / 2, labelY, labelWidth, labelHeight, 6);
                     ctx.fillStyle = '#10110f';
                     ctx.fill();
                     ctx.fillStyle = '#e8e7df';
