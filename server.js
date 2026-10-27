@@ -101,8 +101,7 @@ if existing then
     return cjson.encode(player)
 end
 
-for index = 4, #ARGV do
-    local cell = ARGV[index]
+local function tryJoin(cell)
     if redis.call('HEXISTS', KEYS[2], cell) == 0 and redis.call('HGET', KEYS[3], cell) ~= 'closed' then
         local col, row = string.match(cell, '^([%-]?%d+):([%-]?%d+)$')
         local player = {
@@ -120,6 +119,20 @@ for index = 4, #ARGV do
         redis.call('HSET', KEYS[2], cell, ARGV[1])
         return cjson.encode(player)
     end
+    return false
+end
+
+-- In an apartment, prefer a designated door as the spawn point when available.
+for index = 4, #ARGV do
+    local cell = ARGV[index]
+    if redis.call('HGET', KEYS[3], cell) == 'door' then
+        local player = tryJoin(cell)
+        if player then return player end
+    end
+end
+for index = 4, #ARGV do
+    local player = tryJoin(ARGV[index])
+    if player then return player end
 end
 return false
 `;
@@ -1406,6 +1419,69 @@ async function startServer() {
                 console.error('Could not load apartment tiles:', getSafeErrorCode(error));
                 socket.emit('apartment-layout-result', { success: false, message: 'Lejligheden kunne ikke indlæses.' });
             }
+        });
+
+        socket.on('apartment-layout-paint', ({ col, row, state } = {}) => {
+            if (!activeSocketIds.has(socket.id) || !Number.isInteger(col) || !Number.isInteger(row)
+                || !['open', 'closed', 'door'].includes(state)) return;
+            const roomId = activeSocketRooms.get(socket.id);
+            const key = `${col}:${row}`;
+            if (!GRID_CELL_KEYS.has(key)) return;
+
+            // Serialize rapid clicks so each change builds on the previous saved layout.
+            socket.data.apartmentPaintQueue = (socket.data.apartmentPaintQueue || Promise.resolve())
+                .then(async () => {
+                    if (!activeSocketIds.has(socket.id) || activeSocketRooms.get(socket.id) !== roomId
+                        || !await canEditApartmentRoom(socket.data.user.id, roomId)) {
+                        socket.emit('apartment-layout-paint-result', { key, state, success: false, message: 'Du kan kun indrette din egen lejlighed, når du er der.' });
+                        return;
+                    }
+                    const apartmentId = roomId.slice('apartment:'.length);
+                    const { rows: [apartment] } = await pool.query(
+                        'SELECT layout_json, apartment_name, apartment_number, u.username FROM chat_apartments a JOIN chat_users u ON u.id = a.owner_id WHERE a.id = $1 AND a.owner_id = $2',
+                        [apartmentId, socket.data.user.id]
+                    );
+                    if (!apartment) {
+                        socket.emit('apartment-layout-paint-result', { key, state, success: false, message: 'Lejligheden blev ikke fundet.' });
+                        return;
+                    }
+                    const tiles = normalizeApartmentTiles(apartment.layout_json);
+                    if (state === 'closed' && await redis.hGet(roomKeys(roomId).cells, key)) {
+                        socket.emit('apartment-layout-paint-result', { key, state, success: false, message: 'Flyt først brugeren væk fra feltet, før du lukker det.' });
+                        return;
+                    }
+                    const nextTiles = { ...tiles };
+                    if (state === 'open') delete nextTiles[key];
+                    else nextTiles[key] = state;
+                    if (Object.values(nextTiles).filter((tileState) => tileState === 'closed').length >= GRID_CELLS.length) {
+                        socket.emit('apartment-layout-paint-result', { key, state, success: false, message: 'Mindst ét felt skal være åbent eller en dør.' });
+                        return;
+                    }
+                    const saved = await pool.query(
+                        'UPDATE chat_apartments SET layout_json = $1::jsonb WHERE id = $2 AND owner_id = $3',
+                        [JSON.stringify(nextTiles), apartmentId, socket.data.user.id]
+                    );
+                    if (!saved.rowCount) {
+                        socket.emit('apartment-layout-paint-result', { key, state, success: false, message: 'Lejligheden blev ikke gemt.' });
+                        return;
+                    }
+                    const keys = roomKeys(roomId);
+                    await redis.del(keys.tiles);
+                    if (Object.keys(nextTiles).length) await redis.hSet(keys.tiles, nextTiles);
+                    const roomName = getApartmentRoomName(apartment);
+                    io.to(roomChannel(roomId)).emit('apartment-layout-updated', {
+                        roomId,
+                        tiles: nextTiles,
+                        name: apartment.apartment_name || '',
+                        roomName,
+                        welcomeTitle: `Velkommen i ${roomName}`
+                    });
+                    socket.emit('apartment-layout-paint-result', { key, state, success: true, message: 'Feltet er gemt live.' });
+                })
+                .catch((error) => {
+                    console.error('Could not paint apartment tile:', getSafeErrorCode(error));
+                    socket.emit('apartment-layout-paint-result', { key, state, success: false, message: 'Feltet kunne ikke gemmes.' });
+                });
         });
 
         socket.on('apartment-layout-save', async ({ tiles: requestedTiles, name: requestedName } = {}) => {
