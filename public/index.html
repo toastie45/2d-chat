@@ -3324,10 +3324,17 @@
                     event.preventDefault();
                     const text = draftText.trim();
                     if (!text) return;
-                    const teleportCommand = /^\/tp(?:\s+(.+))?$/i.exec(text);
-                    if (teleportCommand) {
-                        const target = teleportCommand[1]?.trim();
-                        socket.emit('profile-teleport', target ? { target } : {});
+                    const teleportUserCommand = /^\/tb(.*)$/i.exec(text);
+                    if (teleportUserCommand) {
+                        const target = teleportUserCommand[1].trim();
+                        socket.emit('profile-teleport', { mode: 'user', target });
+                        updateDraftText('');
+                        return;
+                    }
+                    const teleportRoomCommand = /^\/tr(?:\s+(.+))?$/i.exec(text);
+                    if (teleportRoomCommand) {
+                        const target = teleportRoomCommand[1]?.trim() || '';
+                        socket.emit('profile-teleport', { mode: 'room', target });
                         updateDraftText('');
                         return;
                     }

@@ -1504,16 +1504,17 @@ async function startServer() {
             }
         });
 
-        socket.on('profile-teleport', async ({ userId, target } = {}) => {
+        socket.on('profile-teleport', async ({ userId, target, mode } = {}) => {
             if (!activeSocketIds.has(socket.id) || socket.data.switchingRoom) return;
+            if (mode !== undefined && !['user', 'room'].includes(mode)) return;
             const rawTarget = typeof target === 'string' ? target.trim() : '';
             const roomAlias = rawTarget.normalize('NFKC').toLocaleLowerCase('da-DK').replace(/\s+/g, ' ');
             const roomDestinations = new Map([
-                ['common', ['1', 'common', 'fællesrum', 'fælles rum']],
-                ['disco', ['2', 'disco', 'diskotek', 'diskoteket']]
+                ['common', ['1', '#1', 'common', 'fællesrum', 'fælles rum']],
+                ['disco', ['2', '#2', 'disco', 'diskotek', 'diskoteket']]
             ]);
             const destinationRoom = [...roomDestinations.entries()]
-                .find(([, aliases]) => aliases.includes(roomAlias))?.[0];
+                .find(([, aliases]) => mode !== 'user' && aliases.includes(roomAlias))?.[0];
             const now = Date.now();
             if (now - Number(socket.data.lastProfileTeleportAt || 0) < 1000) return;
             socket.data.lastProfileTeleportAt = now;
@@ -1546,30 +1547,39 @@ async function startServer() {
             if (userId !== undefined) {
                 if (typeof userId !== 'string' || !/^[1-9]\d{0,18}$/.test(userId)) return;
                 targetUserId = userId;
-            } else if (!rawTarget) {
+            } else if (!rawTarget && mode === 'user') {
                 targetUserId = socket.data.lastProfileTeleportUserId || null;
                 if (!targetUserId) {
                     socket.emit('profile-teleport-result', {
-                        message: 'Vælg først en profil, eller brug /tp brugernavn. Du kan også skrive /tp id:123.'
+                        message: 'Vælg først en profil, eller brug /tb brugernavn. Bruger-ID skrives som /tb id:123.'
                     });
                     return;
                 }
             } else {
                 try {
-                    if (/^[1-9]\d{2,18}$/.test(rawTarget)) {
+                    if (mode === 'room') {
+                        if (!/^[1-9]\d{2,18}$/.test(rawTarget)) {
+                            socket.emit('profile-teleport-result', {
+                                message: 'Brug /tr 1 til Fællesrum, /tr 2 til Diskoteket eller /tr 101 til en lejlighed.'
+                            });
+                            return;
+                        }
                         const { rows: [apartment] } = await pool.query(
                             'SELECT id FROM chat_apartments WHERE apartment_number = $1', [rawTarget]
                         );
-                        if (apartment) {
-                            const apartmentRoomId = `apartment:${apartment.id}`;
-                            if (activeSocketRooms.get(socket.id) === apartmentRoomId) {
-                                socket.emit('profile-teleport-result', { message: `Du er allerede i lejlighed #${rawTarget}.` });
-                            } else {
-                                socket.emit('profile-teleport-knock', { apartmentId: String(apartment.id) });
-                            }
+                        if (!apartment) {
+                            socket.emit('profile-teleport-result', { message: `Lejlighed #${rawTarget} findes ikke.` });
                             return;
                         }
+                        const apartmentRoomId = `apartment:${apartment.id}`;
+                        if (activeSocketRooms.get(socket.id) === apartmentRoomId) {
+                            socket.emit('profile-teleport-result', { message: `Du er allerede i lejlighed #${rawTarget}.` });
+                        } else {
+                            socket.emit('profile-teleport-knock', { apartmentId: String(apartment.id) });
+                        }
+                        return;
                     }
+
                     const explicitId = /^(?:id:|user:)([1-9]\d{0,18})$/i.exec(rawTarget);
                     const account = explicitId ? null : normalizeUsername(rawTarget);
                     let profile = null;
@@ -1581,14 +1591,10 @@ async function startServer() {
                             'SELECT id FROM chat_users WHERE username_normalized = $1', [account.normalized]
                         );
                         profile = row;
-                        if (!profile && /^[1-9]\d{0,18}$/.test(rawTarget)) {
-                            const { rows: [idRow] } = await pool.query('SELECT id FROM chat_users WHERE id = $1', [rawTarget]);
-                            profile = idRow;
-                        }
                     }
                     if (!profile) {
                         socket.emit('profile-teleport-result', {
-                            message: 'Brugeren findes ikke. Brug /tp brugernavn eller /tp id:123.'
+                            message: 'Brugeren findes ikke. Brug /tb brugernavn eller /tb id:123.'
                         });
                         return;
                     }
