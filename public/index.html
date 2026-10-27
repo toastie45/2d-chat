@@ -2856,7 +2856,12 @@
                 }
 
                 const now = Date.now();
-                for (const player of Object.values(players)) {
+                const avatarDrawOrder = Object.values(players).sort((first, second) => {
+                    const firstPosition = first.position || first.target || positionFor(first);
+                    const secondPosition = second.position || second.target || positionFor(second);
+                    return (firstPosition?.y ?? Infinity) - (secondPosition?.y ?? Infinity);
+                });
+                for (const player of avatarDrawOrder) {
                     const position = player.position || player.target || positionFor(player);
                     if (!position) continue;
                     const muted = isMutedPlayer(player);
