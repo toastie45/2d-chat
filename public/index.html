@@ -3005,6 +3005,10 @@
                     ctx.stroke();
                 }
 
+                // Keep the diamond grid active for movement, but hide its visuals for now.
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, gridLayout.width, gridLayout.height);
+
                 // Draw every nameplate first so all avatars remain visually in front of the names.
                 ctx.font = '11px Inter, system-ui, sans-serif';
                 ctx.textAlign = 'center';
