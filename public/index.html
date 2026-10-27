@@ -1073,7 +1073,12 @@
             background: #222421;
             color: #c6c8bf;
             font-size: 10px;
+            font-family: inherit;
+            cursor: pointer;
+            transition: background-color .2s ease, border-color .2s ease, color .2s ease;
         }
+        .room-strip-count:hover { border-color: #68794f; background: #2b2e27; color: #e7e9e0; }
+        .room-strip-count:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         .level-topbar-stats { gap: 12px; padding-left: 12px; border-left: 1px solid #383a35; }
         .level-topbar-progress { width: 104px; gap: 5px; color: #c4c6bd; font-size: 10px; }
         #level-time-progress { width: 104px; }
@@ -1150,7 +1155,7 @@
                     <span class="room-strip-tagline">Deus er en skat</span>
                     <span class="room-strip-spacer"></span>
                     <div class="room-strip-presence">
-                        <span class="room-strip-count" id="room-strip-count">0 online</span>
+                        <button class="room-strip-count" id="room-strip-count" type="button" aria-label="Åbn Online på Chatten">0 online</button>
                         <div class="level-topbar-stats" id="level-topbar-stats" aria-label="Din level-fremgang" hidden>
                             <div class="level-topbar-progress" role="img" id="level-time-progress" aria-label="Online-tid til næste level">
                                 <span class="level-topbar-progress-label" id="level-time-progress-label">Tid 0/0t</span>
@@ -3001,10 +3006,12 @@
 
             authSwitchButton.addEventListener('click', () => selectAuthMode(authMode === 'register' ? 'login' : 'register'));
             refreshNavButton.addEventListener('click', () => window.location.reload());
-            membersNavButton.addEventListener('click', () => {
+            const openOnlineUsersPanel = () => {
                 selectSidePanel('members');
                 socket.emit('online-users-request');
-            });
+            };
+            membersNavButton.addEventListener('click', openOnlineUsersPanel);
+            roomStripCount.addEventListener('click', openOnlineUsersPanel);
             navigatorNavButton.addEventListener('click', () => {
                 selectSidePanel('navigator');
                 socket.emit('navigator-request');
