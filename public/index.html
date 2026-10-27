@@ -692,7 +692,19 @@
             box-shadow: 0 24px 90px #000a;
         }
         .level-overview-dialog::backdrop { background: #050605c9; }
+        .canvas-stage { position: relative; }
+        .knock-dialog[hidden] { display: none; }
         .knock-dialog {
+            position: absolute;
+            z-index: 20;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            padding: 16px;
+            border-radius: 9px;
+            background: #050605a8;
+        }
+        .knock-dialog-card {
             width: min(340px, calc(100vw - 32px));
             padding: 20px;
             border: 1px solid #44483b;
@@ -701,7 +713,6 @@
             color: #f2f0e9;
             box-shadow: 0 24px 90px #000a;
         }
-        .knock-dialog::backdrop { background: #050605c9; }
         .knock-title { margin: 0 0 12px; font-size: 16px; font-weight: 700; }
         .knock-message { margin: 0 0 16px; color: #c7c9bf; font-size: 13px; line-height: 1.5; }
         .knock-actions { display: flex; gap: 10px; }
@@ -942,9 +953,21 @@
                 </div>
                 <div class="room">
                     <section class="board-card" aria-label="Chatrum">
-                        <canvas id="game-canvas" tabindex="0" aria-label="Et diamantgrid med 30 primære felter og 20 mellemliggende felter. Klik på et felt for at flytte din avatar. Højreklik på en anden avatar for at se profilen. Skriv for at chatte, og tryk Enter for at sende.">
-                            Dit browserprogram understøtter ikke canvas.
-                        </canvas>
+                        <div class="canvas-stage">
+                            <canvas id="game-canvas" tabindex="0" aria-label="Et diamantgrid med 30 primære felter og 20 mellemliggende felter. Klik på et felt for at flytte din avatar. Højreklik på en anden avatar for at se profilen. Skriv for at chatte, og tryk Enter for at sende.">
+                                Dit browserprogram understøtter ikke canvas.
+                            </canvas>
+                            <div class="knock-dialog" id="knock-dialog" role="dialog" aria-modal="true" aria-labelledby="knock-title" hidden>
+                                <div class="knock-dialog-card">
+                                    <h3 class="knock-title" id="knock-title">Banker på døren</h3>
+                                    <p class="knock-message" id="knock-message"></p>
+                                    <div class="knock-actions">
+                                        <button class="knock-button accept" id="knock-accept" type="button">Luk op</button>
+                                        <button class="knock-button reject" id="knock-reject" type="button">Afvis</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                         <p class="room-notice" id="room-notice" aria-live="polite"></p>
                         <nav class="bottom-toolbar hidden" id="bottom-toolbar" aria-label="Navigation i chatrummet">
                             <button class="toolbar-button" id="refresh-nav-button" type="button" aria-label="Genindlæs chatten" title="Genindlæs chatten">
@@ -1171,14 +1194,6 @@
                     <thead><tr><th>Level</th><th>Samlet online-tid</th><th>Godkendte beskeder</th><th>Oplåsning</th></tr></thead>
                     <tbody id="level-overview-rows"></tbody>
                 </table>
-            </div>
-        </dialog>
-        <dialog class="knock-dialog" id="knock-dialog" aria-labelledby="knock-title">
-            <h3 class="knock-title" id="knock-title">Banker på døren</h3>
-            <p class="knock-message" id="knock-message"></p>
-            <div class="knock-actions">
-                <button class="knock-button accept" id="knock-accept" type="button">Luk op</button>
-                <button class="knock-button reject" id="knock-reject" type="button">Afvis</button>
             </div>
         </dialog>
     </div>
@@ -2318,7 +2333,8 @@
             function addApartmentKnockPrompt({ knockId, guestName, apartmentNumber }) {
                 currentKnockId = knockId;
                 knockMessage.textContent = `${guestName} banker på din dør til lejlighed #${apartmentNumber}.`;
-                knockDialog.showModal();
+                knockDialog.hidden = false;
+                knockAccept.focus({ preventScroll: true });
             }
 
             function getCellFromPointer(event) {
@@ -2838,14 +2854,14 @@
             knockAccept.addEventListener('click', () => {
                 if (currentKnockId) {
                     socket.emit('apartment-door-answer', { knockId: currentKnockId, accepted: true });
-                    knockDialog.close();
+                    knockDialog.hidden = true;
                     currentKnockId = null;
                 }
             });
             knockReject.addEventListener('click', () => {
                 if (currentKnockId) {
                     socket.emit('apartment-door-answer', { knockId: currentKnockId, accepted: false });
-                    knockDialog.close();
+                    knockDialog.hidden = true;
                     currentKnockId = null;
                 }
             });

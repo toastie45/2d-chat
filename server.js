@@ -1174,7 +1174,37 @@ async function startServer() {
                     socket.emit('apartment-enter-approved', { roomId: `apartment:${apartment.id}` });
                     return;
                 }
+                const ownerSocketIds = [...activeSocketUsers.entries()]
+                    .filter(([, userId]) => String(userId) === String(apartment.owner_id))
+                    .map(([socketId]) => socketId);
+                if (ownerSocketIds.length === 0) {
+                    socket.emit('apartment-visit-result', { message: 'Ejeren er ikke hjemme lige nu.' });
+                    return;
+                }
+
                 const knockId = crypto.randomUUID();
+                const ownerPromptKey = `chat:apartment-door-prompt:${apartment.id}`;
+                const promptReserved = await redis.set(ownerPromptKey, knockId, { EX: 30, NX: true });
+                if (!promptReserved) {
+                    socket.emit('apartment-visit-result', {
+                        message: 'Ejeren har allerede en forespørgsel. Prøv igen om lidt.'
+                    });
+                    return;
+                }
+
+                const knockCooldownKey = `chat:apartment-knock-cooldown:${socket.data.user.id}`;
+                const cooldownStarted = await redis.set(knockCooldownKey, '1', { EX: 20, NX: true });
+                if (!cooldownStarted) {
+                    await redis.eval(
+                        "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end",
+                        { keys: [ownerPromptKey], arguments: [knockId] }
+                    );
+                    const secondsLeft = Math.max(1, await redis.ttl(knockCooldownKey));
+                    socket.emit('apartment-visit-result', {
+                        message: `Vent ${secondsLeft} sekunder, før du banker på igen.`
+                    });
+                    return;
+                }
                 const knock = {
                     guestSocketId: socket.id,
                     guestName: socket.data.user.username,
@@ -1187,18 +1217,21 @@ async function startServer() {
                 await redis.set(knockKey, JSON.stringify(knock), { EX: 30 });
                 setTimeout(async () => {
                     if (await redis.getDel(knockKey)) {
+                        await redis.eval(
+                            "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end",
+                            { keys: [ownerPromptKey], arguments: [knockId] }
+                        );
                         io.to(socket.id).emit('apartment-visit-result', { message: 'Der blev ikke lukket op.' });
                     }
                 }, 30_000);
-                for (const [socketId, userId] of activeSocketUsers.entries()) {
-                    if (String(userId) === String(apartment.owner_id)) {
-                        io.to(socketId).emit('apartment-door-knock', {
-                            knockId,
-                            guestName: socket.data.user.username,
-                            apartmentNumber: Number(apartment.apartment_number)
-                        });
-                    }
-                }
+                const ownerSocketId = ownerSocketIds.find((socketId) =>
+                    activeSocketRooms.get(socketId) === `apartment:${apartment.id}`
+                ) || ownerSocketIds[0];
+                io.to(ownerSocketId).emit('apartment-door-knock', {
+                    knockId,
+                    guestName: socket.data.user.username,
+                    apartmentNumber: Number(apartment.apartment_number)
+                });
                 socket.emit('apartment-visit-result', { message: 'Du banker på. Venter på svar…' });
             } catch (error) {
                 console.error('Could not request apartment access:', getSafeErrorCode(error));
@@ -1209,10 +1242,15 @@ async function startServer() {
         socket.on('apartment-door-answer', async ({ knockId, accepted } = {}) => {
             try {
                 const key = `chat:apartment-knock:${String(knockId || '')}`;
-                const encodedPending = await redis.getDel(key);
+                const encodedPending = await redis.get(key);
                 if (!encodedPending) return;
                 const pending = JSON.parse(encodedPending);
                 if (pending.expiresAt < Date.now() || pending.ownerId !== String(socket.data.user.id)) return;
+                if (!await redis.getDel(key)) return;
+                await redis.eval(
+                    "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end",
+                    { keys: [`chat:apartment-door-prompt:${pending.apartmentId}`], arguments: [String(knockId)] }
+                );
                 if (accepted !== true) {
                     io.to(pending.guestSocketId).emit('apartment-visit-result', { message: 'Der blev ikke lukket op.' });
                     return;
