@@ -1207,18 +1207,38 @@ async function startServer() {
         });
 
         socket.on('apartment-door-answer', async ({ knockId, accepted } = {}) => {
-            const key = `chat:apartment-knock:${String(knockId || '')}`;
-            const encodedPending = await redis.getDel(key);
-            if (!encodedPending) return;
-            const pending = JSON.parse(encodedPending);
-            if (pending.expiresAt < Date.now() || pending.ownerId !== String(socket.data.user.id)) return;
-            const roomId = `apartment:${pending.apartmentId}`;
-            if (accepted !== true) {
-                io.to(pending.guestSocketId).emit('apartment-visit-result', { message: 'Der blev ikke lukket op.' });
-                return;
+            try {
+                const key = `chat:apartment-knock:${String(knockId || '')}`;
+                const encodedPending = await redis.getDel(key);
+                if (!encodedPending) return;
+                const pending = JSON.parse(encodedPending);
+                if (pending.expiresAt < Date.now() || pending.ownerId !== String(socket.data.user.id)) return;
+                if (accepted !== true) {
+                    io.to(pending.guestSocketId).emit('apartment-visit-result', { message: 'Der blev ikke lukket op.' });
+                    return;
+                }
+
+                const guestSocket = io.sockets.sockets.get(pending.guestSocketId);
+                if (!guestSocket || !activeSocketIds.has(guestSocket.id)) {
+                    io.to(pending.guestSocketId).emit('apartment-visit-result', { message: 'Gæsten er ikke længere online.' });
+                    return;
+                }
+                if (guestSocket.data.switchingRoom) return;
+
+                guestSocket.data.switchingRoom = true;
+                try {
+                    const moved = await placeSocketInRoom(guestSocket, `apartment:${pending.apartmentId}`);
+                    if (!moved) {
+                        guestSocket.emit('room-error', { message: 'Lejligheden er fuld. Prøv igen senere.' });
+                        return;
+                    }
+                    guestSocket.emit('apartment-visit-result', { message: 'Du blev lukket ind i lejligheden.' });
+                } finally {
+                    guestSocket.data.switchingRoom = false;
+                }
+            } catch (error) {
+                console.error('Could not admit apartment guest:', getSafeErrorCode(error));
             }
-            await redis.set(`chat:apartment-admission:${pending.guestSocketId}:${pending.apartmentId}`, '1', { EX: 60 });
-            io.to(pending.guestSocketId).emit('apartment-enter-approved', { roomId });
         });
 
         socket.on('profile-request', async (payload) => {
