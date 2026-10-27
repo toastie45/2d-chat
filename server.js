@@ -1182,7 +1182,9 @@ async function startServer() {
                     for (const [playerId, encodedPlayer] of Object.entries(players)) {
                         const player = JSON.parse(encodedPlayer);
                         users.push({
+                            userId: String(activeSocketUsers.get(playerId) || ''),
                             name: player.name,
+                            id: playerId,
                             roomId,
                             roomName: roomNames.get(roomId) || 'Ukendt rum',
                             isSelf: playerId === socket.id

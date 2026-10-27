@@ -451,7 +451,10 @@
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-        .member-room { margin-left: auto; color: var(--muted); font-size: 10px; text-align: right; }
+        .member-room { margin-left: auto; padding: 3px 6px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--muted); font: inherit; font-size: 10px; text-align: right; cursor: pointer; }
+        .member-room:hover { border-color: #596d39; color: #c1f078; }
+        .member-profile-link { max-width: 55%; padding: 0; overflow: hidden; border: 0; background: none; color: inherit; font: inherit; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+        .member-profile-link:hover { color: #c1f078; text-decoration: underline; }
 
         .you-tag { margin-left: auto; color: var(--muted); font-size: 10px; }
         .user-search-input {
@@ -1017,7 +1020,7 @@
                             </div>
                         </section>
                         <section class="side-panel" id="members-panel" aria-labelledby="members-title" hidden>
-                            <h2 class="side-title" id="members-title">Online på platformen</h2>
+                            <h2 class="side-title" id="members-title">Online på Chatten</h2>
                             <div class="member-list" id="member-list" role="list" aria-live="polite"></div>
                             <p class="member-empty hidden" id="member-empty" role="status" aria-live="polite">Der er ingen brugere her endnu.</p>
                         </section>
@@ -2167,7 +2170,7 @@
             function renderOnlineUsers(users = []) {
                 onlineUsers = Array.isArray(users) ? users : [];
                 const countLabel = `${onlineUsers.length} ${onlineUsers.length === 1 ? 'person' : 'personer'}`;
-                membersNavButton.setAttribute('aria-label', `Vis online på platformen, ${countLabel} online`);
+                membersNavButton.setAttribute('aria-label', `Vis online på Chatten, ${countLabel} online`);
                 memberList.replaceChildren();
                 memberEmpty.textContent = onlineUsers.length ? '' : 'Der er ingen online brugere lige nu.';
                 memberEmpty.classList.toggle('hidden', onlineUsers.length > 0);
@@ -2176,9 +2179,29 @@
                     .slice()
                     .sort((first, second) => first.name.localeCompare(second.name, 'da'))
                     .forEach((player) => {
-                    const row = createMemberRow(player);
+                    const row = document.createElement('div');
+                    row.className = 'member';
                     row.setAttribute('role', 'listitem');
                     row.setAttribute('aria-label', `${player.name}, ${player.roomName}${player.isSelf ? ', dig' : ''}`);
+                    const name = document.createElement('button');
+                    name.className = 'member-name member-profile-link';
+                    name.type = 'button';
+                    name.textContent = `${player.name}${player.isSelf ? ' (dig)' : ''}`;
+                    name.setAttribute('aria-label', `Vis profilen for ${player.name}`);
+                    name.addEventListener('click', () => showPublicProfile(`user:${player.userId}`));
+                    const room = document.createElement('button');
+                    room.className = 'member-room';
+                    room.type = 'button';
+                    room.textContent = player.roomName || 'Ukendt rum';
+                    room.setAttribute('aria-label', `${player.roomName || 'Ukendt rum'} – gå til rummet`);
+                    room.addEventListener('click', () => {
+                        if (player.roomId?.startsWith('apartment:')) {
+                            socket.emit('apartment-visit', { apartmentId: player.roomId.slice('apartment:'.length) });
+                        } else if (player.roomId) {
+                            socket.emit('room-switch', { roomId: player.roomId });
+                        }
+                    });
+                    row.append(name, room);
                     memberList.append(row);
                 });
             }
