@@ -521,6 +521,7 @@
         .apartment-editor-mode[aria-pressed="true"] { border-color: #91b45b; background: #2c3524; color: #c1f078; }
         .apartment-editor-tool[aria-pressed="true"] { border-color: #91b45b; background: #2c3524; color: #c1f078; box-shadow: inset 0 0 0 1px #91b45b; }
         .apartment-editor-label { margin: 12px 0 6px; color: #d9d8d1; font-size: 11px; font-weight: 700; }
+        .profile-field[hidden] { display: none; }
         .apartment-editor-colors { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin: 5px 0 12px; }
         .apartment-editor-color { width: 23px; height: 23px; padding: 0; border: 2px solid #555; border-radius: 50%; cursor: pointer; }
         .apartment-editor-color[aria-pressed="true"] { outline: 2px solid #f2f0e9; outline-offset: 2px; }
@@ -1327,10 +1328,10 @@
                             <label class="profile-field" for="apartment-editor-name">Lejlighedens navn
                                 <input id="apartment-editor-name" type="text" maxlength="60" autocomplete="off" placeholder="F.eks. Tommys hyggelige sted">
                             </label>
-                            <p class="apartment-editor-note">Vælg et værktøj, og tryk på felterne for at ændre dit udkast. Intet ændres for andre, før du gemmer.</p>
+                            <p class="apartment-editor-note">Vælg et værktøj, og redigér forhåndsvisningen. Selve lejligheden ændres først, når du trykker Gem ændringer.</p>
                             <p class="apartment-editor-label">1. Vælg værktøj</p>
                             <div class="apartment-editor-tools" role="group" aria-label="Vælg værktøj">
-                                <button class="apartment-editor-tool" type="button" data-apartment-tool="open" aria-pressed="false">Åbent felt</button>
+                                <button class="apartment-editor-tool" type="button" data-apartment-tool="open" aria-pressed="false">Gulv</button>
                                 <button class="apartment-editor-tool" type="button" data-apartment-tool="closed" aria-pressed="true">Lås felt</button>
                                 <button class="apartment-editor-tool" type="button" data-apartment-tool="door" aria-pressed="false">Dør</button>
                             </div>
@@ -1747,6 +1748,7 @@
             let activeRoom = 'common';
             let canEditCurrentApartment = false;
             let apartmentTiles = {};
+            let apartmentDraftTiles = {};
             let savedApartmentTiles = {};
             let savedApartmentName = '';
             let apartmentEditTool = 'closed';
@@ -2148,7 +2150,7 @@
                 const tileSide = cellSize / Math.SQRT2;
                 for (const cell of gridCells) {
                     const key = `${cell.col}:${cell.row}`;
-                    const state = apartmentTiles[key] || 'open';
+                    const state = apartmentDraftTiles[key] || 'open';
                     const isCustomColor = /^#[0-9a-f]{6}$/i.test(state);
                     const isDoor = state === 'door' || (typeof state === 'string' && state.startsWith('door:'));
                     const tile = document.createElement('button');
@@ -2178,16 +2180,16 @@
 
             function paintApartmentCell(key) {
                 if (!canEditCurrentApartment || !gridCellKeys.has(key)) return;
-                if (apartmentEditTool === 'open') delete apartmentTiles[key];
-                else apartmentTiles[key] = apartmentEditTool;
-                apartmentEditorStatus.textContent = 'Udkast ændret. Tryk Gem for at bruge ændringerne.';
+                if (apartmentEditTool === 'open') delete apartmentDraftTiles[key];
+                else apartmentDraftTiles[key] = apartmentEditTool;
+                apartmentEditorStatus.textContent = 'Udkast ændret. Lejligheden ændres først, når du trykker Gem ændringer.';
                 renderApartmentEditorGrid();
-                requestBoardRender();
             }
 
             function applyApartmentRoomState(tiles = {}, canEdit = false) {
                 apartmentTiles = tiles && typeof tiles === 'object' && !Array.isArray(tiles) ? { ...tiles } : {};
                 savedApartmentTiles = { ...apartmentTiles };
+                apartmentDraftTiles = { ...apartmentTiles };
                 canEditCurrentApartment = Boolean(canEdit);
                 renderApartmentEditorGrid();
                 if (contextPlayerId) updateAvatarContextMute();
@@ -3475,11 +3477,10 @@
             });
             apartmentEditorReset.addEventListener('click', () => {
                 if (!canEditCurrentApartment) return;
-                apartmentTiles = { ...savedApartmentTiles };
+                apartmentDraftTiles = { ...savedApartmentTiles };
                 apartmentEditorName.value = savedApartmentName;
                 apartmentEditorStatus.textContent = 'Ugemte ændringer er fortrudt.';
                 renderApartmentEditorGrid();
-                requestBoardRender();
             });
             apartmentEditorSave.addEventListener('click', () => {
                 if (!canEditCurrentApartment) return;
@@ -3487,7 +3488,7 @@
                 apartmentEditorStatus.textContent = 'Gemmer lejligheden…';
                 socket.emit('apartment-layout-save', {
                     name: apartmentEditorName.value,
-                    tiles: Object.entries(apartmentTiles).map(([cell, state]) => {
+                    tiles: Object.entries(apartmentDraftTiles).map(([cell, state]) => {
                         const [col, row] = cell.split(':').map(Number);
                         return { col, row, state };
                     })
