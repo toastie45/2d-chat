@@ -514,11 +514,9 @@
         .room-welcome { margin: 0 3px 14px; padding: 15px; border: 1px solid #353732; border-radius: 7px; background: #1a1b19; }
         .room-welcome h3 { margin: 0 0 7px; color: #eef0e9; font-size: 14px; }
         .room-welcome p { margin: 0; color: #c4c6bd; font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
-        .apartment-editor-tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin: 7px 0 12px; }
+        .apartment-editor-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin: 7px 0 12px; }
         .apartment-editor-tool { min-height: 39px; border: 1px solid #383b34; border-radius: 7px; background: #252623; color: #d9dbd3; cursor: pointer; font-weight: 650; }
         .apartment-editor-tool:hover, .apartment-editor-color:hover { filter: brightness(1.2); }
-        .apartment-editor-mode { width: 100%; min-height: 34px; margin: 0 0 9px; border: 1px solid #383b34; border-radius: 6px; background: #252623; color: #d9dbd3; cursor: pointer; }
-        .apartment-editor-mode[aria-pressed="true"] { border-color: #91b45b; background: #2c3524; color: #c1f078; }
         .apartment-editor-tool[aria-pressed="true"] { border-color: #91b45b; background: #2c3524; color: #c1f078; box-shadow: inset 0 0 0 1px #91b45b; }
         .apartment-editor-label { margin: 12px 0 6px; color: #d9d8d1; font-size: 11px; font-weight: 700; }
         .profile-field[hidden] { display: none; }
@@ -1328,10 +1326,9 @@
                             <label class="profile-field" for="apartment-editor-name">Lejlighedens navn
                                 <input id="apartment-editor-name" type="text" maxlength="60" autocomplete="off" placeholder="F.eks. Tommys hyggelige sted">
                             </label>
-                            <p class="apartment-editor-note">Vælg et værktøj, og redigér forhåndsvisningen. Selve lejligheden ændres først, når du trykker Gem ændringer.</p>
+                            <p class="apartment-editor-note">Klik på felterne her eller på den store bane for at male dit udkast. Det træder først i kraft, når du trykker Gem ændringer.</p>
                             <p class="apartment-editor-label">1. Vælg værktøj</p>
                             <div class="apartment-editor-tools" role="group" aria-label="Vælg værktøj">
-                                <button class="apartment-editor-tool" type="button" data-apartment-tool="open" aria-pressed="false">Gulv</button>
                                 <button class="apartment-editor-tool" type="button" data-apartment-tool="closed" aria-pressed="true">Lås felt</button>
                                 <button class="apartment-editor-tool" type="button" data-apartment-tool="door" aria-pressed="false">Dør</button>
                             </div>
@@ -1354,8 +1351,7 @@
                                 <label for="apartment-editor-custom-color">Egen farve</label>
                                 <input class="apartment-editor-custom-color" id="apartment-editor-custom-color" type="color" value="#1f6a4b" aria-label="Vælg egen flisefarve">
                             </div>
-                            <p class="apartment-editor-label">3. Redigér felterne</p>
-                            <button class="apartment-editor-mode" id="apartment-editor-paint-mode" type="button" aria-pressed="false">Mal på den store bane: Fra</button>
+                            <p class="apartment-editor-label">3. Redigér felterne · klik igen på et låst felt eller en dør for at fjerne den</p>
                             <div class="apartment-editor-grid" id="apartment-editor-grid" role="group" aria-label="Lejlighedens felter"></div>
                             <div class="apartment-editor-actions">
                                 <button class="profile-action" id="apartment-editor-reset" type="button">Fortryd ændringer</button>
@@ -1651,7 +1647,6 @@
             const roomWelcomePanel = document.getElementById('room-welcome-panel');
             const apartmentEditorPanel = document.getElementById('apartment-editor-panel');
             const apartmentEditorGrid = document.getElementById('apartment-editor-grid');
-            const apartmentEditorPaintMode = document.getElementById('apartment-editor-paint-mode');
             const apartmentEditorDoorDestinationWrap = document.getElementById('apartment-editor-door-destination-wrap');
             const apartmentEditorDoorDestination = document.getElementById('apartment-editor-door-destination');
             const apartmentEditorName = document.getElementById('apartment-editor-name');
@@ -1752,7 +1747,6 @@
             let savedApartmentTiles = {};
             let savedApartmentName = '';
             let apartmentEditTool = 'closed';
-            let apartmentCanvasPaintMode = false;
             let contextPlayerId = null;
             let activeWhisperPlayerId = null;
             let whisperSending = false;
@@ -2094,11 +2088,6 @@
                 navigatorPanel.hidden = panel !== 'navigator';
                 roomWelcomePanel.hidden = panel !== 'welcome';
                 apartmentEditorPanel.hidden = panel !== 'apartment-editor';
-                if (panel !== 'apartment-editor') {
-                    apartmentCanvasPaintMode = false;
-                    apartmentEditorPaintMode.setAttribute('aria-pressed', 'false');
-                    apartmentEditorPaintMode.textContent = 'Mal på den store bane: Fra';
-                }
                 chatPanel.hidden = panel !== 'chat';
                 searchPanel.hidden = panel !== 'search';
                 privateMailPanel.hidden = panel !== 'private-mail';
@@ -2180,7 +2169,7 @@
 
             function paintApartmentCell(key) {
                 if (!canEditCurrentApartment || !gridCellKeys.has(key)) return;
-                if (apartmentEditTool === 'open') delete apartmentDraftTiles[key];
+                if (apartmentDraftTiles[key] === apartmentEditTool) delete apartmentDraftTiles[key];
                 else apartmentDraftTiles[key] = apartmentEditTool;
                 apartmentEditorStatus.textContent = 'Udkast ændret. Lejligheden ændres først, når du trykker Gem ændringer.';
                 renderApartmentEditorGrid();
@@ -2946,11 +2935,9 @@
                 for (const cell of gridCells) {
                     const savedTileState = apartmentRoom ? apartmentTiles[`${cell.col}:${cell.row}`] : null;
                     const isColorTile = typeof savedTileState === 'string' && /^#[0-9a-f]{6}$/i.test(savedTileState);
-                    const tileState = canEditCurrentApartment || savedTileState === 'closed' || isColorTile
-                        ? savedTileState
-                        : null;
+                    // Locks and doors affect movement only; they have no marker on the shared room canvas.
+                    const tileState = isColorTile ? savedTileState : null;
                     const customColor = typeof tileState === 'string' && /^#[0-9a-f]{6}$/i.test(tileState);
-                    const doorTile = tileState === 'door' || (typeof tileState === 'string' && tileState.startsWith('door:'));
                     ctx.beginPath();
                     ctx.moveTo(cell.x, cell.y - cellSize / 2);
                     ctx.lineTo(cell.x + cellSize / 2, cell.y);
@@ -2959,10 +2946,6 @@
                     ctx.closePath();
                     ctx.fillStyle = customColor
                         ? tileState
-                        : doorTile
-                            ? '#285583'
-                            : tileState === 'closed'
-                                ? (cell.kind === 'primary' ? '#0e100d' : '#151914')
                             : discoRoom
                         ? (cell.kind === 'primary' ? '#12101b' : '#20162a')
                         : apartmentRoom
@@ -2971,32 +2954,13 @@
                     ctx.fill();
                     ctx.strokeStyle = customColor
                         ? tileState
-                        : doorTile
-                            ? '#69a6e3'
-                            : tileState === 'closed'
-                                ? '#4b5048'
-                            : discoRoom
+                        : discoRoom
                         ? (cell.kind === 'primary' ? '#302743' : '#624276')
                         : apartmentRoom
                             ? (cell.kind === 'primary' ? '#3b2e1b' : '#624a27')
                             : (cell.kind === 'primary' ? '#293126' : '#3e5532');
                     ctx.lineWidth = 1.5;
                     ctx.stroke();
-                    if (tileState === 'closed') {
-                        ctx.strokeStyle = '#c5c9bd';
-                        ctx.lineWidth = 1.7;
-                        ctx.beginPath();
-                        ctx.arc(cell.x, cell.y - 2, 4, Math.PI, 0);
-                        ctx.stroke();
-                        ctx.fillStyle = '#c5c9bd';
-                        ctx.fillRect(cell.x - 6, cell.y - 2, 12, 9);
-                    }
-                    if (doorTile) {
-                        ctx.fillStyle = '#9dcaff';
-                        ctx.fillRect(cell.x - 6, cell.y - 9, 12, 18);
-                        ctx.fillStyle = '#183653';
-                        ctx.fillRect(cell.x + 2, cell.y - 1, 2, 2);
-                    }
                 }
 
                 if (hoveredCell) {
@@ -3470,11 +3434,6 @@
                 document.querySelectorAll('[data-apartment-tool]').forEach((toolButton) => toolButton.setAttribute('aria-pressed', 'false'));
                 document.querySelectorAll('[data-apartment-color]').forEach((colorButton) => colorButton.setAttribute('aria-pressed', 'false'));
             });
-            apartmentEditorPaintMode.addEventListener('click', () => {
-                apartmentCanvasPaintMode = !apartmentCanvasPaintMode;
-                apartmentEditorPaintMode.setAttribute('aria-pressed', String(apartmentCanvasPaintMode));
-                apartmentEditorPaintMode.textContent = `Mal på den store bane: ${apartmentCanvasPaintMode ? 'Til' : 'Fra'}`;
-            });
             apartmentEditorReset.addEventListener('click', () => {
                 if (!canEditCurrentApartment) return;
                 apartmentDraftTiles = { ...savedApartmentTiles };
@@ -3712,7 +3671,7 @@
                 const cell = getCellFromPointer(event);
                 if (!cell) return;
                 canvas.focus({ preventScroll: true });
-                if (!apartmentEditorPanel.hidden && canEditCurrentApartment && apartmentCanvasPaintMode) {
+                if (!apartmentEditorPanel.hidden && canEditCurrentApartment) {
                     paintApartmentCell(`${cell.col}:${cell.row}`);
                     return;
                 }
