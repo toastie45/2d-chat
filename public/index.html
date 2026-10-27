@@ -510,7 +510,7 @@
         .profile-security-actions { display: flex; gap: 7px; margin: 0 20px 10px; }
         .profile-password-panel, .profile-welcome-panel { display: grid; gap: 10px; margin: 0 20px 14px; padding: 12px; border: 1px solid #353732; border-radius: 7px; background: #191a18; }
         .profile-password-panel[hidden], .profile-welcome-panel[hidden] { display: none; }
-        .room-welcome { margin: 0 16px 14px; padding: 15px; border: 1px solid #353732; border-radius: 7px; background: #1a1b19; }
+        .room-welcome { margin: 0 3px 14px; padding: 15px; border: 1px solid #353732; border-radius: 7px; background: #1a1b19; }
         .room-welcome h3 { margin: 0 0 7px; color: #eef0e9; font-size: 14px; }
         .room-welcome p { margin: 0; color: #c4c6bd; font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
         .profile-details { margin-top: 0; }
@@ -1289,12 +1289,15 @@
                                 </form>
                             </div>
                         </section>
-                        <section class="side-panel chat-section" id="chat-panel" aria-labelledby="chat-title">
-                            <h2 class="side-title" id="chat-title">Velkommen i #1 Fællesrum</h2>
+                        <section class="side-panel" id="room-welcome-panel" aria-labelledby="room-welcome-panel-title" hidden>
+                            <h2 class="side-title" id="room-welcome-panel-title">Velkommen</h2>
                             <article class="room-welcome" aria-live="polite">
                                 <h3 id="room-welcome-title">Velkommen i #1 Fællesrum</h3>
                                 <p id="room-welcome-text">Her kan du møde andre og chatte sammen. God fornøjelse!</p>
                             </article>
+                        </section>
+                        <section class="side-panel chat-section" id="chat-panel" aria-labelledby="chat-title" hidden>
+                            <h2 class="side-title" id="chat-title">Tekstchat i #1 Fællesrum</h2>
                             <div class="chat-log" id="chat-log" role="log" aria-live="polite" aria-relevant="additions">
                                 <p class="chat-empty" id="chat-empty">Samtalen begynder her.</p>
                             </div>
@@ -1579,6 +1582,7 @@
             const memberList = document.getElementById('member-list');
             const memberEmpty = document.getElementById('member-empty');
             const membersPanel = document.getElementById('members-panel');
+            const roomWelcomePanel = document.getElementById('room-welcome-panel');
             const chatPanel = document.getElementById('chat-panel');
             const profileEditorPanel = document.getElementById('profile-editor-panel');
             const profileViewPanel = document.getElementById('profile-view-panel');
@@ -1937,6 +1941,7 @@
                 }
                 membersPanel.hidden = panel !== 'members';
                 navigatorPanel.hidden = panel !== 'navigator';
+                roomWelcomePanel.hidden = panel !== 'welcome';
                 chatPanel.hidden = panel !== 'chat';
                 searchPanel.hidden = panel !== 'search';
                 privateMailPanel.hidden = panel !== 'private-mail';
@@ -1964,7 +1969,7 @@
             function applyRoomState(roomId, roomName, serverPlayers = {}, welcome = {}) {
                 activeRoom = roomId;
                 roomStripName.textContent = roomName;
-                chatTitle.textContent = `Velkommen i ${roomName}`;
+                chatTitle.textContent = `Tekstchat i ${roomName}`;
                 updateRoomWelcome(welcome.welcomeTitle, welcome.welcomeText);
                 document.querySelectorAll('.avatar-context-room').forEach((label) => { label.textContent = roomName; });
                 players = {};
@@ -3610,7 +3615,7 @@
                 myId = socket.id;
                 activeRoom = roomId;
                 roomStripName.textContent = roomName;
-                chatTitle.textContent = `Velkommen i ${roomName}`;
+                chatTitle.textContent = `Tekstchat i ${roomName}`;
                 updateRoomWelcome(welcomeTitle, welcomeText);
                 document.querySelectorAll('.avatar-context-room').forEach((label) => { label.textContent = roomName; });
                 profileManagement = { relations: [] };
@@ -3628,7 +3633,7 @@
                 socket.emit('online-users-request');
                 requestProfileManagement();
                 socket.emit('private-mail-unread-request');
-                selectSidePanel('chat');
+                selectSidePanel('welcome');
                 updateToolbarState();
                 loginSection.classList.add('hidden');
                 gameSection.classList.remove('hidden');
@@ -3644,7 +3649,7 @@
                 const wasNavigatorOpen = !navigatorPanel.hidden;
                 const wasMembersOpen = !membersPanel.hidden;
                 applyRoomState(roomId, roomName, serverPlayers, { welcomeTitle, welcomeText });
-                selectSidePanel('chat');
+                selectSidePanel('welcome');
                 if (wasNavigatorOpen) socket.emit('navigator-request');
                 if (wasMembersOpen) socket.emit('online-users-request');
             });
