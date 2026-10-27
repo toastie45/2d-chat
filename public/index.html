@@ -930,6 +930,9 @@
                             <button class="toolbar-button" id="navigator-nav-button" type="button" aria-pressed="false" aria-controls="navigator-panel" aria-label="Navigator" title="Navigator">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.8 8.2-2.4 5.2-5.2 2.4 2.4-5.2z"/></svg>
                             </button>
+                            <button class="toolbar-button" id="apartment-nav-button" type="button" aria-pressed="false" aria-controls="apartment-panel" aria-label="Lejligheder" title="Lejligheder">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3L2 12h3v8h6v-6h2v6h6v-8h3L12 3z"/></svg>
+                            </button>
                             <button class="toolbar-button" id="search-nav-button" type="button" aria-pressed="false" aria-controls="search-panel" aria-label="Søg efter brugere" title="Søg efter brugere">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.4-4.4"/></svg>
                             </button>
@@ -944,10 +947,13 @@
                             <h2 class="side-title" id="navigator-title">Navigator</h2>
                             <h3 class="navigator-section-title">Offentlige rum</h3>
                             <div class="navigator-room-list navigator-public-room-list" role="group" aria-label="Offentlige rum"></div>
-                            <h3 class="navigator-section-title">Lejligheder med online ejer</h3>
+                        </section>
+                        <section class="side-panel" id="apartment-panel" aria-labelledby="apartment-title" hidden>
+                            <h2 class="side-title" id="apartment-title">Lejligheder</h2>
+                            <h3 class="navigator-section-title">Lejligheder</h3>
                             <div class="navigator-room-list navigator-apartment-room-list" role="group" aria-label="Aktive lejligheder"></div>
                             <p class="navigator-apartment-empty" id="navigator-apartment-empty">Ingen aktive lejligheder lige nu.</p>
-                            <h3 class="navigator-section-title">Lejligheder</h3>
+                            <h3 class="navigator-section-title">Lejligheder med brugere i rummet</h3>
                             <div class="navigator-room-list navigator-apartment-occupied-room-list" role="group" aria-label="Lejligheder med brugere"></div>
                             <p class="navigator-apartment-occupied-empty" id="navigator-apartment-occupied-empty">Ingen lejligheder med brugere lige nu.</p>
                         </section>
@@ -1196,7 +1202,9 @@
             const refreshNavButton = document.getElementById('refresh-nav-button');
             const membersNavButton = document.getElementById('members-nav-button');
             const navigatorNavButton = document.getElementById('navigator-nav-button');
+            const apartmentNavButton = document.getElementById('apartment-nav-button');
             const navigatorPanel = document.getElementById('navigator-panel');
+            const apartmentPanel = document.getElementById('apartment-panel');
             const navigatorPublicRoomList = document.querySelector('.navigator-public-room-list');
             const navigatorApartmentRoomList = document.querySelector('.navigator-apartment-room-list');
             const navigatorApartmentEmpty = document.getElementById('navigator-apartment-empty');
@@ -1562,6 +1570,7 @@
             function updateToolbarState() {
                 membersNavButton.setAttribute('aria-pressed', String(!membersPanel.hidden));
                 navigatorNavButton.setAttribute('aria-pressed', String(!navigatorPanel.hidden));
+                apartmentNavButton.setAttribute('aria-pressed', String(!apartmentPanel.hidden));
                 chatNavButton.setAttribute('aria-pressed', String(!chatPanel.hidden));
                 profileNavButton.setAttribute('aria-pressed', String(!profileEditorPanel.hidden));
                 searchNavButton.setAttribute('aria-pressed', String(!searchPanel.hidden));
@@ -1585,6 +1594,7 @@
                 }
                 membersPanel.hidden = panel !== 'members';
                 navigatorPanel.hidden = panel !== 'navigator';
+                apartmentPanel.hidden = panel !== 'apartment';
                 chatPanel.hidden = panel !== 'chat';
                 searchPanel.hidden = panel !== 'search';
                 privateMailPanel.hidden = panel !== 'private-mail';
@@ -2687,6 +2697,10 @@
             membersNavButton.addEventListener('click', () => selectSidePanel('members'));
             navigatorNavButton.addEventListener('click', () => {
                 selectSidePanel('navigator');
+                socket.emit('navigator-request');
+            });
+            apartmentNavButton.addEventListener('click', () => {
+                selectSidePanel('apartment');
                 socket.emit('navigator-request');
             });
             chatNavButton.addEventListener('click', () => selectSidePanel('chat'));
