@@ -1056,6 +1056,73 @@
             .bottom-toolbar { gap: 5px; }
             .toolbar-button { width: 34px; height: 34px; }
         }
+
+        .room-strip {
+            min-height: 58px;
+            gap: 13px;
+            padding: 8px 16px;
+            background: #1b1c1a;
+        }
+        .room-strip-name { color: #f2f2ed; font-size: 13px; font-weight: 700; }
+        .room-strip-tagline { color: #8f9289; font-size: 11px; }
+        .room-strip-presence { gap: 11px; }
+        .room-strip-count {
+            padding: 5px 8px;
+            border: 1px solid #353832;
+            border-radius: 6px;
+            background: #222421;
+            color: #c6c8bf;
+            font-size: 10px;
+        }
+        .level-topbar-stats { gap: 12px; padding-left: 12px; border-left: 1px solid #383a35; }
+        .level-topbar-progress { width: 104px; gap: 5px; color: #c4c6bd; font-size: 10px; }
+        #level-time-progress { width: 104px; }
+        #level-message-progress { width: 126px; }
+        .level-topbar-progress-label { line-height: 1.2; }
+        .level-topbar-track { height: 3px; background: #3a3c37; }
+        .level-topbar-fill { background: #a8c879; }
+        .level-topbar-total { color: #c4c6bd; font-size: 10px; }
+        .room-strip-divider { background: #383a35; }
+        .friend-menu-trigger {
+            min-height: 32px;
+            gap: 6px;
+            padding: 0 10px;
+            border-radius: 7px;
+            font-size: 11px;
+        }
+        .room-strip-user {
+            max-width: 120px;
+            padding: 5px 8px;
+            border: 1px solid #353832;
+            border-radius: 6px;
+            background: #222421;
+            color: #e4e5de;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .room-strip-logout { min-height: 32px; padding: 0 12px; border-radius: 7px; }
+
+        @media (max-width: 900px) {
+            .room-strip { flex-wrap: wrap; row-gap: 8px; padding: 9px 12px; }
+            .room-strip-presence { flex-wrap: wrap; justify-content: flex-end; }
+            .room-strip-spacer { flex: 1 1 12px; }
+            .level-topbar-stats { gap: 8px; padding-left: 8px; }
+            .level-topbar-progress { width: 92px; }
+            #level-time-progress { width: 88px; }
+            #level-message-progress { width: 112px; }
+        }
+
+        @media (max-width: 520px) {
+            .room-strip { gap: 7px; }
+            .room-strip-presence { justify-content: flex-start; gap: 7px; }
+            .room-strip-count { padding: 4px 6px; }
+            .level-topbar-stats { gap: 7px; padding-left: 7px; }
+            .level-topbar-progress { width: 78px; font-size: 9px; }
+            #level-time-progress { width: 72px; }
+            #level-message-progress { width: 96px; }
+            .level-topbar-total { font-size: 9px; }
+            .room-strip-user { max-width: 86px; }
+        }
     </style>
 </head>
 <body>
