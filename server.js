@@ -1092,6 +1092,35 @@ async function startServer() {
         return publicPlayer(JSON.parse(joined));
     }
 
+    async function moveSocketNearTarget(socket, roomId, targetSocketId) {
+        const keys = roomKeys(roomId);
+        const targetJson = await redis.hGet(keys.players, targetSocketId);
+        if (!targetJson) return false;
+        const target = JSON.parse(targetJson);
+        const nearbyCells = GRID_CELLS
+            .filter((cell) => cell.col !== target.col || cell.row !== target.row)
+            .slice()
+            .sort((first, second) => {
+                const firstDistance = Math.max(Math.abs(first.col - target.col), Math.abs(first.row - target.row));
+                const secondDistance = Math.max(Math.abs(second.col - target.col), Math.abs(second.row - target.row));
+                return firstDistance - secondDistance
+                    || Math.abs(first.col - target.col) + Math.abs(first.row - target.row)
+                    - Math.abs(second.col - target.col) - Math.abs(second.row - target.row);
+            });
+
+        for (const cell of nearbyCells) {
+            const movedJson = await redis.eval(PLAYER_MOVE_SCRIPT, {
+                keys: [keys.players, keys.cells],
+                arguments: [socket.id, String(cell.col), String(cell.row), String(Date.now())]
+            });
+            if (!movedJson) continue;
+            const player = publicPlayer(JSON.parse(movedJson));
+            io.to(roomChannel(roomId)).emit('playerMoved', { id: player.id, col: player.col, row: player.row });
+            return true;
+        }
+        return false;
+    }
+
     io.on('connection', (socket) => {
         socket.join(`session:${socket.request.sessionID}`);
         socket.on('room-switch', async (payload = {}) => {
@@ -1316,13 +1345,45 @@ async function startServer() {
             if (!activeSocketIds.has(socket.id)) return;
             const apartmentId = String(payload.apartmentId || '');
             if (!/^[1-9]\d{0,18}$/.test(apartmentId)) return;
+            const targetPlayerId = payload.targetPlayerId;
+            const targetSocket = typeof targetPlayerId === 'string' ? io.sockets.sockets.get(targetPlayerId) : null;
+            const apartmentRoomId = `apartment:${apartmentId}`;
+            if (targetPlayerId && (!targetSocket || !activeSocketIds.has(targetPlayerId)
+                || activeSocketRooms.get(targetPlayerId) !== apartmentRoomId)) {
+                socket.emit('apartment-visit-result', { message: 'Brugeren er ikke længere i lejligheden.' });
+                return;
+            }
             try {
                 const { rows: [apartment] } = await pool.query(`
                     SELECT a.id, a.apartment_number, a.owner_id, u.username
                     FROM chat_apartments a JOIN chat_users u ON u.id = a.owner_id WHERE a.id = $1
                 `, [apartmentId]);
                 if (!apartment) return;
+                if (targetPlayerId && activeSocketRooms.get(targetPlayerId) !== apartmentRoomId) {
+                    socket.emit('apartment-visit-result', { message: 'Brugeren har skiftet rum. Prøv igen.' });
+                    return;
+                }
                 if (String(apartment.owner_id) === String(socket.data.user.id)) {
+                    if (targetPlayerId) {
+                        if (socket.data.switchingRoom) return;
+                        socket.data.switchingRoom = true;
+                        try {
+                            if (activeSocketRooms.get(socket.id) !== apartmentRoomId
+                                && !await placeSocketInRoom(socket, apartmentRoomId)) {
+                                socket.emit('apartment-visit-result', { message: 'Lejligheden er fuld. Prøv igen senere.' });
+                                return;
+                            }
+                            const arrivedNearTarget = await moveSocketNearTarget(socket, apartmentRoomId, targetPlayerId);
+                            socket.emit('apartment-visit-result', {
+                                message: arrivedNearTarget
+                                    ? `Du er teleporteret hen til ${targetSocket.data.user.username}.`
+                                    : 'Du er kommet ind i lejligheden.'
+                            });
+                        } finally {
+                            socket.data.switchingRoom = false;
+                        }
+                        return;
+                    }
                     socket.emit('apartment-enter-approved', { roomId: `apartment:${apartment.id}` });
                     return;
                 }
@@ -1363,6 +1424,7 @@ async function startServer() {
                     ownerId: String(apartment.owner_id),
                     apartmentId: String(apartment.id),
                     apartmentNumber: Number(apartment.apartment_number),
+                    targetPlayerId: targetPlayerId || null,
                     expiresAt: Date.now() + 30_000
                 };
                 const knockKey = `chat:apartment-knock:${knockId}`;
@@ -1422,12 +1484,100 @@ async function startServer() {
                         guestSocket.emit('room-error', { message: 'Lejligheden er fuld. Prøv igen senere.' });
                         return;
                     }
-                    guestSocket.emit('apartment-visit-result', { message: 'Du blev lukket ind i lejligheden.' });
+                    const targetStillPresent = pending.targetPlayerId
+                        && activeSocketIds.has(pending.targetPlayerId)
+                        && activeSocketRooms.get(pending.targetPlayerId) === `apartment:${pending.apartmentId}`;
+                    const arrivedNearTarget = targetStillPresent
+                        ? await moveSocketNearTarget(guestSocket, `apartment:${pending.apartmentId}`, pending.targetPlayerId)
+                        : false;
+                    guestSocket.emit('apartment-visit-result', {
+                        message: arrivedNearTarget
+                            ? 'Du blev lukket ind og teleporteret hen til brugeren.'
+                            : 'Du blev lukket ind i lejligheden.'
+                    });
                 } finally {
                     guestSocket.data.switchingRoom = false;
                 }
             } catch (error) {
                 console.error('Could not admit apartment guest:', getSafeErrorCode(error));
+            }
+        });
+
+        socket.on('profile-teleport', async ({ userId } = {}) => {
+            if (!activeSocketIds.has(socket.id) || socket.data.switchingRoom
+                || typeof userId !== 'string' || !/^[1-9]\d{0,18}$/.test(userId)) return;
+            if (String(userId) === String(socket.data.user.id)) {
+                socket.emit('profile-teleport-result', { message: 'Du kan ikke teleportere til dig selv.' });
+                return;
+            }
+            const now = Date.now();
+            if (now - Number(socket.data.lastProfileTeleportAt || 0) < 1000) return;
+            socket.data.lastProfileTeleportAt = now;
+
+            const targetEntry = [...activeSocketUsers.entries()].find(([targetId, targetUserId]) =>
+                String(targetUserId) === userId && activeSocketIds.has(targetId)
+            );
+            const targetSocketId = targetEntry?.[0];
+            const targetSocket = targetSocketId ? io.sockets.sockets.get(targetSocketId) : null;
+            const targetRoomId = targetSocketId ? activeSocketRooms.get(targetSocketId) : null;
+            if (!targetSocket || !targetRoomId || targetSocket.data.switchingRoom) {
+                socket.emit('profile-teleport-result', { message: 'Brugeren er ikke længere online.' });
+                return;
+            }
+
+            try {
+                const apartmentMatch = /^apartment:([1-9]\d{0,18})$/.exec(targetRoomId);
+                let apartment = null;
+                if (apartmentMatch) {
+                    const { rows: [row] } = await pool.query(
+                        'SELECT owner_id FROM chat_apartments WHERE id = $1', [apartmentMatch[1]]
+                    );
+                    apartment = row;
+                    if (!apartment) {
+                        socket.emit('profile-teleport-result', { message: 'Lejligheden findes ikke længere.' });
+                        return;
+                    }
+                    if (activeSocketRooms.get(targetSocketId) !== targetRoomId) {
+                        socket.emit('profile-teleport-result', { message: 'Brugeren har skiftet rum. Prøv igen.' });
+                        return;
+                    }
+                    const alreadyInside = activeSocketRooms.get(socket.id) === targetRoomId;
+                    const isOwner = String(apartment.owner_id) === String(socket.data.user.id);
+                    if (!alreadyInside && !isOwner) {
+                        socket.emit('profile-teleport-knock', {
+                            apartmentId: apartmentMatch[1],
+                            targetPlayerId: targetSocketId
+                        });
+                        return;
+                    }
+                }
+
+                if (socket.data.switchingRoom) return;
+                socket.data.switchingRoom = true;
+                try {
+                    if (activeSocketRooms.get(socket.id) !== targetRoomId) {
+                        const joined = await placeSocketInRoom(socket, targetRoomId);
+                        if (!joined) {
+                            socket.emit('profile-teleport-result', { message: 'Rummet er fyldt. Teleporteringen mislykkedes.' });
+                            return;
+                        }
+                    }
+                    if (!activeSocketIds.has(targetSocketId) || activeSocketRooms.get(targetSocketId) !== targetRoomId) {
+                        socket.emit('profile-teleport-result', { message: 'Brugeren har skiftet rum. Prøv igen.' });
+                        return;
+                    }
+                    const arrivedNearTarget = await moveSocketNearTarget(socket, targetRoomId, targetSocketId);
+                    socket.emit('profile-teleport-result', {
+                        message: arrivedNearTarget
+                            ? `Du er teleporteret hen til ${targetSocket.data.user.username}.`
+                            : `Du er kommet ind i rummet, men kunne ikke placeres tæt ved ${targetSocket.data.user.username}.`
+                    });
+                } finally {
+                    socket.data.switchingRoom = false;
+                }
+            } catch (error) {
+                console.error('Could not teleport to profile user:', getSafeErrorCode(error));
+                socket.emit('profile-teleport-result', { message: 'Teleporteringen mislykkedes. Prøv igen.' });
             }
         });
 
@@ -1448,6 +1598,9 @@ async function startServer() {
                     return;
                 }
                 const { player, profile } = target;
+                const online = [...activeSocketUsers.entries()].some(([onlineSocketId, onlineUserId]) =>
+                    String(onlineUserId) === String(profile.id) && activeSocketIds.has(onlineSocketId)
+                );
                 const { rows: [relationship] } = await pool.query(
                     'SELECT relationship FROM chat_profile_relationships WHERE user_id = $1 AND target_user_id = $2',
                     [socket.data.user.id, profile.id]
@@ -1462,7 +1615,7 @@ async function startServer() {
                     playerId,
                     userId: String(profile.id),
                     avatarName: player ? player.name : profile.username,
-                    online: Boolean(player),
+                    online,
                     room: 'Fællesrum',
                     realName: profile.real_name || '',
                     profileText: profile.profile_text || '',

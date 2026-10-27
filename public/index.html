@@ -558,6 +558,9 @@
             cursor: pointer;
         }
         .profile-action:hover, .profile-action[aria-pressed="true"] { border-color: #829e52; background: #303729; }
+        .profile-teleport-button { color: #b7d982; }
+        .profile-teleport-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+        .profile-teleport-button:hover { border-color: #829b5a; background: #2b3124; color: #d4e8b0; }
         .profile-action[hidden] { display: none; }
         .profile-action:disabled { cursor: not-allowed; opacity: .45; }
         .profile-action:focus-visible, .profile-page-select:focus-visible, .guestbook-form textarea:focus-visible {
@@ -1344,6 +1347,9 @@
                             <p class="profile-section-title" id="profile-view-name">Henter profil…</p>
                             <div class="profile-actions" aria-label="Profilhandlinger">
                                 <button class="profile-level-icon" id="view-profile-level" type="button" title="Vis leveloversigt" aria-label="Vis leveloversigt" aria-haspopup="dialog" aria-controls="level-overview-dialog" disabled>1</button>
+                                <button class="profile-action profile-teleport-button" id="profile-teleport-button" type="button" aria-label="TP · Teleportér til brugeren" title="TP · Teleportér til brugeren" hidden>
+                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v8.2c0 1.2-.7 2.3-1.8 2.8l-2 1A2.1 2.1 0 0 0 5.1 19h12.7a3.2 3.2 0 0 0 3.2-3.2v-1.2h-3.2c-2.6 0-4.7-1.8-5-4.4L12.2 3H8Z"/><path d="M8 6h4M8 9h4M4.5 16h16"/></svg>
+                                </button>
                                 <button class="profile-action" id="profile-friend-button" type="button" aria-label="Tilføj til venneliste" title="Tilføj til venneliste" aria-pressed="false">🫂</button>
                                 <button class="profile-action" id="profile-enemy-button" type="button" aria-label="Tilføj til fjendeliste" title="Tilføj til fjendeliste" aria-pressed="false">⚔️</button>
                                 <button class="profile-action" id="profile-mail-button" type="button" aria-label="Skriv privat mail" title="Skriv privat mail" hidden>✉</button></div>
@@ -1574,6 +1580,7 @@
             const profileFriendButton = document.getElementById('profile-friend-button');
             const profileEnemyButton = document.getElementById('profile-enemy-button');
             const profileMailButton = document.getElementById('profile-mail-button');
+            const profileTeleportButton = document.getElementById('profile-teleport-button');
             const profilePageSelect = document.getElementById('profile-page-select');
             const profileInfoPage = document.getElementById('profile-info-page');
             const guestbookPage = document.getElementById('guestbook-page');
@@ -2244,6 +2251,7 @@
                 delete viewProfileApartmentLink.dataset.apartmentId;
                 apartmentStatus.textContent = '';
                 profileMailButton.hidden = true;
+                profileTeleportButton.hidden = true;
                 selectSidePanel('profile-view');
                 viewProfileName.textContent = 'Henter profil…';
                 viewedProfileProgress = null;
@@ -3084,6 +3092,11 @@
             avatarContextProfile.addEventListener('click', () => {
                 if (contextPlayerId) showPublicProfile(contextPlayerId);
             });
+            profileTeleportButton.addEventListener('click', () => {
+                if (!viewingProfileUserId || viewingOwnProfile || profileTeleportButton.hidden) return;
+                socket.emit('profile-teleport', { userId: viewingProfileUserId });
+                selectSidePanel('chat');
+            });
             avatarContextApartment.addEventListener('click', () => {
                 const playerId = contextPlayerId;
                 if (!playerId || avatarContextApartment.disabled) return;
@@ -3564,6 +3577,17 @@
 
             socket.on('apartment-door-knock', (payload) => addApartmentKnockPrompt(payload));
 
+            socket.on('profile-teleport-knock', ({ apartmentId, targetPlayerId } = {}) => {
+                if (!apartmentId || !targetPlayerId) return;
+                socket.emit('apartment-visit', { apartmentId, targetPlayerId });
+            });
+
+            socket.on('profile-teleport-result', ({ message } = {}) => {
+                if (!message) return;
+                setRoomNotice(message);
+                addChatSystemEntry(message);
+            });
+
             socket.on('newPlayer', (player) => {
                 showPlayer(player);
                 updateOnlineList();
@@ -3673,6 +3697,7 @@
                 viewingProfileMailUsername = profile.avatarName;
                 viewingOwnProfile = profile.isOwnProfile;
                 profileMailButton.hidden = viewingOwnProfile;
+                profileTeleportButton.hidden = viewingOwnProfile || !profile.online;
                 guestbookForm.hidden = viewingOwnProfile;
                 const level = Math.max(1, Number(profile.level) || 1);
                 viewProfileLevel.textContent = String(level);
