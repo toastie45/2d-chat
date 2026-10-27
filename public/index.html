@@ -506,6 +506,9 @@
             font-weight: 700;
         }
         .profile-form { display: grid; gap: 12px; }
+        .profile-password-action { display: flex; margin: 0 20px 10px; }
+        .profile-password-panel { display: grid; gap: 10px; margin: 0 20px 14px; padding: 12px; border: 1px solid #353732; border-radius: 7px; background: #191a18; }
+        .profile-password-panel[hidden] { display: none; }
         .profile-details { margin-top: 0; }
         .profile-facts {
             display: grid;
@@ -1290,6 +1293,18 @@
                         </section>
                         <section class="side-panel profile-panel" id="profile-editor-panel" aria-labelledby="profile-editor-title" hidden>
                             <h2 class="side-title" id="profile-editor-title">Min profil</h2>
+                            <div class="profile-password-action">
+                                <button class="toolbar-button" id="profile-password-toggle" type="button" aria-expanded="false" aria-controls="profile-password-panel" aria-label="Skift adgangskode" title="Skift adgangskode">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"></path></svg>
+                                </button>
+                            </div>
+                            <form class="profile-password-panel" id="profile-password-panel" hidden>
+                                <label class="profile-field" for="profile-current-password">Nuværende adgangskode<input id="profile-current-password" type="password" autocomplete="current-password" required></label>
+                                <label class="profile-field" for="profile-new-password">Ny adgangskode<input id="profile-new-password" type="password" minlength="8" maxlength="72" autocomplete="new-password" required></label>
+                                <label class="profile-field" for="profile-confirm-password">Gentag ny adgangskode<input id="profile-confirm-password" type="password" minlength="8" maxlength="72" autocomplete="new-password" required></label>
+                                <button class="profile-save" id="profile-password-save" type="submit">Skift adgangskode</button>
+                                <p class="profile-status" id="profile-password-status" aria-live="polite"></p>
+                            </form>
                             <p class="profile-section-title">Profiloplysninger · <span id="profile-avatar-name"></span></p>
                             <div class="profile-details">
                                 <form class="profile-form" id="profile-form">
@@ -1552,6 +1567,13 @@
             const profileEditorPanel = document.getElementById('profile-editor-panel');
             const profileViewPanel = document.getElementById('profile-view-panel');
             const profileForm = document.getElementById('profile-form');
+            const profilePasswordToggle = document.getElementById('profile-password-toggle');
+            const profilePasswordForm = document.getElementById('profile-password-panel');
+            const profilePasswordCurrent = document.getElementById('profile-current-password');
+            const profilePasswordNew = document.getElementById('profile-new-password');
+            const profilePasswordConfirm = document.getElementById('profile-confirm-password');
+            const profilePasswordSave = document.getElementById('profile-password-save');
+            const profilePasswordStatus = document.getElementById('profile-password-status');
             const profileAvatarName = document.getElementById('profile-avatar-name');
             const profileRealName = document.getElementById('profile-real-name');
             const profileDiscordName = document.getElementById('profile-discord-name');
@@ -3223,6 +3245,43 @@
                     profileStatus.textContent = error.message || 'Profilen kunne ikke gemmes. Prøv igen.';
                 } finally {
                     profileSaveButton.disabled = false;
+                }
+            });
+
+            profilePasswordToggle.addEventListener('click', () => {
+                const isOpening = profilePasswordForm.hidden;
+                profilePasswordForm.hidden = !isOpening;
+                profilePasswordToggle.setAttribute('aria-expanded', String(isOpening));
+                if (isOpening) profilePasswordCurrent.focus();
+            });
+
+            profilePasswordForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                profilePasswordStatus.textContent = '';
+                if (profilePasswordNew.value !== profilePasswordConfirm.value) {
+                    profilePasswordStatus.textContent = 'De nye adgangskoder er ikke ens.';
+                    profilePasswordConfirm.focus();
+                    return;
+                }
+                profilePasswordSave.disabled = true;
+                profilePasswordStatus.textContent = 'Skifter adgangskode…';
+                try {
+                    const response = await authFetch('/api/profile/password', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            currentPassword: profilePasswordCurrent.value,
+                            newPassword: profilePasswordNew.value
+                        })
+                    });
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.error || 'Adgangskoden kunne ikke ændres.');
+                    profilePasswordForm.reset();
+                    profilePasswordStatus.textContent = 'Adgangskoden er ændret.';
+                } catch (error) {
+                    profilePasswordStatus.textContent = error.message || 'Adgangskoden kunne ikke ændres. Prøv igen.';
+                } finally {
+                    profilePasswordSave.disabled = false;
                 }
             });
 

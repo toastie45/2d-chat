@@ -674,6 +674,41 @@ async function startServer() {
         }
     });
 
+    app.put('/api/profile/password', async (request, response, next) => {
+        if (!isAuthorizedTabSession(request.session, getRequestTabId(request))) {
+            response.status(401).json({ error: 'Log ind for at fortsætte.' });
+            return;
+        }
+        const currentPassword = request.body && request.body.currentPassword;
+        const newPassword = request.body && request.body.newPassword;
+        if (!isValidPassword(currentPassword) || !isValidPassword(newPassword)) {
+            response.status(400).json({ error: 'Adgangskoder skal være 8–72 UTF-8-bytes.' });
+            return;
+        }
+        if (currentPassword === newPassword) {
+            response.status(400).json({ error: 'Den nye adgangskode skal være anderledes end den nuværende.' });
+            return;
+        }
+        try {
+            const { rows: [account] } = await pool.query(
+                'SELECT password_hash FROM chat_users WHERE id = $1',
+                [request.session.user.id]
+            );
+            if (!account || !(await bcrypt.compare(currentPassword, account.password_hash))) {
+                response.status(400).json({ error: 'Den nuværende adgangskode er forkert.' });
+                return;
+            }
+            const passwordHash = await bcrypt.hash(newPassword, 12);
+            await pool.query(
+                'UPDATE chat_users SET password_hash = $1 WHERE id = $2',
+                [passwordHash, request.session.user.id]
+            );
+            response.json({ success: true });
+        } catch (error) {
+            next(error);
+        }
+    });
+
     app.put('/api/profile', async (request, response, next) => {
         if (!isAuthorizedTabSession(request.session, getRequestTabId(request))) {
             response.status(401).json({ error: 'Log ind for at fortsætte.' });
