@@ -2013,7 +2013,7 @@ async function startServer() {
                     level: getUserLevel(totalOnlineMs, acceptedChatMessages),
                     levelRequirements: LEVEL_REQUIREMENTS.map(([timeMs, messageCount], index) => ({ level: index + 1, timeMs, messageCount }))
                 });
-                socket.to(roomChannel('common')).emit('newPlayer', player);
+                socket.to(roomChannel(initialRoomId)).emit('newPlayer', player);
                 io.emit('navigator-refresh');
             } catch (error) {
                 console.error('Could not add chat participant:', getSafeErrorCode(error));
