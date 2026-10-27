@@ -659,7 +659,9 @@ async function startServer() {
         }
         try {
             const { rows: [profile] } = await pool.query(
-                `SELECT ${OWN_PROFILE_COLUMNS}, created_at, last_login_at FROM chat_users WHERE id = $1`,
+                `SELECT ${OWN_PROFILE_COLUMNS}, created_at, last_login_at,
+                        (SELECT apartment_number FROM chat_apartments WHERE owner_id = chat_users.id) AS apartment_number
+                 FROM chat_users WHERE id = $1`,
                 [request.session.user.id]
             );
             if (!profile) {
@@ -668,6 +670,7 @@ async function startServer() {
             }
             response.json({
                 ...serializeOwnProfile(profile),
+                apartmentNumber: profile.apartment_number ? Number(profile.apartment_number) : null,
                 createdAt: profile.created_at,
                 lastLoginAt: profile.last_login_at
             });

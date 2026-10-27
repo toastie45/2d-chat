@@ -1734,6 +1734,14 @@
             function applyOwnProfile(result) {
                 profileRealName.value = result.realName;
                 profileWelcomeMessage.value = result.welcomeMessage || '';
+                if (Object.hasOwn(result, 'apartmentNumber')) {
+                    const canEditApartmentWelcome = Boolean(result.apartmentNumber);
+                    profileWelcomeToggle.hidden = !canEditApartmentWelcome;
+                    if (!canEditApartmentWelcome) {
+                        profileWelcomeForm.hidden = true;
+                        profileWelcomeToggle.setAttribute('aria-expanded', 'false');
+                    }
+                }
                 profileSteamName.value = result.steamName;
                 profileDiscordName.value = result.discordName;
                 profileInterests.value = result.interests;
