@@ -1194,7 +1194,7 @@
                 <div class="room">
                     <section class="board-card" aria-label="Chatrum">
                         <div class="canvas-stage">
-                            <canvas id="game-canvas" tabindex="0" aria-label="Et diamantgrid med 30 primære felter og 20 mellemliggende felter. Klik på et felt for at flytte din avatar. Højreklik på en anden avatar for at se profilen. Skriv for at chatte, og tryk Enter for at sende.">
+                        <canvas id="game-canvas" tabindex="0" aria-label="Et diamantgrid med 24 primære felter og 15 mellemliggende felter. Klik på et felt for at flytte din avatar. Højreklik på en anden avatar for at se profilen. Skriv for at chatte, og tryk Enter for at sende.">
                                 Dit browserprogram understøtter ikke canvas.
                             </canvas>
                             <div class="knock-dialog" id="knock-dialog" role="dialog" aria-modal="false" aria-labelledby="knock-title" hidden>
@@ -1478,12 +1478,16 @@
             });
             const canvas = document.getElementById('game-canvas');
             const gridLayout = window.ChatGridLayout;
-            canvas.width = gridLayout.width;
-            canvas.height = gridLayout.height;
+            const canvasPixelRatio = Math.max(2, Math.min(3, window.devicePixelRatio || 1));
+            canvas.width = Math.round(gridLayout.width * canvasPixelRatio);
+            canvas.height = Math.round(gridLayout.height * canvasPixelRatio);
             const ctx = canvas.getContext('2d');
+            ctx.scale(canvasPixelRatio, canvasPixelRatio);
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
             const avatarImage = new Image();
-            const avatarWidth = 48;
-            const avatarHeight = 67;
+            const avatarWidth = 54;
+            const avatarHeight = 75;
             let avatarImageLoaded = false;
             avatarImage.addEventListener('load', () => {
                 avatarImageLoaded = true;
@@ -1701,7 +1705,7 @@
             function getAvatarDrawY(position) {
                 const visualHeight = avatarImageLoaded ? avatarHeight : avatarRadius * 2;
                 const labelHeight = 19;
-                const maxAvatarY = canvas.height - labelHeight - 5 - visualHeight / 2;
+                const maxAvatarY = gridLayout.height - labelHeight - 5 - visualHeight / 2;
                 return Math.min(position.y, maxAvatarY);
             }
 
@@ -1710,15 +1714,15 @@
                 const visualAvatarWidth = avatarImageLoaded ? avatarWidth : avatarRadius * 2;
                 const avatarY = getAvatarDrawY(position);
                 const aboveY = avatarY - avatarTop - bubbleHeight - 17;
-                const centeredX = Math.max(8, Math.min(canvas.width - bubbleWidth - 8, position.x - bubbleWidth / 2));
+                const centeredX = Math.max(8, Math.min(gridLayout.width - bubbleWidth - 8, position.x - bubbleWidth / 2));
                 if (aboveY >= 8) return { x: centeredX, y: aboveY, width: bubbleWidth, direction: 'bottom' };
 
                 const sideGap = 12;
                 const rightX = position.x + visualAvatarWidth / 2 + sideGap;
-                if (rightX + bubbleWidth <= canvas.width - 8) {
+                if (rightX + bubbleWidth <= gridLayout.width - 8) {
                     return {
                         x: rightX,
-                        y: Math.max(8, Math.min(canvas.height - bubbleHeight - 8, avatarY - bubbleHeight / 2)),
+                        y: Math.max(8, Math.min(gridLayout.height - bubbleHeight - 8, avatarY - bubbleHeight / 2)),
                         width: bubbleWidth,
                         direction: 'left'
                     };
@@ -1727,14 +1731,14 @@
                 if (leftX >= 8) {
                     return {
                         x: leftX,
-                        y: Math.max(8, Math.min(canvas.height - bubbleHeight - 8, avatarY - bubbleHeight / 2)),
+                        y: Math.max(8, Math.min(gridLayout.height - bubbleHeight - 8, avatarY - bubbleHeight / 2)),
                         width: bubbleWidth,
                         direction: 'right'
                     };
                 }
 
                 const belowY = avatarY + avatarTop + 3 + 19 + 10;
-                return { x: centeredX, y: Math.min(belowY, canvas.height - bubbleHeight - 8), width: bubbleWidth, direction: 'top' };
+                return { x: centeredX, y: Math.min(belowY, gridLayout.height - bubbleHeight - 8), width: bubbleWidth, direction: 'top' };
             }
 
             function drawBubbleTail(placement, bubbleHeight, position) {
@@ -2754,8 +2758,8 @@
 
             function getCellFromPointer(event) {
                 const bounds = canvas.getBoundingClientRect();
-                const x = (event.clientX - bounds.left) * canvas.width / bounds.width;
-                const y = (event.clientY - bounds.top) * canvas.height / bounds.height;
+                const x = (event.clientX - bounds.left) * gridLayout.width / bounds.width;
+                const y = (event.clientY - bounds.top) * gridLayout.height / bounds.height;
                 let nearestCell = null;
                 let nearestDistance = Infinity;
                 for (const cell of gridCells) {
@@ -2776,11 +2780,11 @@
             }
 
             function drawBoard() {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.clearRect(0, 0, gridLayout.width, gridLayout.height);
                 const discoRoom = activeRoom === 'disco';
                 const apartmentRoom = activeRoom.startsWith('apartment:');
                 ctx.fillStyle = discoRoom ? '#090812' : apartmentRoom ? '#100d09' : '#080a08';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillRect(0, 0, gridLayout.width, gridLayout.height);
 
                 for (const cell of gridCells) {
                     ctx.beginPath();
@@ -3454,8 +3458,8 @@
             canvas.addEventListener('contextmenu', (event) => {
                 event.preventDefault();
                 const bounds = canvas.getBoundingClientRect();
-                const x = (event.clientX - bounds.left) * canvas.width / bounds.width;
-                const y = (event.clientY - bounds.top) * canvas.height / bounds.height;
+                const x = (event.clientX - bounds.left) * gridLayout.width / bounds.width;
+                const y = (event.clientY - bounds.top) * gridLayout.height / bounds.height;
                 const target = Object.values(players).find((player) => {
                     const position = player.position || positionFor(player);
                     const hitWidth = (avatarImageLoaded ? avatarWidth : avatarRadius * 2) / 2 + 7;

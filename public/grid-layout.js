@@ -6,9 +6,9 @@
         root.ChatGridLayout = layout;
     }
 })(globalThis, function createGridLayout() {
-    const cellSize = 80;
-    const width = 480;
-    const height = 400;
+    const cellSize = 90;
+    const width = 540;
+    const height = 360;
     const columns = Math.floor(width / cellSize);
     const rows = Math.floor(height / cellSize);
     const left = (width - columns * cellSize) / 2;
