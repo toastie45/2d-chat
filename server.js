@@ -2843,12 +2843,9 @@ async function startServer() {
             try {
                 const roomId = socket.data.roomId || 'common';
                 const keys = roomKeys(roomId);
-                {
-                    const tileStates = await redis.hGetAll(keys.tiles);
-                    if (parseApartmentTileState(tileStates[`${position.col}:${position.row}`])?.kind === 'closed') {
-                        socket.emit('room-error', { message: 'Feltet er låst.' });
-                        return;
-                    }
+                const tileStates = await redis.hGetAll(keys.tiles);
+                if (parseApartmentTileState(tileStates[`${position.col}:${position.row}`])?.kind === 'closed') {
+                    return;
                 }
                 const movedPlayerJson = await redis.eval(PLAYER_MOVE_SCRIPT, {
                     keys: [keys.players, keys.cells, keys.tiles],

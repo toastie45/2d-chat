@@ -2665,8 +2665,19 @@
                 return gridLayout.positionFor(player.col, player.row);
             }
 
+            function avatarPositionFor(player) {
+                const position = positionFor(player);
+                const visualWidth = avatarImageLoaded ? avatarWidth : avatarRadius * 2;
+                const visualHeight = avatarImageLoaded ? avatarHeight : avatarRadius * 2;
+                const labelHeight = 24;
+                return {
+                    x: Math.max(visualWidth / 2 + 2, Math.min(gridLayout.width - visualWidth / 2 - 2, position.x)),
+                    y: Math.max(visualHeight / 2 + 2, Math.min(gridLayout.height - visualHeight / 2 - labelHeight, position.y))
+                };
+            }
+
             function showPlayer(player) {
-                const target = positionFor(player);
+                const target = avatarPositionFor(player);
                 player.position = { x: target.x, y: target.y };
                 player.target = target;
                 players[player.id] = player;
@@ -4096,7 +4107,7 @@
                 if (!players[player.id]) return;
                 players[player.id].col = player.col;
                 players[player.id].row = player.row;
-                players[player.id].position = positionFor(player);
+                players[player.id].position = avatarPositionFor(player);
                 players[player.id].target = players[player.id].position;
                 cancelWhisperIfOutOfRange();
                 requestBoardRender();
