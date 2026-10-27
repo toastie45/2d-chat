@@ -514,12 +514,14 @@
         .room-welcome { margin: 0 3px 14px; padding: 15px; border: 1px solid #353732; border-radius: 7px; background: #1a1b19; }
         .room-welcome h3 { margin: 0 0 7px; color: #eef0e9; font-size: 14px; }
         .room-welcome p { margin: 0; color: #c4c6bd; font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
-        .apartment-editor-tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin: 12px 0; }
+        .apartment-editor-tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin: 7px 0 12px; }
+        .apartment-editor-tool { min-height: 39px; border: 1px solid #383b34; border-radius: 7px; background: #252623; color: #d9dbd3; cursor: pointer; font-weight: 650; }
+        .apartment-editor-tool:hover, .apartment-editor-color:hover { filter: brightness(1.2); }
         .apartment-editor-mode { width: 100%; min-height: 34px; margin: 0 0 9px; border: 1px solid #383b34; border-radius: 6px; background: #252623; color: #d9dbd3; cursor: pointer; }
         .apartment-editor-mode[aria-pressed="true"] { border-color: #91b45b; background: #2c3524; color: #c1f078; }
-        .apartment-editor-tool { min-height: 34px; border: 1px solid #383b34; border-radius: 6px; background: #252623; color: #d9dbd3; cursor: pointer; }
-        .apartment-editor-tool[aria-pressed="true"] { border-color: #91b45b; background: #2c3524; color: #c1f078; }
-        .apartment-editor-colors { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 10px; }
+        .apartment-editor-tool[aria-pressed="true"] { border-color: #91b45b; background: #2c3524; color: #c1f078; box-shadow: inset 0 0 0 1px #91b45b; }
+        .apartment-editor-label { margin: 12px 0 6px; color: #d9d8d1; font-size: 11px; font-weight: 700; }
+        .apartment-editor-colors { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin: 5px 0 12px; }
         .apartment-editor-color { width: 23px; height: 23px; padding: 0; border: 2px solid #555; border-radius: 50%; cursor: pointer; }
         .apartment-editor-color[aria-pressed="true"] { outline: 2px solid #f2f0e9; outline-offset: 2px; }
         .apartment-editor-custom-color { width: 34px; height: 28px; padding: 2px; border: 1px solid #494c43; border-radius: 5px; background: #252623; cursor: pointer; }
@@ -528,7 +530,7 @@
         .apartment-editor-tile[data-kind="closed"] { border-color: #55574e; background: #171915; }
         .apartment-editor-tile[data-kind="door"] { border-color: #69a6e3; background: #285583; }
         .apartment-editor-tile:focus-visible { z-index: 1; outline: 2px solid #fff; outline-offset: 1px; }
-        .apartment-editor-actions { display: flex; gap: 8px; }
+        .apartment-editor-actions { position: sticky; bottom: 0; display: flex; gap: 8px; padding: 8px 0 2px; background: #1b1c1a; }
         .apartment-editor-actions button { flex: 1; }
         .apartment-editor-note { color: var(--muted); font-size: 11px; line-height: 1.45; }
         .profile-details { margin-top: 0; }
@@ -1325,10 +1327,11 @@
                             <label class="profile-field" for="apartment-editor-name">Lejlighedens navn
                                 <input id="apartment-editor-name" type="text" maxlength="60" autocomplete="off" placeholder="F.eks. Tommys hyggelige sted">
                             </label>
-                            <p class="apartment-editor-note">Vælg en type, og klik på felterne for at ændre dem. Lukkede felter blokerer for bevægelse. Døre kan passeres.</p>
-                            <div class="apartment-editor-tools" role="group" aria-label="Vælg felttype">
-                                <button class="apartment-editor-tool" type="button" data-apartment-tool="open" aria-pressed="false">Åben</button>
-                                <button class="apartment-editor-tool" type="button" data-apartment-tool="closed" aria-pressed="true">Lukket</button>
+                            <p class="apartment-editor-note">Vælg et værktøj, og tryk på felterne for at ændre dit udkast. Intet ændres for andre, før du gemmer.</p>
+                            <p class="apartment-editor-label">1. Vælg værktøj</p>
+                            <div class="apartment-editor-tools" role="group" aria-label="Vælg værktøj">
+                                <button class="apartment-editor-tool" type="button" data-apartment-tool="open" aria-pressed="false">Åbent felt</button>
+                                <button class="apartment-editor-tool" type="button" data-apartment-tool="closed" aria-pressed="true">Lås felt</button>
                                 <button class="apartment-editor-tool" type="button" data-apartment-tool="door" aria-pressed="false">Dør</button>
                             </div>
                             <label class="profile-field" id="apartment-editor-door-destination-wrap" for="apartment-editor-door-destination" hidden>Destination for dør
@@ -1337,6 +1340,7 @@
                                     <option value="disco">#2 Diskoteket</option>
                                 </select>
                             </label>
+                            <p class="apartment-editor-label">2. Eller vælg en flisefarve</p>
                             <div class="apartment-editor-colors" id="apartment-editor-colors" role="group" aria-label="Vælg flisefarve">
                                 <button class="apartment-editor-color" type="button" data-apartment-color="#1f6a4b" aria-label="Grøn" title="Grøn" style="background:#1f6a4b" aria-pressed="false"></button>
                                 <button class="apartment-editor-color" type="button" data-apartment-color="#287c64" aria-label="Turkis" title="Turkis" style="background:#287c64" aria-pressed="false"></button>
@@ -1349,11 +1353,12 @@
                                 <label for="apartment-editor-custom-color">Egen farve</label>
                                 <input class="apartment-editor-custom-color" id="apartment-editor-custom-color" type="color" value="#1f6a4b" aria-label="Vælg egen flisefarve">
                             </div>
-                            <button class="apartment-editor-mode" id="apartment-editor-paint-mode" type="button" aria-pressed="false">Mal direkte på banen: Fra</button>
+                            <p class="apartment-editor-label">3. Redigér felterne</p>
+                            <button class="apartment-editor-mode" id="apartment-editor-paint-mode" type="button" aria-pressed="false">Mal på den store bane: Fra</button>
                             <div class="apartment-editor-grid" id="apartment-editor-grid" role="group" aria-label="Lejlighedens felter"></div>
                             <div class="apartment-editor-actions">
-                                <button class="profile-action" id="apartment-editor-reset" type="button">Ryd alle</button>
-                                <button class="profile-save" id="apartment-editor-save" type="button">Gem</button>
+                                <button class="profile-action" id="apartment-editor-reset" type="button">Fortryd ændringer</button>
+                                <button class="profile-save" id="apartment-editor-save" type="button">Gem ændringer</button>
                             </div>
                             <p class="profile-status" id="apartment-editor-status" aria-live="polite"></p>
                         </section>
@@ -1742,6 +1747,8 @@
             let activeRoom = 'common';
             let canEditCurrentApartment = false;
             let apartmentTiles = {};
+            let savedApartmentTiles = {};
+            let savedApartmentName = '';
             let apartmentEditTool = 'closed';
             let apartmentCanvasPaintMode = false;
             let contextPlayerId = null;
@@ -2088,7 +2095,7 @@
                 if (panel !== 'apartment-editor') {
                     apartmentCanvasPaintMode = false;
                     apartmentEditorPaintMode.setAttribute('aria-pressed', 'false');
-                    apartmentEditorPaintMode.textContent = 'Mal direkte på banen: Fra';
+                    apartmentEditorPaintMode.textContent = 'Mal på den store bane: Fra';
                 }
                 chatPanel.hidden = panel !== 'chat';
                 searchPanel.hidden = panel !== 'search';
@@ -2180,6 +2187,7 @@
 
             function applyApartmentRoomState(tiles = {}, canEdit = false) {
                 apartmentTiles = tiles && typeof tiles === 'object' && !Array.isArray(tiles) ? { ...tiles } : {};
+                savedApartmentTiles = { ...apartmentTiles };
                 canEditCurrentApartment = Boolean(canEdit);
                 renderApartmentEditorGrid();
                 if (contextPlayerId) updateAvatarContextMute();
@@ -2934,7 +2942,11 @@
                 ctx.fillRect(0, 0, gridLayout.width, gridLayout.height);
 
                 for (const cell of gridCells) {
-                    const tileState = apartmentRoom ? apartmentTiles[`${cell.col}:${cell.row}`] : null;
+                    const savedTileState = apartmentRoom ? apartmentTiles[`${cell.col}:${cell.row}`] : null;
+                    const isColorTile = typeof savedTileState === 'string' && /^#[0-9a-f]{6}$/i.test(savedTileState);
+                    const tileState = canEditCurrentApartment || savedTileState === 'closed' || isColorTile
+                        ? savedTileState
+                        : null;
                     const customColor = typeof tileState === 'string' && /^#[0-9a-f]{6}$/i.test(tileState);
                     const doorTile = tileState === 'door' || (typeof tileState === 'string' && tileState.startsWith('door:'));
                     ctx.beginPath();
@@ -3459,12 +3471,13 @@
             apartmentEditorPaintMode.addEventListener('click', () => {
                 apartmentCanvasPaintMode = !apartmentCanvasPaintMode;
                 apartmentEditorPaintMode.setAttribute('aria-pressed', String(apartmentCanvasPaintMode));
-                apartmentEditorPaintMode.textContent = `Mal direkte på banen: ${apartmentCanvasPaintMode ? 'Til' : 'Fra'}`;
+                apartmentEditorPaintMode.textContent = `Mal på den store bane: ${apartmentCanvasPaintMode ? 'Til' : 'Fra'}`;
             });
             apartmentEditorReset.addEventListener('click', () => {
                 if (!canEditCurrentApartment) return;
-                apartmentTiles = {};
-                apartmentEditorStatus.textContent = 'Udkast nulstillet. Tryk Gem for at bruge ændringerne.';
+                apartmentTiles = { ...savedApartmentTiles };
+                apartmentEditorName.value = savedApartmentName;
+                apartmentEditorStatus.textContent = 'Ugemte ændringer er fortrudt.';
                 renderApartmentEditorGrid();
                 requestBoardRender();
             });
@@ -3981,6 +3994,7 @@
                 if (roomId !== activeRoom || !canEditCurrentApartment) return;
                 applyApartmentRoomState(tiles, true);
                 apartmentEditorName.value = name || '';
+                savedApartmentName = name || '';
                 updateApartmentRoomTitle(roomName);
                 apartmentEditorStatus.textContent = '';
                 selectSidePanel('apartment-editor');
@@ -4015,6 +4029,7 @@
                 if (roomId !== activeRoom) return;
                 applyApartmentRoomState(tiles, canEditCurrentApartment);
                 apartmentEditorName.value = name || '';
+                savedApartmentName = name || '';
                 updateApartmentRoomTitle(roomName, welcomeTitle);
                 requestBoardRender();
             });
@@ -4024,7 +4039,10 @@
                 apartmentEditorStatus.textContent = message || '';
                 if (success) {
                     if (tiles) applyApartmentRoomState(tiles, canEditCurrentApartment);
-                    if (name !== undefined) apartmentEditorName.value = name || '';
+                    if (name !== undefined) {
+                        apartmentEditorName.value = name || '';
+                        savedApartmentName = name || '';
+                    }
                     updateApartmentRoomTitle(roomName, welcomeTitle);
                 }
                 requestBoardRender();
