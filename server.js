@@ -63,14 +63,39 @@ function getApartmentRoomName(apartment) {
     return `#${apartment.apartment_number} ${apartmentName}`;
 }
 
+function parseApartmentTileState(value) {
+    if (typeof value !== 'string' || value.length > 80) return null;
+    const separator = value.indexOf('|');
+    const base = separator === -1 ? value : value.slice(0, separator);
+    const color = separator === -1 ? '' : value.slice(separator + 1);
+    if (separator !== -1 && (!/^#[0-9a-f]{6}$/i.test(color) || value.indexOf('|', separator + 1) !== -1)) return null;
+    if (/^#[0-9a-f]{6}$/i.test(base)) {
+        if (separator !== -1) return null;
+        return { kind: 'floor', color: base.toLowerCase() };
+    }
+    if (base === 'open') return { kind: 'floor', color: color ? color.toLowerCase() : '' };
+    if (base === 'closed') return { kind: 'closed', color: color ? color.toLowerCase() : '' };
+    if (base === 'door') return { kind: 'door', destination: 'common', color: color ? color.toLowerCase() : '' };
+    const door = /^door:(common|disco|apartment:[1-9]\d{0,18})$/.exec(base);
+    if (door) return { kind: 'door', destination: door[1], color: color ? color.toLowerCase() : '' };
+    return null;
+}
+
+function serializeApartmentTileState({ kind, destination, color = '' }) {
+    const base = kind === 'closed' ? 'closed' : kind === 'door' ? `door:${destination || 'common'}` : '';
+    if (base) return color ? `${base}|${color}` : base;
+    return color || '';
+}
+
 function normalizeApartmentTiles(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
     const tiles = {};
     for (const [cell, state] of Object.entries(value)) {
-        if (!GRID_CELL_KEYS.has(cell) || typeof state !== 'string') continue;
-        if (state === 'closed' || state === 'door') tiles[cell] = state === 'door' ? 'door:common' : state;
-        else if (/^door:(common|disco|apartment:[1-9]\d{0,18})$/.test(state)) tiles[cell] = state;
-        else if (/^#[0-9a-f]{6}$/i.test(state)) tiles[cell] = state;
+        if (!GRID_CELL_KEYS.has(cell)) continue;
+        const parsed = parseApartmentTileState(state);
+        if (!parsed) continue;
+        const normalized = serializeApartmentTileState(parsed);
+        if (normalized) tiles[cell] = normalized;
     }
     return tiles;
 }
@@ -87,7 +112,9 @@ if existing then
 end
 
 local function tryJoin(cell)
-    if redis.call('HEXISTS', KEYS[2], cell) == 0 and redis.call('HGET', KEYS[3], cell) ~= 'closed' then
+    local tileState = redis.call('HGET', KEYS[3], cell)
+    local isClosed = tileState == 'closed' or (tileState and string.sub(tileState, 1, 7) == 'closed|')
+    if redis.call('HEXISTS', KEYS[2], cell) == 0 and not isClosed then
         local col, row = string.match(cell, '^([%-]?%d+):([%-]?%d+)$')
         local player = {
             id = ARGV[1],
@@ -129,7 +156,8 @@ if not encoded then return false end
 
 local player = cjson.decode(encoded)
 local nextCell = ARGV[2] .. ':' .. ARGV[3]
-if redis.call('HGET', KEYS[3], nextCell) == 'closed' then return false end
+local tileState = redis.call('HGET', KEYS[3], nextCell)
+if tileState == 'closed' or (tileState and string.sub(tileState, 1, 7) == 'closed|') then return false end
 local occupant = redis.call('HGET', KEYS[2], nextCell)
 if occupant and occupant ~= ARGV[1] then return false end
 
@@ -1443,8 +1471,8 @@ async function startServer() {
             if (!String(roomId || '').startsWith('apartment:') || !GRID_CELL_KEYS.has(`${col}:${row}`)) return;
             try {
                 const state = await redis.hGet(roomKeys(roomId).tiles, `${col}:${row}`);
-                const destination = state === 'door' ? 'common'
-                    : typeof state === 'string' && state.startsWith('door:') ? state.slice('door:'.length) : '';
+                const tile = parseApartmentTileState(state);
+                const destination = tile?.kind === 'door' ? tile.destination : '';
                 if (!['common', 'disco'].includes(destination) && !/^apartment:[1-9]\d{0,18}$/.test(destination)) {
                     socket.emit('room-error', { message: 'Der er ingen dør på det felt.' });
                     return;
@@ -1480,11 +1508,9 @@ async function startServer() {
                 const nextTiles = {};
                 const seenTiles = new Set();
                 for (const tile of requestedTiles) {
-                    const validTileState = tile && (['open', 'closed', 'door'].includes(tile.state)
-                        || (typeof tile.state === 'string' && (/^#[0-9a-f]{6}$/i.test(tile.state)
-                            || /^door:(common|disco|apartment:[1-9]\d{0,18})$/.test(tile.state))));
+                    const parsedState = tile && parseApartmentTileState(tile.state);
                     if (!tile || !Number.isInteger(tile.col) || !Number.isInteger(tile.row)
-                        || !validTileState) {
+                        || !parsedState) {
                         socket.emit('apartment-layout-result', { success: false, message: 'Lejlighedsplanen indeholder ugyldige felter.' });
                         return;
                     }
@@ -1494,12 +1520,13 @@ async function startServer() {
                         return;
                     }
                     seenTiles.add(key);
-                    if (tile.state !== 'open') nextTiles[key] = tile.state;
+                    const normalizedState = serializeApartmentTileState(parsedState);
+                    if (normalizedState) nextTiles[key] = normalizedState;
                 }
                 const doorApartmentIds = [...new Set(Object.values(nextTiles)
-                    .filter((state) => typeof state === 'string' && state.startsWith('door:apartment:')
-                        && /^door:apartment:[1-9]\d{0,18}$/.test(state))
-                    .map((state) => state.slice('door:apartment:'.length)))];
+                    .map(parseApartmentTileState)
+                    .filter((tile) => tile?.kind === 'door' && tile.destination.startsWith('apartment:'))
+                    .map((tile) => tile.destination.slice('apartment:'.length)))];
                 if (doorApartmentIds.length) {
                     const { rows: destinations } = await pool.query(
                         'SELECT id FROM chat_apartments WHERE id = ANY($1::bigint[]) AND id <> $2',
@@ -1510,13 +1537,13 @@ async function startServer() {
                         return;
                     }
                 }
-                if (Object.values(nextTiles).filter((state) => state === 'closed').length >= GRID_CELLS.length) {
+                if (Object.values(nextTiles).filter((state) => parseApartmentTileState(state)?.kind === 'closed').length >= GRID_CELLS.length) {
                     socket.emit('apartment-layout-result', { success: false, message: 'Mindst ét felt skal være åbent eller en dør, så man kan komme ind.' });
                     return;
                 }
                 const keys = roomKeys(roomId);
                 for (const [cell, state] of Object.entries(nextTiles)) {
-                    if (state === 'closed' && await redis.hGet(keys.cells, cell)) {
+                    if (parseApartmentTileState(state)?.kind === 'closed' && await redis.hGet(keys.cells, cell)) {
                         socket.emit('apartment-layout-result', { success: false, message: 'Flyt først brugeren væk fra det felt, du vil lukke.' });
                         return;
                     }
@@ -2764,7 +2791,7 @@ async function startServer() {
                 const keys = roomKeys(roomId);
                 if (roomId.startsWith('apartment:')) {
                     const tileStates = await redis.hGetAll(keys.tiles);
-                    if (tileStates[`${position.col}:${position.row}`] === 'closed') {
+                    if (parseApartmentTileState(tileStates[`${position.col}:${position.row}`])?.kind === 'closed') {
                         socket.emit('room-error', { message: 'Feltet er låst.' });
                         return;
                     }
