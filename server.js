@@ -67,27 +67,43 @@ function normalizeApartmentTiles(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
     const tiles = {};
     for (const [cell, state] of Object.entries(value)) {
-        if (GRID_CELL_KEYS.has(cell) && (state === 'closed' || state === 'door')) tiles[cell] = state;
+        if (GRID_CELL_KEYS.has(cell) && (state === 'closed' || state === 'door'
+            || (typeof state === 'string' && /^#[0-9a-f]{6}$/i.test(state)))) tiles[cell] = state;
     }
     return tiles;
 }
 
-function crossesClosedApartmentTile(start, destination, tiles) {
-    const from = GRID_LAYOUT.positionFor(start.col, start.row);
-    const to = GRID_LAYOUT.positionFor(destination.col, destination.row);
-    const distance = Math.hypot(to.x - from.x, to.y - from.y);
-    const samples = Math.ceil(distance / (GRID_LAYOUT.cellSize / 4));
-    for (let index = 1; index < samples; index += 1) {
-        const progress = index / samples;
-        const cell = GRID_LAYOUT.coordinateForCenter(
-            from.x + (to.x - from.x) * progress,
-            from.y + (to.y - from.y) * progress
-        );
-        if (GRID_CELL_KEYS.has(`${cell.col}:${cell.row}`) && tiles[`${cell.col}:${cell.row}`] === 'closed') {
-            return true;
+function findApartmentPath(start, destination, tiles, occupiedCells) {
+    const startKey = `${start.col}:${start.row}`;
+    const destinationKey = `${destination.col}:${destination.row}`;
+    if (tiles[destinationKey] === 'closed' || occupiedCells.has(destinationKey)) return null;
+    if (startKey === destinationKey) return [];
+
+    const positions = new Map(GRID_CELLS.map((cell) => [`${cell.col}:${cell.row}`, cell]));
+    const queue = [startKey];
+    const previous = new Map([[startKey, null]]);
+    for (let index = 0; index < queue.length; index += 1) {
+        const currentKey = queue[index];
+        const current = positions.get(currentKey);
+        for (const next of GRID_CELLS) {
+            const nextKey = `${next.col}:${next.row}`;
+            if (previous.has(nextKey) || tiles[nextKey] === 'closed' || occupiedCells.has(nextKey)) continue;
+            if (Math.hypot(next.x - current.x, next.y - current.y) > GRID_LAYOUT.cellSize + 1) continue;
+            previous.set(nextKey, currentKey);
+            if (nextKey === destinationKey) {
+                const path = [];
+                let pathKey = destinationKey;
+                while (pathKey !== startKey) {
+                    const [col, row] = pathKey.split(':').map(Number);
+                    path.unshift({ col, row });
+                    pathKey = previous.get(pathKey);
+                }
+                return path;
+            }
+            queue.push(nextKey);
         }
     }
-    return false;
+    return null;
 }
 
 const PLAYER_JOIN_SCRIPT = `
@@ -1421,69 +1437,6 @@ async function startServer() {
             }
         });
 
-        socket.on('apartment-layout-paint', ({ col, row, state } = {}) => {
-            if (!activeSocketIds.has(socket.id) || !Number.isInteger(col) || !Number.isInteger(row)
-                || !['open', 'closed', 'door'].includes(state)) return;
-            const roomId = activeSocketRooms.get(socket.id);
-            const key = `${col}:${row}`;
-            if (!GRID_CELL_KEYS.has(key)) return;
-
-            // Serialize rapid clicks so each change builds on the previous saved layout.
-            socket.data.apartmentPaintQueue = (socket.data.apartmentPaintQueue || Promise.resolve())
-                .then(async () => {
-                    if (!activeSocketIds.has(socket.id) || activeSocketRooms.get(socket.id) !== roomId
-                        || !await canEditApartmentRoom(socket.data.user.id, roomId)) {
-                        socket.emit('apartment-layout-paint-result', { key, state, success: false, message: 'Du kan kun indrette din egen lejlighed, når du er der.' });
-                        return;
-                    }
-                    const apartmentId = roomId.slice('apartment:'.length);
-                    const { rows: [apartment] } = await pool.query(
-                        'SELECT layout_json, apartment_name, apartment_number, u.username FROM chat_apartments a JOIN chat_users u ON u.id = a.owner_id WHERE a.id = $1 AND a.owner_id = $2',
-                        [apartmentId, socket.data.user.id]
-                    );
-                    if (!apartment) {
-                        socket.emit('apartment-layout-paint-result', { key, state, success: false, message: 'Lejligheden blev ikke fundet.' });
-                        return;
-                    }
-                    const tiles = normalizeApartmentTiles(apartment.layout_json);
-                    if (state === 'closed' && await redis.hGet(roomKeys(roomId).cells, key)) {
-                        socket.emit('apartment-layout-paint-result', { key, state, success: false, message: 'Flyt først brugeren væk fra feltet, før du lukker det.' });
-                        return;
-                    }
-                    const nextTiles = { ...tiles };
-                    if (state === 'open') delete nextTiles[key];
-                    else nextTiles[key] = state;
-                    if (Object.values(nextTiles).filter((tileState) => tileState === 'closed').length >= GRID_CELLS.length) {
-                        socket.emit('apartment-layout-paint-result', { key, state, success: false, message: 'Mindst ét felt skal være åbent eller en dør.' });
-                        return;
-                    }
-                    const saved = await pool.query(
-                        'UPDATE chat_apartments SET layout_json = $1::jsonb WHERE id = $2 AND owner_id = $3',
-                        [JSON.stringify(nextTiles), apartmentId, socket.data.user.id]
-                    );
-                    if (!saved.rowCount) {
-                        socket.emit('apartment-layout-paint-result', { key, state, success: false, message: 'Lejligheden blev ikke gemt.' });
-                        return;
-                    }
-                    const keys = roomKeys(roomId);
-                    await redis.del(keys.tiles);
-                    if (Object.keys(nextTiles).length) await redis.hSet(keys.tiles, nextTiles);
-                    const roomName = getApartmentRoomName(apartment);
-                    io.to(roomChannel(roomId)).emit('apartment-layout-updated', {
-                        roomId,
-                        tiles: nextTiles,
-                        name: apartment.apartment_name || '',
-                        roomName,
-                        welcomeTitle: `Velkommen i ${roomName}`
-                    });
-                    socket.emit('apartment-layout-paint-result', { key, state, success: true, message: 'Feltet er gemt live.' });
-                })
-                .catch((error) => {
-                    console.error('Could not paint apartment tile:', getSafeErrorCode(error));
-                    socket.emit('apartment-layout-paint-result', { key, state, success: false, message: 'Feltet kunne ikke gemmes.' });
-                });
-        });
-
         socket.on('apartment-layout-save', async ({ tiles: requestedTiles, name: requestedName } = {}) => {
             if (!activeSocketIds.has(socket.id) || !Array.isArray(requestedTiles) || requestedTiles.length > GRID_CELLS.length) return;
             const roomId = activeSocketRooms.get(socket.id);
@@ -1501,7 +1454,8 @@ async function startServer() {
                 const seenTiles = new Set();
                 for (const tile of requestedTiles) {
                     if (!tile || !Number.isInteger(tile.col) || !Number.isInteger(tile.row)
-                        || !['open', 'closed', 'door'].includes(tile.state)) {
+                        || (!['open', 'closed', 'door'].includes(tile.state)
+                            && !(typeof tile.state === 'string' && /^#[0-9a-f]{6}$/i.test(tile.state)))) {
                         socket.emit('apartment-layout-result', { success: false, message: 'Lejlighedsplanen indeholder ugyldige felter.' });
                         return;
                     }
@@ -2761,32 +2715,46 @@ async function startServer() {
             if (!activeSocketIds.has(socket.id)) return;
             if (!position || typeof position !== 'object') return;
             if (!isGridCoordinate(position.col, position.row)) return;
+            socket.data.moveGeneration = (socket.data.moveGeneration || 0) + 1;
+            const moveGeneration = socket.data.moveGeneration;
 
             try {
                 const roomId = socket.data.roomId || 'common';
                 const keys = roomKeys(roomId);
+                let movePath = [position];
                 if (roomId.startsWith('apartment:')) {
                     const currentJson = await redis.hGet(keys.players, socket.id);
                     if (!currentJson) return;
-                    const tileStates = await redis.hGetAll(keys.tiles);
-                    if (crossesClosedApartmentTile(JSON.parse(currentJson), position, tileStates)) {
-                        socket.emit('room-error', { message: 'Et lukket felt blokerer vejen.' });
+                    const [tileStates, cellOccupants] = await Promise.all([
+                        redis.hGetAll(keys.tiles),
+                        redis.hGetAll(keys.cells)
+                    ]);
+                    const occupiedCells = new Set(Object.entries(cellOccupants)
+                        .filter(([, playerId]) => playerId !== socket.id)
+                        .map(([cell]) => cell));
+                    movePath = findApartmentPath(JSON.parse(currentJson), position, tileStates, occupiedCells);
+                    if (!movePath) {
+                        socket.emit('room-error', { message: 'Der er ingen fri vej til det felt.' });
                         return;
                     }
                 }
-                const movedPlayerJson = await redis.eval(PLAYER_MOVE_SCRIPT, {
-                    keys: [keys.players, keys.cells, keys.tiles],
-                    arguments: [socket.id, String(position.col), String(position.row), String(Date.now())]
-                });
-                if (!movedPlayerJson) {
-                    return;
+                for (const nextPosition of movePath) {
+                    if (!activeSocketIds.has(socket.id) || socket.data.moveGeneration !== moveGeneration) return;
+                    const movedPlayerJson = await redis.eval(PLAYER_MOVE_SCRIPT, {
+                        keys: [keys.players, keys.cells, keys.tiles],
+                        arguments: [socket.id, String(nextPosition.col), String(nextPosition.row), String(Date.now())]
+                    });
+                    if (!movedPlayerJson) return;
+                    const player = publicPlayer(JSON.parse(movedPlayerJson));
+                    io.to(roomChannel(roomId)).emit('playerMoved', {
+                        id: player.id,
+                        col: player.col,
+                        row: player.row
+                    });
+                    if (roomId.startsWith('apartment:') && nextPosition !== movePath[movePath.length - 1]) {
+                        await new Promise((resolve) => setTimeout(resolve, 85));
+                    }
                 }
-                const player = publicPlayer(JSON.parse(movedPlayerJson));
-                io.to(roomChannel(socket.data.roomId || 'common')).emit('playerMoved', {
-                    id: player.id,
-                    col: player.col,
-                    row: player.row
-                });
             } catch (error) {
                 console.error('Could not move chat participant:', getSafeErrorCode(error));
                 socket.emit('room-error', { message: 'Kunne ikke flytte avataren. Prøv igen.' });
