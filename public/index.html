@@ -3114,9 +3114,25 @@
                 }
             });
 
-            socket.on('room-error', ({ message } = {}) => {
+            socket.on('room-error', async ({ code, message } = {}) => {
                 setRoomNotice(message || 'Der opstod en fejl. Prøv igen.');
                 if (gameSection.classList.contains('hidden') && currentUser) {
+                    if (code === 'CHAT_ACCOUNT_ALREADY_ONLINE' || code === 'CHAT_IP_ACTIVE_USER_LIMIT') {
+                        const rejectionMessage = message || 'Du kan ikke logge ind med denne bruger lige nu.';
+                        socket.disconnect();
+                        try {
+                            await authFetch('/api/auth/logout', { method: 'POST' });
+                        } catch {}
+                        myId = null;
+                        players = {};
+                        authMode = 'login';
+                        passwordInput.value = '';
+                        resetPendingAuthentication();
+                        loginSection.classList.remove('hidden');
+                        gameSection.classList.add('hidden');
+                        loginError.textContent = rejectionMessage;
+                        return;
+                    }
                     joinButton.disabled = false;
                     joinButton.textContent = 'Prøv igen';
                     loginError.textContent = message || 'Kunne ikke komme ind i chatten. Prøv igen.';

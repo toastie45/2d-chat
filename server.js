@@ -384,10 +384,13 @@ async function startServer() {
         CREATE TABLE IF NOT EXISTS chat_online_sessions (
             socket_id TEXT PRIMARY KEY,
             user_id BIGINT NOT NULL REFERENCES chat_users(id) ON DELETE CASCADE,
+            ip_hash TEXT,
             last_accounted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
     `);
+    await pool.query('ALTER TABLE chat_online_sessions ADD COLUMN IF NOT EXISTS ip_hash TEXT');
     await pool.query('CREATE INDEX IF NOT EXISTS chat_online_sessions_user_id_idx ON chat_online_sessions (user_id)');
+    await pool.query('CREATE INDEX IF NOT EXISTS chat_online_sessions_ip_hash_idx ON chat_online_sessions (ip_hash) WHERE ip_hash IS NOT NULL');
     await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_profile_relationships (
             user_id BIGINT NOT NULL REFERENCES chat_users(id) ON DELETE CASCADE,
@@ -560,15 +563,34 @@ async function startServer() {
         }
     }
 
-    async function startOnlineSession(socketId, userId) {
+    async function startOnlineSession(socketId, userId, ipHash) {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
+            await client.query('SELECT pg_advisory_xact_lock(hashtext($1)::bigint)', [`active-chat-ip:${ipHash}`]);
             await client.query('SELECT pg_advisory_xact_lock($1::bigint)', [userId]);
+            const { rows: [existingSession] } = await client.query(
+                'SELECT socket_id FROM chat_online_sessions WHERE user_id = $1 LIMIT 1 FOR UPDATE',
+                [userId]
+            );
+            if (existingSession) {
+                const error = new Error('CHAT_ACCOUNT_ALREADY_ONLINE');
+                error.code = 'CHAT_ACCOUNT_ALREADY_ONLINE';
+                throw error;
+            }
+            const { rows: [onlineIpUsers] } = await client.query(
+                'SELECT COUNT(DISTINCT user_id)::int AS count FROM chat_online_sessions WHERE ip_hash = $1',
+                [ipHash]
+            );
+            if (onlineIpUsers.count >= 2) {
+                const error = new Error('CHAT_IP_ACTIVE_USER_LIMIT');
+                error.code = 'CHAT_IP_ACTIVE_USER_LIMIT';
+                throw error;
+            }
             await client.query(`
-                INSERT INTO chat_online_sessions (socket_id, user_id, last_accounted_at)
-                VALUES ($1, $2, NOW())
-            `, [socketId, userId]);
+                INSERT INTO chat_online_sessions (socket_id, user_id, ip_hash, last_accounted_at)
+                VALUES ($1, $2, $3, NOW())
+            `, [socketId, userId, ipHash]);
             await client.query('COMMIT');
         } catch (error) {
             await client.query('ROLLBACK');
@@ -593,6 +615,10 @@ async function startServer() {
         });
         request.session.user = { id: user.id, username: user.username };
         request.session.tabId = tabId;
+        request.session.ipHash = hashRegistrationIp(
+            request.ip || request.socket.remoteAddress,
+            SESSION_SECRET
+        );
         await new Promise((resolve, reject) => {
             request.session.save((error) => error ? reject(error) : resolve());
         });
@@ -836,6 +862,12 @@ async function startServer() {
         socket.data.user = session.user;
         socket.data.tabId = tabId;
         socket.data.sessionId = socket.request.sessionID;
+        const forwardedAddresses = String(socket.request.headers['x-forwarded-for'] || '')
+            .split(',').map((address) => address.trim()).filter(Boolean);
+        socket.data.ipHash = session.ipHash || hashRegistrationIp(
+            forwardedAddresses.at(-1) || socket.handshake.address || socket.request.socket.remoteAddress,
+            SESSION_SECRET
+        );
         next();
     });
 
@@ -1967,7 +1999,7 @@ async function startServer() {
                 }
 
                 try {
-                    await startOnlineSession(socket.id, socket.data.user.id);
+                    await startOnlineSession(socket.id, socket.data.user.id, socket.data.ipHash);
                 } catch (error) {
                     await redis.eval(REMOVE_PLAYER_SCRIPT, {
                         keys: [initialRoomKeys.players, initialRoomKeys.cells],
@@ -2017,7 +2049,12 @@ async function startServer() {
                 io.emit('navigator-refresh');
             } catch (error) {
                 console.error('Could not add chat participant:', getSafeErrorCode(error));
-                socket.emit('room-error', { message: 'Kunne ikke komme ind i chatten. Prøv igen.' });
+                const message = error.code === 'CHAT_ACCOUNT_ALREADY_ONLINE'
+                    ? 'Denne bruger er allerede logget ind et andet sted. Log ud dér først.'
+                    : error.code === 'CHAT_IP_ACTIVE_USER_LIMIT'
+                        ? 'Der kan højst være 2 forskellige brugere online fra samme IP-adresse.'
+                        : 'Kunne ikke komme ind i chatten. Prøv igen.';
+                socket.emit('room-error', { code: error.code, message });
             } finally {
                 socket.data.joining = false;
             }
