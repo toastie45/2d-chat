@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#10110f">
+    <meta name="theme-color" content="#121312">
     <title>Rundt om bordet — 2D-chat</title>
     <style>
         :root {
@@ -906,6 +906,154 @@
 
         @media (prefers-reduced-motion: reduce) {
             *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+        }
+
+        /* Refined dark interface: calm surfaces, clearer type, restrained green accents. */
+        :root {
+            --muted: #a1a39b;
+            --line: #30322e;
+            --accent: #b7d982;
+            color: #eeeee9;
+            background: #121312;
+            font-size: 14px;
+        }
+
+        body { background: #121312; }
+        .page { width: min(100% - 40px, 1200px); }
+        .game { width: min(100%, 1120px); }
+        main { padding: 36px 0; }
+
+        .login-card {
+            width: min(100%, 420px);
+            padding: 36px;
+            border-color: #30322e;
+            border-radius: 14px;
+            background: #1e1f1d;
+            box-shadow: 0 16px 44px #0003;
+        }
+        .login-card h1 { font-size: clamp(28px, 5vw, 35px); letter-spacing: -.04em; }
+        .login-card > p#auth-description { font-size: 14px; }
+        .eyebrow { letter-spacing: .1em; }
+        input { border-color: #3a3c37; background: #151614; }
+        input:focus { border-color: #91b45b; box-shadow: 0 0 0 3px #b7d9821c; }
+        .primary-button { background: var(--accent); }
+
+        .room-strip {
+            min-height: 52px;
+            gap: 11px;
+            padding: 7px 14px;
+            border-color: #30322e;
+            border-radius: 10px;
+            background: #1e1f1d;
+            box-shadow: none;
+            font-size: 12px;
+        }
+        .room-strip-name { color: #f0f0eb; }
+        .room-strip-divider { background: #3a3c37; }
+        .room-strip-logout, .friend-menu-trigger {
+            border-color: #3a3c37;
+            border-radius: 7px;
+            background: #262724;
+            transition: background .2s ease, border-color .2s ease, color .2s ease;
+        }
+        .room-strip-logout:hover, .friend-menu-trigger:hover,
+        .friend-menu-trigger[aria-expanded="true"] {
+            border-color: #68794f;
+            background: #2b2e27;
+        }
+        .level-topbar-fill { background: #a9cc70; }
+        .level-topbar-track { background: #383a35; }
+
+        .board-card, .side-card {
+            border-color: #30322e;
+            border-radius: 12px;
+            background: #1e1f1d;
+            box-shadow: 0 10px 30px #0002;
+        }
+        .board-card { padding: 14px; }
+        canvas { border-radius: 7px; }
+        .bottom-toolbar {
+            width: calc(100% + 28px);
+            min-height: 56px;
+            gap: 8px;
+            margin: 10px -14px -14px;
+            padding: 10px 14px;
+            border-color: #30322e;
+            border-radius: 0 0 11px 11px;
+            background: #171816;
+            box-shadow: inset 0 1px #ffffff08;
+        }
+        .toolbar-button {
+            width: 36px;
+            height: 36px;
+            border-color: #41443c;
+            border-radius: 6px;
+            background: #252723;
+            color: #b7d982;
+        }
+        .toolbar-button:hover { border-color: #849c5c; background: #2b2e27; color: #d1e9a9; }
+        .toolbar-button[aria-pressed="true"] { border-color: #91ad62; background: #30352a; color: #e8efdb; }
+        .toolbar-button:focus-visible { outline-color: #b7d982; }
+
+        .side-panel { padding: 22px 20px; }
+        .side-title { margin-bottom: 16px; color: #f0f0eb; font-size: 15px; font-weight: 650; }
+        .chat-log { font-size: 13px; line-height: 1.65; }
+        .chat-entry { margin-bottom: 10px; }
+        .chat-mention { background: #2d3823; color: #a9c97b; }
+        .navigator-category-tab, .navigator-room-button,
+        .profile-page-select, .profile-action, .guestbook-entry,
+        .private-mail-conversation, .guestbook-form textarea,
+        .private-mail-form input, .private-mail-form textarea,
+        .private-mail-new-form input, .private-mail-thread-header button,
+        .level-overview-dialog, .avatar-context-menu {
+            border-color: #353732;
+            background-color: #252623;
+        }
+        .navigator-category-tab { min-height: 38px; border-radius: 7px; font-size: 12px; }
+        .navigator-category-tab[aria-selected="true"] { border-color: #829b5a; background: #2c3126; color: #c7e49a; }
+        .navigator-room-button { border-radius: 7px; transition: background .2s ease, border-color .2s ease; }
+        .navigator-room-button:hover { border-color: #758953; background: #2b2d28; }
+        .navigator-room-button[aria-current="true"] { border-color: #829b5a; background: #2b3124; color: #c7e49a; }
+        .profile-section-title, .profile-facts-title { border-color: #353732; background: #252623; }
+        .profile-facts-view, .profile-about { border-color: #353732; background: #1a1b19; }
+        .profile-fact { border-color: #30322e; }
+        .profile-field input, .profile-field textarea, .profile-field select,
+        .profile-birthdate select, .guestbook-form textarea,
+        .private-mail-form input, .private-mail-form textarea,
+        .private-mail-new-form input, .profile-page-select {
+            border-color: #3a3c37;
+            border-radius: 6px;
+            background: #151614;
+        }
+        .profile-action, .level-overview-close { border-radius: 6px; }
+        .profile-action:hover, .profile-action[aria-pressed="true"] { border-color: #829b5a; background: #2b3124; }
+        .profile-level-icon { border-color: #829b5a; border-radius: 6px; background: #303829; color: #d4e8b0; }
+        .profile-save, .guestbook-form button { border-color: #a6c774; background: #a6c774; }
+        .private-mail-form button, .user-search-submit { border-color: #537746; border-radius: 6px; background: #42633b; }
+        .private-mail-new-button, .private-mail-new-form button { border-color: #566b42; border-radius: 6px; background: #292e24; }
+        .member-list { gap: 12px; }
+        .member { font-size: 13px; }
+        .member-room { border-radius: 5px; }
+        .avatar-context-menu { border-radius: 8px; box-shadow: 0 10px 28px #0008; }
+        .chat-entry strong, .guestbook-author { color: #f0f0eb; }
+        button { transition: background-color .2s ease, border-color .2s ease, color .2s ease; }
+
+        @media (max-width: 700px) {
+            .page { width: min(100% - 28px, 600px); }
+            main { padding: 24px 0; }
+            .room-strip { flex-wrap: wrap; min-height: 46px; }
+            .room-strip-spacer { flex: 1 1 12px; }
+            .bottom-toolbar { width: calc(100% + 18px); margin: 10px -9px -9px; padding: 9px; }
+            .side-panel { padding: 18px 16px; }
+        }
+
+        @media (max-width: 420px) {
+            .page { width: min(100% - 20px, 390px); }
+            .login-card { padding: 28px 22px; }
+            .board-card { padding: 9px; }
+            .room-strip { padding: 5px 8px; }
+            .bottom-toolbar { gap: 5px; }
+            .toolbar-button { width: 34px; height: 34px; }
         }
     </style>
 </head>
