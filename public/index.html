@@ -59,7 +59,8 @@
             font-size: 11px;
         }
 
-        .room-strip-name { color: #f2f0e9; font-weight: 650; }
+        .room-strip-name { padding: 0; border: 0; background: transparent; color: #f2f0e9; font: inherit; font-weight: 650; cursor: pointer; }
+        .room-strip-name:hover { color: #c1f078; }
         .room-strip-divider { width: 1px; height: 16px; background: #33352e; }
         .room-strip-spacer { flex: 1; }
         .room-strip-presence {
@@ -1160,7 +1161,7 @@
 
             <section class="game hidden" id="game-section">
                 <div class="room-strip hidden" id="room-strip" aria-label="Rummets status">
-                    <span class="room-strip-name" id="room-strip-name">#1 Fællesrum</span>
+                    <button class="room-strip-name" id="room-strip-name" type="button" aria-label="Vis velkomst for #1 Fællesrum" title="Vis rummets velkomst">#1 Fællesrum</button>
                     <span class="room-strip-divider" aria-hidden="true"></span>
                     <span class="room-strip-tagline">Deus er en skat</span>
                     <span class="room-strip-spacer"></span>
@@ -1969,6 +1970,7 @@
             function applyRoomState(roomId, roomName, serverPlayers = {}, welcome = {}) {
                 activeRoom = roomId;
                 roomStripName.textContent = roomName;
+                roomStripName.setAttribute('aria-label', `Vis velkomst for ${roomName}`);
                 chatTitle.textContent = `Tekstchat i ${roomName}`;
                 updateRoomWelcome(welcome.welcomeTitle, welcome.welcomeText);
                 document.querySelectorAll('.avatar-context-room').forEach((label) => { label.textContent = roomName; });
@@ -3100,6 +3102,7 @@
                 });
             });
             chatNavButton.addEventListener('click', () => selectSidePanel('chat'));
+            roomStripName.addEventListener('click', () => selectSidePanel('welcome'));
             profileNavButton.addEventListener('click', openProfileEditor);
             searchNavButton.addEventListener('click', openUserSearch);
             privateMailNavButton.addEventListener('click', () => openPrivateMail());
@@ -3615,6 +3618,7 @@
                 myId = socket.id;
                 activeRoom = roomId;
                 roomStripName.textContent = roomName;
+                roomStripName.setAttribute('aria-label', `Vis velkomst for ${roomName}`);
                 chatTitle.textContent = `Tekstchat i ${roomName}`;
                 updateRoomWelcome(welcomeTitle, welcomeText);
                 document.querySelectorAll('.avatar-context-room').forEach((label) => { label.textContent = roomName; });
