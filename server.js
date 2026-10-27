@@ -461,6 +461,7 @@ async function startServer() {
     }
     io.adapter(createAdapter(redisPublisher, redisSubscriber));
     app.set('trust proxy', 1);
+    app.get('/health', (_request, response) => response.status(200).type('text/plain').send('ok'));
     app.use(express.static(path.join(__dirname, 'public')));
     app.use(express.json({ limit: '8kb' }));
     app.use(useTabSession(getHttpTabId));

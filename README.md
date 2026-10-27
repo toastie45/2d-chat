@@ -53,6 +53,10 @@ Deploy the web service from the repository root with:
 
 Set `NODE_ENV=production` in the Render web service so session cookies are sent securely over HTTPS. Render automatically provides `PORT`.
 
+### Keep a free web service awake
+
+Render's free web services spin down after 15 minutes without inbound traffic. To keep this chat awake, configure an external HTTP monitor such as [UptimeRobot](https://uptimerobot.com/) with the URL `https://<your-render-service>.onrender.com/health` and its 5-minute interval. The `/health` endpoint returns `200 OK` with `ok` and does not require a login. Configure the monitor in its own service; an in-app timer cannot wake a service that has already spun down. Keeping a service awake uses Render free instance hours continuously, and Render may still restart free services at any time.
+
 ## Tests
 
 ```sh
