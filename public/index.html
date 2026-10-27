@@ -1316,6 +1316,9 @@
                         </section>
                         <section class="side-panel" id="apartment-editor-panel" aria-labelledby="apartment-editor-title" hidden>
                             <h2 class="side-title" id="apartment-editor-title">Indret din lejlighed</h2>
+                            <label class="profile-field" for="apartment-editor-name">Lejlighedens navn
+                                <input id="apartment-editor-name" type="text" maxlength="60" autocomplete="off" placeholder="F.eks. Tommys hyggelige sted">
+                            </label>
                             <p class="apartment-editor-note">Vælg en type, og klik på felterne for at ændre dem. Lukkede felter blokerer for bevægelse. Døre kan passeres.</p>
                             <div class="apartment-editor-tools" role="group" aria-label="Vælg felttype">
                                 <button class="apartment-editor-tool" type="button" data-apartment-tool="open" aria-pressed="false">Åben</button>
@@ -1617,6 +1620,7 @@
             const roomWelcomePanel = document.getElementById('room-welcome-panel');
             const apartmentEditorPanel = document.getElementById('apartment-editor-panel');
             const apartmentEditorGrid = document.getElementById('apartment-editor-grid');
+            const apartmentEditorName = document.getElementById('apartment-editor-name');
             const apartmentEditorSave = document.getElementById('apartment-editor-save');
             const apartmentEditorReset = document.getElementById('apartment-editor-reset');
             const apartmentEditorStatus = document.getElementById('apartment-editor-status');
@@ -1691,6 +1695,7 @@
             const chatLog = document.getElementById('chat-log');
             const chatEmpty = document.getElementById('chat-empty');
             const { cellSize, cells: gridCells } = gridLayout;
+            const gridCellKeys = new Set(gridCells.map((cell) => `${cell.col}:${cell.row}`));
             const avatarRadius = 19;
             const messageDuration = 10000;
             const maxMessageLength = 100;
@@ -2088,6 +2093,15 @@
                 roomWelcomeText.textContent = message || 'Her kan du møde andre og chatte sammen. God fornøjelse!';
             }
 
+            function updateApartmentRoomTitle(roomName, welcomeTitle) {
+                if (!roomName) return;
+                roomStripName.textContent = roomName;
+                roomStripName.setAttribute('aria-label', `Vis velkomst for ${roomName}`);
+                chatTitle.textContent = `Tekstchat i ${roomName}`;
+                roomWelcomeTitle.textContent = welcomeTitle || `Velkommen i ${roomName}`;
+                document.querySelectorAll('.avatar-context-room').forEach((label) => { label.textContent = roomName; });
+            }
+
             function renderApartmentEditorGrid() {
                 apartmentEditorGrid.replaceChildren();
                 const tileSide = cellSize / Math.SQRT2;
@@ -2106,14 +2120,19 @@
                     tile.style.height = `${(tileSide / gridLayout.height) * 100}%`;
                     tile.style.transform = 'translate(-50%, -50%) rotate(45deg)';
                     tile.addEventListener('click', () => {
-                        if (apartmentEditTool === 'open') delete apartmentTiles[key];
-                        else apartmentTiles[key] = apartmentEditTool;
-                        apartmentEditorStatus.textContent = '';
-                        renderApartmentEditorGrid();
-                        requestBoardRender();
+                        paintApartmentCell(key);
                     });
                     apartmentEditorGrid.append(tile);
                 }
+            }
+
+            function paintApartmentCell(key) {
+                if (!canEditCurrentApartment || !gridCellKeys.has(key)) return;
+                if (apartmentEditTool === 'open') delete apartmentTiles[key];
+                else apartmentTiles[key] = apartmentEditTool;
+                apartmentEditorStatus.textContent = '';
+                renderApartmentEditorGrid();
+                requestBoardRender();
             }
 
             function applyApartmentRoomState(tiles = {}, canEdit = false) {
@@ -3370,6 +3389,7 @@
                 apartmentEditorSave.disabled = true;
                 apartmentEditorStatus.textContent = 'Gemmer lejligheden…';
                 socket.emit('apartment-layout-save', {
+                    name: apartmentEditorName.value,
                     tiles: Object.entries(apartmentTiles).map(([cell, state]) => {
                         const [col, row] = cell.split(':').map(Number);
                         return { col, row, state };
@@ -3594,6 +3614,10 @@
                 const cell = getCellFromPointer(event);
                 if (!cell) return;
                 canvas.focus({ preventScroll: true });
+                if (!apartmentEditorPanel.hidden && canEditCurrentApartment) {
+                    paintApartmentCell(`${cell.col}:${cell.row}`);
+                    return;
+                }
                 moveToCell(cell.col, cell.row);
             });
 
@@ -3863,24 +3887,32 @@
                 updateRoomWelcome(welcomeTitle, welcomeText);
             });
 
-            socket.on('apartment-layout-data', ({ roomId, tiles } = {}) => {
+            socket.on('apartment-layout-data', ({ roomId, tiles, name, roomName } = {}) => {
                 if (roomId !== activeRoom || !canEditCurrentApartment) return;
                 applyApartmentRoomState(tiles, true);
+                apartmentEditorName.value = name || '';
+                updateApartmentRoomTitle(roomName);
                 apartmentEditorStatus.textContent = '';
                 selectSidePanel('apartment-editor');
                 requestBoardRender();
             });
 
-            socket.on('apartment-layout-updated', ({ roomId, tiles } = {}) => {
+            socket.on('apartment-layout-updated', ({ roomId, tiles, name, roomName, welcomeTitle } = {}) => {
                 if (roomId !== activeRoom) return;
                 applyApartmentRoomState(tiles, canEditCurrentApartment);
+                apartmentEditorName.value = name || '';
+                updateApartmentRoomTitle(roomName, welcomeTitle);
                 requestBoardRender();
             });
 
-            socket.on('apartment-layout-result', ({ success, message, tiles } = {}) => {
+            socket.on('apartment-layout-result', ({ success, message, tiles, name, roomName, welcomeTitle } = {}) => {
                 apartmentEditorSave.disabled = false;
                 apartmentEditorStatus.textContent = message || '';
-                if (success && tiles) applyApartmentRoomState(tiles, canEditCurrentApartment);
+                if (success) {
+                    if (tiles) applyApartmentRoomState(tiles, canEditCurrentApartment);
+                    if (name !== undefined) apartmentEditorName.value = name || '';
+                    updateApartmentRoomTitle(roomName, welcomeTitle);
+                }
                 requestBoardRender();
             });
 

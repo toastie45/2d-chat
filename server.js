@@ -56,6 +56,13 @@ GRID_CELLS.sort((first, second) => {
 });
 const GRID_CELL_KEYS = new Set(GRID_CELLS.map(({ col, row }) => `${col}:${row}`));
 
+function getApartmentRoomName(apartment) {
+    const apartmentName = typeof apartment.apartment_name === 'string' && apartment.apartment_name.trim()
+        ? apartment.apartment_name.trim()
+        : `${apartment.username}s Lejlighed`;
+    return `#${apartment.apartment_number} ${apartmentName}`;
+}
+
 function normalizeApartmentTiles(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
     const tiles = {};
@@ -415,6 +422,7 @@ async function startServer() {
     `);
     await pool.query("ALTER TABLE chat_apartments ADD COLUMN IF NOT EXISTS room_type VARCHAR(16) NOT NULL DEFAULT 'apartment'");
     await pool.query("ALTER TABLE chat_apartments ADD COLUMN IF NOT EXISTS layout_json JSONB NOT NULL DEFAULT '{}'::jsonb");
+    await pool.query('ALTER TABLE chat_apartments ADD COLUMN IF NOT EXISTS apartment_name VARCHAR(60)');
     await pool.query('CREATE INDEX IF NOT EXISTS chat_users_registration_ip_hash_idx ON chat_users (registration_ip_hash) WHERE registration_ip_hash IS NOT NULL');
     await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_online_sessions (
@@ -764,12 +772,12 @@ async function startServer() {
                 [welcomeMessage.trim(), request.session.user.id]
             );
             const { rows: [apartment] } = await pool.query(
-                'SELECT a.id, a.apartment_number, u.username FROM chat_apartments a JOIN chat_users u ON u.id = a.owner_id WHERE a.owner_id = $1',
+                'SELECT a.id, a.apartment_number, a.apartment_name, u.username FROM chat_apartments a JOIN chat_users u ON u.id = a.owner_id WHERE a.owner_id = $1',
                 [request.session.user.id]
             );
             if (apartment) {
                 io.to(roomChannel(`apartment:${apartment.id}`)).emit('room-welcome-updated', {
-                    welcomeTitle: `Velkommen til ${apartment.username}s lejlighed (#${apartment.apartment_number})`,
+                    welcomeTitle: `Velkommen i ${getApartmentRoomName(apartment)}`,
                     welcomeText: welcomeMessage.trim() || `${apartment.username} har ikke skrevet en velkomst endnu.`
                 });
             }
@@ -1189,14 +1197,14 @@ async function startServer() {
     async function getRoomWelcome(roomId) {
         if (roomId.startsWith('apartment:')) {
             const { rows: [apartment] } = await pool.query(`
-                SELECT a.apartment_number, u.username, u.welcome_message
+                SELECT a.apartment_number, a.apartment_name, u.username, u.welcome_message
                 FROM chat_apartments a
                 JOIN chat_users u ON u.id = a.owner_id
                 WHERE a.id = $1
             `, [roomId.slice('apartment:'.length)]);
             if (apartment) {
                 return {
-                    welcomeTitle: `Velkommen til ${apartment.username}s lejlighed (#${apartment.apartment_number})`,
+                    welcomeTitle: `Velkommen i ${getApartmentRoomName(apartment)}`,
                     welcomeText: apartment.welcome_message || `${apartment.username} har ikke skrevet en velkomst endnu.`
                 };
             }
@@ -1235,10 +1243,10 @@ async function startServer() {
         let roomName = PUBLIC_ROOM_NAMES[roomId] || 'Lejlighed';
         if (roomId.startsWith('apartment:')) {
             const { rows: [apartment] } = await pool.query(`
-                SELECT u.username, a.apartment_number FROM chat_apartments a
+                SELECT u.username, a.apartment_number, a.apartment_name FROM chat_apartments a
                 JOIN chat_users u ON u.id = a.owner_id WHERE a.id = $1
             `, [roomId.slice('apartment:'.length)]);
-            if (apartment) roomName = `${apartment.username}s Lejlighed (#${apartment.apartment_number})`;
+            if (apartment) roomName = getApartmentRoomName(apartment);
         }
         const [welcome, canEditApartment] = await Promise.all([
             getRoomWelcome(roomId),
@@ -1389,14 +1397,18 @@ async function startServer() {
                     return;
                 }
                 const tiles = await loadApartmentTiles(roomId);
-                socket.emit('apartment-layout-data', { roomId, tiles });
+                const { rows: [apartment] } = await pool.query(
+                    'SELECT a.apartment_name, a.apartment_number, u.username FROM chat_apartments a JOIN chat_users u ON u.id = a.owner_id WHERE a.id = $1',
+                    [roomId.slice('apartment:'.length)]
+                );
+                socket.emit('apartment-layout-data', { roomId, tiles, name: apartment?.apartment_name || '', roomName: apartment ? getApartmentRoomName(apartment) : '' });
             } catch (error) {
                 console.error('Could not load apartment tiles:', getSafeErrorCode(error));
                 socket.emit('apartment-layout-result', { success: false, message: 'Lejligheden kunne ikke indlæses.' });
             }
         });
 
-        socket.on('apartment-layout-save', async ({ tiles: requestedTiles } = {}) => {
+        socket.on('apartment-layout-save', async ({ tiles: requestedTiles, name: requestedName } = {}) => {
             if (!activeSocketIds.has(socket.id) || !Array.isArray(requestedTiles) || requestedTiles.length > GRID_CELLS.length) return;
             const roomId = activeSocketRooms.get(socket.id);
             try {
@@ -1404,6 +1416,11 @@ async function startServer() {
                     socket.emit('apartment-layout-result', { success: false, message: 'Du kan kun indrette din egen lejlighed, når du er der.' });
                     return;
                 }
+                if (typeof requestedName !== 'string' || requestedName.trim().length > 60) {
+                    socket.emit('apartment-layout-result', { success: false, message: 'Lejlighedens navn må højst være 60 tegn.' });
+                    return;
+                }
+                const apartmentName = requestedName.trim();
                 const nextTiles = {};
                 const seenTiles = new Set();
                 for (const tile of requestedTiles) {
@@ -1433,8 +1450,8 @@ async function startServer() {
                 }
                 const apartmentId = roomId.slice('apartment:'.length);
                 const update = await pool.query(
-                    'UPDATE chat_apartments SET layout_json = $1::jsonb WHERE id = $2 AND owner_id = $3',
-                    [JSON.stringify(nextTiles), apartmentId, socket.data.user.id]
+                    'UPDATE chat_apartments SET layout_json = $1::jsonb, apartment_name = $2 WHERE id = $3 AND owner_id = $4',
+                    [JSON.stringify(nextTiles), apartmentName || null, apartmentId, socket.data.user.id]
                 );
                 if (!update.rowCount) {
                     socket.emit('apartment-layout-result', { success: false, message: 'Lejligheden blev ikke fundet.' });
@@ -1442,8 +1459,21 @@ async function startServer() {
                 }
                 await redis.del(keys.tiles);
                 if (Object.keys(nextTiles).length) await redis.hSet(keys.tiles, nextTiles);
-                io.to(roomChannel(roomId)).emit('apartment-layout-updated', { roomId, tiles: nextTiles });
-                socket.emit('apartment-layout-result', { success: true, message: 'Lejligheden er gemt.', tiles: nextTiles });
+                const { rows: [apartment] } = await pool.query(
+                    'SELECT a.apartment_name, a.apartment_number, u.username FROM chat_apartments a JOIN chat_users u ON u.id = a.owner_id WHERE a.id = $1',
+                    [apartmentId]
+                );
+                const roomName = apartment ? getApartmentRoomName(apartment) : '';
+                const updatePayload = {
+                    roomId,
+                    tiles: nextTiles,
+                    name: apartmentName,
+                    roomName,
+                    welcomeTitle: roomName ? `Velkommen i ${roomName}` : 'Velkommen i lejligheden'
+                };
+                io.to(roomChannel(roomId)).emit('apartment-layout-updated', updatePayload);
+                io.emit('navigator-refresh');
+                socket.emit('apartment-layout-result', { success: true, message: 'Lejligheden er gemt.', ...updatePayload });
             } catch (error) {
                 console.error('Could not save apartment tiles:', getSafeErrorCode(error));
                 socket.emit('apartment-layout-result', { success: false, message: 'Lejligheden kunne ikke gemmes.' });
@@ -1459,7 +1489,7 @@ async function startServer() {
                     { id: 'disco', name: PUBLIC_ROOM_NAMES.disco, type: 'public' }
                 ];
                 const { rows: apartments } = await pool.query(`
-                    SELECT DISTINCT a.id, a.apartment_number, u.username
+                    SELECT DISTINCT a.id, a.apartment_number, a.apartment_name, u.username
                     FROM chat_apartments a
                     JOIN chat_users u ON u.id = a.owner_id
                     JOIN chat_online_sessions s ON s.user_id = a.owner_id
@@ -1470,7 +1500,7 @@ async function startServer() {
                     const presentCount = await redis.hLen(roomKeys(id).players);
                     rooms.push({
                         id,
-                        name: `#${apartment.apartment_number} ${apartment.username}s Lejlighed`,
+                        name: getApartmentRoomName(apartment),
                         type: 'apartment',
                         count: presentCount,
                         ownerUsername: apartment.username,
@@ -1491,7 +1521,7 @@ async function startServer() {
                 const [roomIds, { rows: apartments }] = await Promise.all([
                     getAllRoomIds(),
                     pool.query(`
-                        SELECT a.id, a.apartment_number, u.username
+                        SELECT a.id, a.apartment_number, a.apartment_name, u.username
                         FROM chat_apartments a
                         JOIN chat_users u ON u.id = a.owner_id
                     `)
@@ -1501,7 +1531,7 @@ async function startServer() {
                     ['disco', PUBLIC_ROOM_NAMES.disco],
                     ...apartments.map((apartment) => [
                         `apartment:${apartment.id}`,
-                        `${apartment.username}s Lejlighed (#${apartment.apartment_number})`
+                        getApartmentRoomName(apartment)
                     ])
                 ]);
                 const users = [];
@@ -2609,10 +2639,10 @@ async function startServer() {
                 let roomName = PUBLIC_ROOM_NAMES[initialRoomId] || 'Lejlighed';
                 if (initialRoomId.startsWith('apartment:')) {
                     const { rows: [apartment] } = await pool.query(`
-                        SELECT u.username, a.apartment_number FROM chat_apartments a
+                        SELECT u.username, a.apartment_number, a.apartment_name FROM chat_apartments a
                         JOIN chat_users u ON u.id = a.owner_id WHERE a.id = $1
                     `, [initialRoomId.slice('apartment:'.length)]);
-                    if (apartment) roomName = `${apartment.username}s Lejlighed (#${apartment.apartment_number})`;
+                    if (apartment) roomName = getApartmentRoomName(apartment);
                 }
                 const welcome = await getRoomWelcome(initialRoomId);
                 const canEditApartment = await canEditApartmentRoom(socket.data.user.id, initialRoomId);
