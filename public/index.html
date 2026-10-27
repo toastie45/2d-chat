@@ -822,6 +822,7 @@
             cursor: pointer;
         }
         .avatar-context-action:hover { background: #292b26; color: #fff; }
+        .avatar-context-action.danger:hover { background: #382725; color: #f0b4a9; }
         .avatar-context-action[hidden] { display: none; }
         .avatar-context-action:disabled { cursor: not-allowed; }
         .room-notice.whisper-mode { color: #c9cbc7; }
@@ -1326,6 +1327,7 @@
             <div class="avatar-context-separator" role="separator"></div>
             <button class="avatar-context-action" id="avatar-context-whisper" type="button" role="menuitem" hidden>Hvisk</button>
             <button class="avatar-context-action" id="avatar-context-mute" type="button" role="menuitem" hidden></button>
+            <button class="avatar-context-action danger" id="avatar-context-kick" type="button" role="menuitem" hidden>Kyl ud</button>
             <button class="avatar-context-action" id="avatar-context-highlight" type="button" role="menuitem" aria-pressed="false">Fremhæv</button>
         </div>
         <dialog class="level-overview-dialog" id="level-overview-dialog" aria-labelledby="level-overview-title">
@@ -1516,6 +1518,7 @@
             const avatarContextWhisper = document.getElementById('avatar-context-whisper');
             const avatarContextHighlight = document.getElementById('avatar-context-highlight');
             const avatarContextMute = document.getElementById('avatar-context-mute');
+            const avatarContextKick = document.getElementById('avatar-context-kick');
             const roomNotice = document.getElementById('room-notice');
             const logoutButton = document.getElementById('logout-button');
             const chatLog = document.getElementById('chat-log');
@@ -1970,6 +1973,7 @@
             function closeAvatarContextMenu() {
                 avatarContextMenu.classList.add('hidden');
                 contextPlayerId = null;
+                avatarContextKick.hidden = true;
             }
 
             function updateProfileRelationship(relationship) {
@@ -3040,6 +3044,12 @@
                 avatarContextMute.disabled = true;
                 socket.emit('profile-mute-toggle', { playerId: contextPlayerId });
             });
+            avatarContextKick.addEventListener('click', () => {
+                if (!contextPlayerId || avatarContextKick.hidden) return;
+                const targetPlayerId = contextPlayerId;
+                socket.emit('apartment-guest-kick', { targetPlayerId });
+                closeAvatarContextMenu();
+            });
             profileFriendButton.addEventListener('click', () => {
                 if (viewingProfilePlayerId && !viewingOwnProfile) {
                     socket.emit('profile-relationship-toggle', {
@@ -3183,8 +3193,10 @@
                 }
                 contextPlayerId = target.id;
                 avatarContextName.textContent = target.name;
+                avatarContextKick.hidden = true;
                 updateAvatarContextMute();
                 socket.emit('apartment-info-request', { playerId: target.id });
+                socket.emit('apartment-kick-option-request', { targetPlayerId: target.id });
                 avatarContextMenu.classList.remove('hidden');
                 avatarContextMenu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - avatarContextMenu.offsetWidth - 8))}px`;
                 avatarContextMenu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - avatarContextMenu.offsetHeight - 8))}px`;
@@ -3426,6 +3438,23 @@
                     : 'Ingen lejlighed';
                 if (apartmentId) avatarContextApartment.dataset.apartmentId = apartmentId;
                 else delete avatarContextApartment.dataset.apartmentId;
+            });
+
+            socket.on('apartment-kick-option', ({ targetPlayerId, roomId } = {}) => {
+                if (targetPlayerId !== contextPlayerId || activeRoom !== roomId || avatarContextMenu.classList.contains('hidden')) return;
+                avatarContextKick.hidden = false;
+            });
+
+            socket.on('apartment-kick-result', ({ message } = {}) => {
+                if (!message) return;
+                setRoomNotice(message);
+                addChatSystemEntry(message);
+            });
+
+            socket.on('apartment-kick-notice', ({ message } = {}) => {
+                if (!message) return;
+                setRoomNotice(message);
+                addChatSystemEntry(message);
             });
 
             socket.on('apartment-create-result', ({ error, apartmentId, apartmentNumber } = {}) => {

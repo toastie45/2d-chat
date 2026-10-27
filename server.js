@@ -1123,6 +1123,76 @@ async function startServer() {
             }
         });
 
+        socket.on('apartment-kick-option-request', async ({ targetPlayerId } = {}) => {
+            if (!activeSocketIds.has(socket.id) || typeof targetPlayerId !== 'string' || targetPlayerId.length > 128) return;
+            const roomId = activeSocketRooms.get(socket.id);
+            const apartmentMatch = /^apartment:([1-9]\d{0,18})$/.exec(String(roomId || ''));
+            if (!apartmentMatch || targetPlayerId === socket.id || !activeSocketIds.has(targetPlayerId)
+                || activeSocketRooms.get(targetPlayerId) !== roomId) return;
+            try {
+                const { rows: [apartment] } = await pool.query(
+                    'SELECT owner_id FROM chat_apartments WHERE id = $1', [apartmentMatch[1]]
+                );
+                if (!apartment || String(apartment.owner_id) !== String(socket.data.user.id)
+                    || activeSocketRooms.get(socket.id) !== roomId
+                    || activeSocketRooms.get(targetPlayerId) !== roomId
+                    || !activeSocketIds.has(targetPlayerId)
+                    || String(activeSocketUsers.get(targetPlayerId)) === String(apartment.owner_id)) return;
+                socket.emit('apartment-kick-option', { targetPlayerId, roomId });
+            } catch (error) {
+                console.error('Could not verify apartment kick option:', getSafeErrorCode(error));
+            }
+        });
+
+        socket.on('apartment-guest-kick', async ({ targetPlayerId } = {}) => {
+            if (!activeSocketIds.has(socket.id) || socket.data.switchingRoom
+                || typeof targetPlayerId !== 'string' || targetPlayerId.length > 128) return;
+            const roomId = activeSocketRooms.get(socket.id);
+            const apartmentMatch = /^apartment:([1-9]\d{0,18})$/.exec(String(roomId || ''));
+            const targetSocket = io.sockets.sockets.get(targetPlayerId);
+            if (!apartmentMatch || !targetSocket || targetPlayerId === socket.id
+                || !activeSocketIds.has(targetPlayerId) || activeSocketRooms.get(targetPlayerId) !== roomId
+                || targetSocket.data.switchingRoom) return;
+
+            try {
+                const { rows: [apartment] } = await pool.query(
+                    'SELECT owner_id FROM chat_apartments WHERE id = $1', [apartmentMatch[1]]
+                );
+                if (!apartment || String(apartment.owner_id) !== String(socket.data.user.id)
+                    || activeSocketRooms.get(socket.id) !== roomId
+                    || activeSocketRooms.get(targetPlayerId) !== roomId
+                    || !activeSocketIds.has(targetPlayerId)
+                    || io.sockets.sockets.get(targetPlayerId) !== targetSocket
+                    || targetSocket.data.switchingRoom
+                    || String(activeSocketUsers.get(targetPlayerId)) === String(apartment.owner_id)) return;
+
+                targetSocket.data.switchingRoom = true;
+                try {
+                    const publicRooms = ['common', 'disco'];
+                    if (crypto.randomInt(2) === 1) publicRooms.reverse();
+                    let destination = '';
+                    for (const publicRoomId of publicRooms) {
+                        if (await placeSocketInRoom(targetSocket, publicRoomId)) {
+                            destination = publicRoomId === 'common' ? 'Fællesrum' : 'Diskoteket';
+                            break;
+                        }
+                    }
+                    if (!destination) {
+                        socket.emit('apartment-kick-result', { message: 'De offentlige rum er fyldt. Prøv igen senere.' });
+                        return;
+                    }
+                    const message = `${targetSocket.data.user.username} blev sendt til ${destination}.`;
+                    socket.emit('apartment-kick-result', { message });
+                    targetSocket.emit('apartment-kick-notice', { message: `Lejlighedens ejer har sendt dig til ${destination}.` });
+                } finally {
+                    targetSocket.data.switchingRoom = false;
+                }
+            } catch (error) {
+                console.error('Could not remove guest from apartment:', getSafeErrorCode(error));
+                socket.emit('apartment-kick-result', { message: 'Gæsten kunne ikke sendes ud. Prøv igen.' });
+            }
+        });
+
         socket.on('navigator-request', async () => {
             if (!activeSocketIds.has(socket.id)) return;
             try {
