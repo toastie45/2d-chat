@@ -1217,7 +1217,7 @@ async function startServer() {
                 io.to(pending.guestSocketId).emit('apartment-visit-result', { message: 'Der blev ikke lukket op.' });
                 return;
             }
-            await redis.set(`chat:apartment-admission:${pending.guestSocketId}:${pending.apartmentId}`, '1', { EX: 30 });
+            await redis.set(`chat:apartment-admission:${pending.guestSocketId}:${pending.apartmentId}`, '1', { EX: 60 });
             io.to(pending.guestSocketId).emit('apartment-enter-approved', { roomId });
         });
 
