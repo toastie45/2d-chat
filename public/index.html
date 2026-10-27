@@ -692,6 +692,35 @@
             box-shadow: 0 24px 90px #000a;
         }
         .level-overview-dialog::backdrop { background: #050605c9; }
+        .knock-dialog {
+            width: min(340px, calc(100vw - 32px));
+            padding: 20px;
+            border: 1px solid #44483b;
+            border-radius: 12px;
+            background: #171914;
+            color: #f2f0e9;
+            box-shadow: 0 24px 90px #000a;
+        }
+        .knock-dialog::backdrop { background: #050605c9; }
+        .knock-title { margin: 0 0 12px; font-size: 16px; font-weight: 700; }
+        .knock-message { margin: 0 0 16px; color: #c7c9bf; font-size: 13px; line-height: 1.5; }
+        .knock-actions { display: flex; gap: 10px; }
+        .knock-button {
+            flex: 1;
+            padding: 10px 16px;
+            border: 1px solid #44483b;
+            border-radius: 7px;
+            background: #24271f;
+            color: #f2f0e9;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .knock-button:hover { border-color: #6b7060; background: #2e3328; }
+        .knock-button.accept { border-color: #6b8f4a; background: #2e3d21; color: #c1f078; }
+        .knock-button.accept:hover { border-color: #8cae53; background: #384d29; }
+        .knock-button.reject { border-color: #8f4a4a; background: #3d2121; color: #f07878; }
+        .knock-button.reject:hover { border-color: #ae5353; background: #4d2929; }
         .level-overview-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
         .level-overview-header h2 { margin: 0; font-size: 18px; }
         .level-overview-close { width: 32px; height: 32px; border: 1px solid #44483b; border-radius: 7px; background: #24271f; color: #eee; cursor: pointer; }
@@ -1144,6 +1173,14 @@
                 </table>
             </div>
         </dialog>
+        <dialog class="knock-dialog" id="knock-dialog" aria-labelledby="knock-title">
+            <h3 class="knock-title" id="knock-title">Banker på døren</h3>
+            <p class="knock-message" id="knock-message"></p>
+            <div class="knock-actions">
+                <button class="knock-button accept" id="knock-accept" type="button">Luk op</button>
+                <button class="knock-button reject" id="knock-reject" type="button">Afvis</button>
+            </div>
+        </dialog>
     </div>
     <script src="/grid-layout.js"></script>
     <script src="/level-progression.js"></script>
@@ -1215,6 +1252,11 @@
             const levelOverviewStats = document.getElementById('level-overview-stats');
             const levelOverviewNext = document.getElementById('level-overview-next');
             const levelOverviewRows = document.getElementById('level-overview-rows');
+            const knockDialog = document.getElementById('knock-dialog');
+            const knockMessage = document.getElementById('knock-message');
+            const knockAccept = document.getElementById('knock-accept');
+            const knockReject = document.getElementById('knock-reject');
+            let currentKnockId = null;
             const levelProgression = window.ChatLevelProgression;
             const chatNavButton = document.getElementById('chat-nav-button');
             const profileNavButton = document.getElementById('profile-nav-button');
@@ -2274,28 +2316,9 @@
             }
 
             function addApartmentKnockPrompt({ knockId, guestName, apartmentNumber }) {
-                selectSidePanel('chat');
-                chatEmpty.classList.add('hidden');
-                const entry = document.createElement('div');
-                entry.className = 'chat-system';
-                const text = document.createElement('span');
-                text.textContent = `🔔 ${guestName} banker på din dør til lejlighed #${apartmentNumber}. Vil du lukke vedkommende ind? `;
-                const yes = document.createElement('button');
-                yes.type = 'button';
-                yes.textContent = 'Ja';
-                const no = document.createElement('button');
-                no.type = 'button';
-                no.textContent = 'Nej';
-                const answer = (accepted) => {
-                    yes.disabled = true;
-                    no.disabled = true;
-                    socket.emit('apartment-door-answer', { knockId, accepted });
-                };
-                yes.addEventListener('click', () => answer(true));
-                no.addEventListener('click', () => answer(false));
-                entry.append(text, yes, document.createTextNode(' / '), no);
-                chatLog.append(entry);
-                chatLog.scrollTop = chatLog.scrollHeight;
+                currentKnockId = knockId;
+                knockMessage.textContent = `${guestName} banker på din dør til lejlighed #${apartmentNumber}.`;
+                knockDialog.showModal();
             }
 
             function getCellFromPointer(event) {
@@ -2812,6 +2835,20 @@
                 if (!levelOverviewDialog.open) levelOverviewDialog.showModal();
             });
             levelOverviewClose.addEventListener('click', () => levelOverviewDialog.close());
+            knockAccept.addEventListener('click', () => {
+                if (currentKnockId) {
+                    socket.emit('apartment-door-answer', { knockId: currentKnockId, accepted: true });
+                    knockDialog.close();
+                    currentKnockId = null;
+                }
+            });
+            knockReject.addEventListener('click', () => {
+                if (currentKnockId) {
+                    socket.emit('apartment-door-answer', { knockId: currentKnockId, accepted: false });
+                    knockDialog.close();
+                    currentKnockId = null;
+                }
+            });
             apartmentCreateButton.addEventListener('click', () => {
                 apartmentCreateButton.disabled = true;
                 apartmentStatus.textContent = 'Opretter lejlighed…';
@@ -3077,7 +3114,7 @@
                 socket.disconnect();
             });
 
-            socket.on('join-success', ({ players: serverPlayers, mutedUsernames: initialMutedUsernames = [], roomId = 'common', roomName = 'Fællesrum' }) => {
+            socket.on('join-success', ({ players: serverPlayers, mutedUsernames: initialMutedUsernames = [], roomId = 'common', roomName }) => {
                 players = {};
                 myId = socket.id;
                 activeRoom = roomId;

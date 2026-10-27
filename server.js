@@ -1174,13 +1174,6 @@ async function startServer() {
                     socket.emit('apartment-enter-approved', { roomId: `apartment:${apartment.id}` });
                     return;
                 }
-                const apartmentRoomId = `apartment:${apartment.id}`;
-                const occupants = await getPlayers(apartmentRoomId);
-                const ownerPlayer = Object.values(occupants).find((player) => player.name.toLocaleLowerCase('en-US') === apartment.username.toLocaleLowerCase('en-US'));
-                if (!ownerPlayer) {
-                    socket.emit('apartment-visit-result', { message: 'Ejeren er ikke hjemme lige nu.' });
-                    return;
-                }
                 const knockId = crypto.randomUUID();
                 const knock = {
                     guestSocketId: socket.id,
@@ -1197,7 +1190,7 @@ async function startServer() {
                         io.to(socket.id).emit('apartment-visit-result', { message: 'Der blev ikke lukket op.' });
                     }
                 }, 30_000);
-                io.to(ownerPlayer.id).emit('apartment-door-knock', {
+                io.to(`session:${socket.data.sessionId}`).emit('apartment-door-knock', {
                     knockId,
                     guestName: socket.data.user.username,
                     apartmentNumber: Number(apartment.apartment_number)
@@ -1216,7 +1209,7 @@ async function startServer() {
             const pending = JSON.parse(encodedPending);
             if (pending.expiresAt < Date.now() || pending.ownerId !== String(socket.data.user.id)) return;
             const roomId = `apartment:${pending.apartmentId}`;
-            if (socket.data.roomId !== roomId || accepted !== true) {
+            if (accepted !== true) {
                 io.to(pending.guestSocketId).emit('apartment-visit-result', { message: 'Der blev ikke lukket op.' });
                 return;
             }
@@ -1877,8 +1870,10 @@ async function startServer() {
             if (activeSocketIds.has(socket.id) || socket.data.joining) return;
             socket.data.joining = true;
             try {
-                socket.data.roomId = 'common';
-                const initialRoomKeys = roomKeys('common');
+                const apartment = await getApartmentForUser(socket.data.user.id);
+                const initialRoomId = apartment ? `apartment:${apartment.id}` : 'common';
+                socket.data.roomId = initialRoomId;
+                const initialRoomKeys = roomKeys(initialRoomId);
                 await cleanupStalePlayers();
                 const { rows: mutedUsers } = await pool.query(`
                     SELECT target.username
@@ -1921,21 +1916,29 @@ async function startServer() {
 
                 const player = publicPlayer(JSON.parse(joinedPlayerJson));
                 activeSocketIds.add(socket.id);
-                activeSocketRooms.set(socket.id, 'common');
+                activeSocketRooms.set(socket.id, initialRoomId);
                 activeSocketUsers.set(socket.id, String(socket.data.user.id));
-                await socket.join(roomChannel('common'));
+                await socket.join(roomChannel(initialRoomId));
                 await socket.join(`private-mail:${socket.data.user.id}`);
                 await socket.join(`chat-progress:${socket.data.user.id}`);
-                const currentPlayers = await getPlayers('common');
+                const currentPlayers = await getPlayers(initialRoomId);
                 for (const player of Object.values(currentPlayers)) {
                     player.text = '';
                     player.messageTime = 0;
                 }
+                let roomName = initialRoomId === 'common' ? 'Fællesrum' : initialRoomId === 'disco' ? 'Diskoteket' : 'Lejlighed';
+                if (initialRoomId.startsWith('apartment:')) {
+                    const { rows: [apartment] } = await pool.query(`
+                        SELECT u.username, a.apartment_number FROM chat_apartments a
+                        JOIN chat_users u ON u.id = a.owner_id WHERE a.id = $1
+                    `, [initialRoomId.slice('apartment:'.length)]);
+                    if (apartment) roomName = `${apartment.username}s Lejlighed (#${apartment.apartment_number})`;
+                }
                 socket.emit('join-success', {
                     players: currentPlayers,
                     mutedUsernames: mutedUsers.map((mutedUser) => mutedUser.username),
-                    roomId: 'common',
-                    roomName: 'Fællesrum'
+                    roomId: initialRoomId,
+                    roomName: roomName
                 });
                 const [totalOnlineMs, { rows: [progress] }] = await Promise.all([
                     getTotalOnlineMs(socket.data.user.id),
