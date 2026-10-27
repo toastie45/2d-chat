@@ -1698,6 +1698,73 @@
                 requestBoardRender();
             }
 
+            function getAvatarDrawY(position) {
+                const visualHeight = avatarImageLoaded ? avatarHeight : avatarRadius * 2;
+                const labelHeight = 19;
+                const maxAvatarY = canvas.height - labelHeight - 5 - visualHeight / 2;
+                return Math.min(position.y, maxAvatarY);
+            }
+
+            function getBubblePlacement(position, bubbleWidth, bubbleHeight) {
+                const avatarTop = avatarImageLoaded ? avatarHeight / 2 : avatarRadius;
+                const visualAvatarWidth = avatarImageLoaded ? avatarWidth : avatarRadius * 2;
+                const avatarY = getAvatarDrawY(position);
+                const aboveY = avatarY - avatarTop - bubbleHeight - 17;
+                const centeredX = Math.max(8, Math.min(canvas.width - bubbleWidth - 8, position.x - bubbleWidth / 2));
+                if (aboveY >= 8) return { x: centeredX, y: aboveY, width: bubbleWidth, direction: 'bottom' };
+
+                const sideGap = 12;
+                const rightX = position.x + visualAvatarWidth / 2 + sideGap;
+                if (rightX + bubbleWidth <= canvas.width - 8) {
+                    return {
+                        x: rightX,
+                        y: Math.max(8, Math.min(canvas.height - bubbleHeight - 8, avatarY - bubbleHeight / 2)),
+                        width: bubbleWidth,
+                        direction: 'left'
+                    };
+                }
+                const leftX = position.x - visualAvatarWidth / 2 - sideGap - bubbleWidth;
+                if (leftX >= 8) {
+                    return {
+                        x: leftX,
+                        y: Math.max(8, Math.min(canvas.height - bubbleHeight - 8, avatarY - bubbleHeight / 2)),
+                        width: bubbleWidth,
+                        direction: 'right'
+                    };
+                }
+
+                const belowY = avatarY + avatarTop + 3 + 19 + 10;
+                return { x: centeredX, y: Math.min(belowY, canvas.height - bubbleHeight - 8), width: bubbleWidth, direction: 'top' };
+            }
+
+            function drawBubbleTail(placement, bubbleHeight, position) {
+                ctx.beginPath();
+                if (placement.direction === 'top') {
+                    const tailX = Math.max(placement.x + 13, Math.min(position.x, placement.x + placement.width - 13));
+                    ctx.moveTo(tailX - 6, placement.y + 1);
+                    ctx.lineTo(tailX + 6, placement.y + 1);
+                    ctx.lineTo(tailX, placement.y - 7);
+                } else if (placement.direction === 'left' || placement.direction === 'right') {
+                    const tailY = Math.max(placement.y + 13, Math.min(getAvatarDrawY(position), placement.y + bubbleHeight - 13));
+                    if (placement.direction === 'left') {
+                        ctx.moveTo(placement.x + 1, tailY - 6);
+                        ctx.lineTo(placement.x + 1, tailY + 6);
+                        ctx.lineTo(placement.x - 7, tailY);
+                    } else {
+                        ctx.moveTo(placement.x + placement.width - 1, tailY - 6);
+                        ctx.lineTo(placement.x + placement.width - 1, tailY + 6);
+                        ctx.lineTo(placement.x + placement.width + 7, tailY);
+                    }
+                } else {
+                    const tailX = Math.max(placement.x + 13, Math.min(position.x, placement.x + placement.width - 13));
+                    ctx.moveTo(tailX - 6, placement.y + bubbleHeight - 1);
+                    ctx.lineTo(tailX + 6, placement.y + bubbleHeight - 1);
+                    ctx.lineTo(tailX, placement.y + bubbleHeight + 7);
+                }
+                ctx.closePath();
+                ctx.fill();
+            }
+
             function formatProfileDateTime(value) {
                 if (!value) return 'Ukendt';
                 const date = new Date(value);
@@ -2760,11 +2827,7 @@
                     const visualHeight = avatarImageLoaded ? avatarHeight : avatarRadius * 2;
                     const visualWidth = avatarImageLoaded ? avatarWidth : avatarRadius * 2;
                     const labelHeight = 19;
-                    const belowAvatarOffset = Math.min(
-                        0,
-                        canvas.height - labelHeight - 2 - (position.y + visualHeight / 2 + 3)
-                    );
-                    const avatarY = position.y + belowAvatarOffset;
+                    const avatarY = getAvatarDrawY(position);
 
                     ctx.save();
                     ctx.globalAlpha = 0.16;
@@ -2864,22 +2927,16 @@
                 ctx.font = '13px Inter, system-ui, sans-serif';
                 const bubbleWidth = Math.min(240, Math.max(62, ...lines.map((line) => ctx.measureText(line).width + 22)));
                 const bubbleHeight = lines.length * 18 + 20;
-                const bubbleX = Math.max(8, Math.min(canvas.width - bubbleWidth - 8, position.x - bubbleWidth / 2));
-                const avatarTop = avatarImageLoaded ? avatarHeight / 2 : avatarRadius;
-                const bubbleY = Math.max(8, position.y - avatarTop - bubbleHeight - 17 + (1 - easedEntrance) * 9);
+                const placement = getBubblePlacement(position, bubbleWidth, bubbleHeight);
+                const bubbleX = placement.x;
+                const bubbleY = placement.y + (placement.direction === 'bottom' ? -1 : 1) * (1 - easedEntrance) * 9;
                 roundedRect(ctx, bubbleX, bubbleY, bubbleWidth, bubbleHeight, 9);
                 ctx.fillStyle = '#c9cbc7';
                 ctx.fill();
                 ctx.strokeStyle = '#6b6e69';
                 ctx.lineWidth = 1;
                 ctx.stroke();
-                ctx.beginPath();
-                const tailX = Math.max(bubbleX + 13, Math.min(position.x, bubbleX + bubbleWidth - 13));
-                ctx.moveTo(tailX - 6, bubbleY + bubbleHeight - 1);
-                ctx.lineTo(tailX + 6, bubbleY + bubbleHeight - 1);
-                ctx.lineTo(tailX, bubbleY + bubbleHeight + 7);
-                ctx.closePath();
-                ctx.fill();
+                drawBubbleTail({ ...placement, y: bubbleY }, bubbleHeight, position);
                 ctx.fillStyle = '#292b27';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
@@ -2910,9 +2967,9 @@
                 ctx.font = '13px Inter, system-ui, sans-serif';
                 const bubbleWidth = Math.min(240, Math.max(62, ...lines.map((line) => ctx.measureText(line).width + 22)));
                 const bubbleHeight = lines.length * 18 + 20;
-                const bubbleX = Math.max(8, Math.min(canvas.width - bubbleWidth - 8, position.x - bubbleWidth / 2));
-                const avatarTop = avatarImageLoaded ? avatarHeight / 2 : avatarRadius;
-                const bubbleY = Math.max(8, position.y - avatarTop - bubbleHeight - 17);
+                const placement = getBubblePlacement(position, bubbleWidth, bubbleHeight);
+                const bubbleX = placement.x;
+                const bubbleY = placement.y;
                 const highlighted = highlightedSpeechBubblePlayers.has(player.id);
 
                 roundedRect(ctx, bubbleX, bubbleY, bubbleWidth, bubbleHeight, 9);
@@ -2928,13 +2985,7 @@
                     ctx.stroke();
                     ctx.restore();
                 }
-                ctx.beginPath();
-                const tailX = Math.max(bubbleX + 13, Math.min(position.x, bubbleX + bubbleWidth - 13));
-                ctx.moveTo(tailX - 6, bubbleY + bubbleHeight - 1);
-                ctx.lineTo(tailX + 6, bubbleY + bubbleHeight - 1);
-                ctx.lineTo(tailX, bubbleY + bubbleHeight + 7);
-                ctx.closePath();
-                ctx.fill();
+                drawBubbleTail(placement, bubbleHeight, position);
                 ctx.fillStyle = isTyping ? '#4a4b45' : '#171815';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
