@@ -1153,7 +1153,7 @@
 
             <section class="game hidden" id="game-section">
                 <div class="room-strip hidden" id="room-strip" aria-label="Rummets status">
-                    <span class="room-strip-name" id="room-strip-name">Fællesrum</span>
+                    <span class="room-strip-name" id="room-strip-name">#1 Fællesrum</span>
                     <span class="room-strip-divider" aria-hidden="true"></span>
                     <span class="room-strip-tagline">Deus er en skat</span>
                     <span class="room-strip-spacer"></span>
@@ -1283,7 +1283,7 @@
                             </div>
                         </section>
                         <section class="side-panel chat-section" id="chat-panel" aria-labelledby="chat-title">
-                            <h2 class="side-title" id="chat-title">Velkommen i Fællesrum</h2>
+                            <h2 class="side-title" id="chat-title">Velkommen i #1 Fællesrum</h2>
                             <div class="chat-log" id="chat-log" role="log" aria-live="polite" aria-relevant="additions">
                                 <p class="chat-empty" id="chat-empty">Samtalen begynder her.</p>
                             </div>
@@ -1400,7 +1400,7 @@
         </main>
         <div class="avatar-context-menu hidden" id="avatar-context-menu" role="menu" aria-label="Avatarhandlinger">
             <p class="avatar-context-name" id="avatar-context-name"></p>
-            <p class="avatar-context-room">Fællesrum</p>
+            <p class="avatar-context-room">#1 Fællesrum</p>
             <button class="avatar-context-action" id="avatar-context-profile" type="button" role="menuitem">Se profilinfo</button>
             <button class="avatar-context-action" id="avatar-context-apartment" type="button" role="menuitem" hidden></button>
             <div class="avatar-context-separator" role="separator"></div>
@@ -3324,6 +3324,13 @@
                     event.preventDefault();
                     const text = draftText.trim();
                     if (!text) return;
+                    const teleportCommand = /^\/tp(?:\s+(.+))?$/i.exec(text);
+                    if (teleportCommand) {
+                        const target = teleportCommand[1]?.trim();
+                        socket.emit('profile-teleport', target ? { target } : {});
+                        updateDraftText('');
+                        return;
+                    }
                     if (activeWhisperPlayerId) {
                         if (whisperSending) return;
                         if (!canWhisperTo(activeWhisperPlayerId)) {
@@ -3579,7 +3586,7 @@
             socket.on('apartment-door-knock', (payload) => addApartmentKnockPrompt(payload));
 
             socket.on('profile-teleport-knock', ({ apartmentId, targetPlayerId } = {}) => {
-                if (!apartmentId || !targetPlayerId) return;
+                if (!apartmentId) return;
                 socket.emit('apartment-visit', { apartmentId, targetPlayerId });
             });
 
