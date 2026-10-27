@@ -1998,6 +1998,13 @@
                 viewingProfileUserId = null;
                 viewingOwnProfile = playerId === myId;
                 viewingProfileMailUsername = '';
+                apartmentCreateButton.hidden = true;
+                apartmentCreateButton.disabled = true;
+                viewProfileApartmentValue.hidden = false;
+                viewProfileApartmentValue.textContent = 'Henter…';
+                viewProfileApartmentLink.hidden = true;
+                delete viewProfileApartmentLink.dataset.apartmentId;
+                apartmentStatus.textContent = '';
                 profileMailButton.hidden = true;
                 selectSidePanel('profile-view');
                 viewProfileName.textContent = 'Henter profil…';
@@ -3192,9 +3199,12 @@
             socket.on('apartment-create-result', ({ error, apartmentId, apartmentNumber } = {}) => {
                 apartmentCreateButton.disabled = false;
                 if (error) {
-                    apartmentStatus.textContent = error;
+                    if (viewingOwnProfile && String(viewingProfileUserId) === String(currentUser?.id)) {
+                        apartmentStatus.textContent = error;
+                    }
                     return;
                 }
+                if (!viewingOwnProfile || String(viewingProfileUserId) !== String(currentUser?.id)) return;
                 apartmentStatus.textContent = `Lejlighed #${apartmentNumber} er oprettet.`;
                 apartmentCreateButton.hidden = true;
                 viewProfileApartmentValue.hidden = true;
