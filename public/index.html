@@ -3463,9 +3463,9 @@
                 socket.emit('apartment-layout-save', {
                     name: apartmentEditorName.value,
                     welcomeMessage: apartmentEditorWelcome.value,
-                    tiles: Object.entries(apartmentDraftTiles).map(([cell, state]) => {
-                        const [col, row] = cell.split(':').map(Number);
-                        return { col, row, state };
+                    tiles: gridCells.map(({ col, row }) => {
+                        const key = `${col}:${row}`;
+                        return { col, row, state: apartmentDraftTiles[key] || 'open' };
                     })
                 });
             });

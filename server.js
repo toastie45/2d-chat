@@ -55,6 +55,9 @@ GRID_CELLS.sort((first, second) => {
     return firstDistance - secondDistance;
 });
 const GRID_CELL_KEYS = new Set(GRID_CELLS.map(({ col, row }) => `${col}:${row}`));
+const DEFAULT_CLOSED_CELL_KEYS = new Set(GRID_CELLS
+    .filter((cell) => cell.kind === 'edge' && cell.y === 0 && cell.x < GRID_LAYOUT.width)
+    .map(({ col, row }) => `${col}:${row}`));
 
 function getApartmentRoomName(apartment) {
     const apartmentName = typeof apartment.apartment_name === 'string' && apartment.apartment_name.trim()
@@ -88,14 +91,20 @@ function serializeApartmentTileState({ kind, destination, color = '' }) {
 }
 
 function normalizeApartmentTiles(value) {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-    const tiles = {};
+    const tiles = Object.fromEntries([...DEFAULT_CLOSED_CELL_KEYS].map((cell) => [cell, 'closed']));
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return tiles;
     for (const [cell, state] of Object.entries(value)) {
         if (!GRID_CELL_KEYS.has(cell)) continue;
         const parsed = parseApartmentTileState(state);
         if (!parsed) continue;
-        const normalized = serializeApartmentTileState(parsed);
+        const explicitOpen = typeof state === 'string' && state.startsWith('open');
+        const normalized = DEFAULT_CLOSED_CELL_KEYS.has(cell) && parsed.kind === 'floor' && !explicitOpen
+            ? (parsed.color ? `open|${parsed.color}` : '')
+            : explicitOpen
+                ? (parsed.color ? `open|${parsed.color}` : 'open')
+                : serializeApartmentTileState(parsed);
         if (normalized) tiles[cell] = normalized;
+        else if (DEFAULT_CLOSED_CELL_KEYS.has(cell)) delete tiles[cell];
     }
     return tiles;
 }
@@ -1208,7 +1217,13 @@ async function startServer() {
 
     async function loadApartmentTiles(roomId) {
         const match = /^apartment:([1-9]\d{0,18})$/.exec(String(roomId || ''));
-        if (!match) return {};
+        if (!match) {
+            const defaults = Object.fromEntries([...DEFAULT_CLOSED_CELL_KEYS].map((cell) => [cell, 'closed']));
+            const tilesKey = roomKeys(roomId).tiles;
+            await redis.del(tilesKey);
+            if (Object.keys(defaults).length) await redis.hSet(tilesKey, defaults);
+            return defaults;
+        }
         const { rows: [apartment] } = await pool.query(
             'SELECT layout_json FROM chat_apartments WHERE id = $1',
             [match[1]]
@@ -1540,7 +1555,9 @@ async function startServer() {
                     }
                     seenTiles.add(key);
                     const normalizedState = serializeApartmentTileState(parsedState);
-                    if (normalizedState) nextTiles[key] = normalizedState;
+                    if (DEFAULT_CLOSED_CELL_KEYS.has(key) && parsedState.kind === 'floor') {
+                        nextTiles[key] = parsedState.color ? `open|${parsedState.color}` : 'open';
+                    } else if (normalizedState) nextTiles[key] = normalizedState;
                 }
                 const doorApartmentIds = [...new Set(Object.values(nextTiles)
                     .map(parseApartmentTileState)
@@ -2826,7 +2843,7 @@ async function startServer() {
             try {
                 const roomId = socket.data.roomId || 'common';
                 const keys = roomKeys(roomId);
-                if (roomId.startsWith('apartment:')) {
+                {
                     const tileStates = await redis.hGetAll(keys.tiles);
                     if (parseApartmentTileState(tileStates[`${position.col}:${position.row}`])?.kind === 'closed') {
                         socket.emit('room-error', { message: 'Feltet er låst.' });

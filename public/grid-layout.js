@@ -49,13 +49,20 @@
         }
     }
 
-    // Include the clipped half diamonds along the top and bottom edges as real cells.
-    for (let col = 1; col < columns; col++) {
-        for (const y of [0, height]) {
-            const x = col * cellSize;
-            const coordinate = coordinateForCenter(x, y);
-            cells.push({ ...coordinate, ...positionFor(coordinate.col, coordinate.row), kind: 'edge' });
-        }
+    // Include every clipped perimeter diamond as a real cell.
+    const existingCells = new Set(cells.map(({ col, row }) => `${col}:${row}`));
+    const perimeter = [
+        ...Array.from({ length: columns + 1 }, (_, col) => [col * cellSize, 0]),
+        ...Array.from({ length: columns + 1 }, (_, col) => [col * cellSize, height]),
+        ...Array.from({ length: rows - 1 }, (_, row) => [0, (row + 1) * cellSize]),
+        ...Array.from({ length: rows - 1 }, (_, row) => [width, (row + 1) * cellSize])
+    ];
+    for (const [x, y] of perimeter) {
+        const coordinate = coordinateForCenter(x, y);
+        const key = `${coordinate.col}:${coordinate.row}`;
+        if (existingCells.has(key)) continue;
+        existingCells.add(key);
+        cells.push({ ...coordinate, ...positionFor(coordinate.col, coordinate.row), kind: 'edge' });
     }
 
     return Object.freeze({
