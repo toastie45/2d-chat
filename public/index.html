@@ -2364,6 +2364,8 @@
                 profileEnemyButton.setAttribute('aria-pressed', String(enemyAdded));
                 profileEnemyButton.setAttribute('aria-label', enemyAdded ? 'Fjern fra fjendeliste' : 'Tilføj til fjendeliste');
                 profileEnemyButton.title = enemyAdded ? 'Fjern fra fjendeliste' : 'Tilføj til fjendeliste';
+                profileFriendButton.hidden = viewingOwnProfile;
+                profileEnemyButton.hidden = viewingOwnProfile;
                 profileFriendButton.disabled = viewingOwnProfile;
                 profileEnemyButton.disabled = viewingOwnProfile;
             }
