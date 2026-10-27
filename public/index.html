@@ -950,12 +950,8 @@
                         </section>
                         <section class="side-panel" id="apartment-panel" aria-labelledby="apartment-title" hidden>
                             <h2 class="side-title" id="apartment-title">Lejligheder</h2>
-                            <h3 class="navigator-section-title">Lejligheder</h3>
                             <div class="navigator-room-list navigator-apartment-room-list" role="group" aria-label="Aktive lejligheder"></div>
                             <p class="navigator-apartment-empty" id="navigator-apartment-empty">Ingen aktive lejligheder lige nu.</p>
-                            <h3 class="navigator-section-title">Lejligheder med brugere i rummet</h3>
-                            <div class="navigator-room-list navigator-apartment-occupied-room-list" role="group" aria-label="Lejligheder med brugere"></div>
-                            <p class="navigator-apartment-occupied-empty" id="navigator-apartment-occupied-empty">Ingen lejligheder med brugere lige nu.</p>
                         </section>
                         <section class="side-panel" id="members-panel" aria-labelledby="members-title" hidden>
                             <h2 class="side-title" id="members-title">Her lige nu</h2>
@@ -1208,8 +1204,6 @@
             const navigatorPublicRoomList = document.querySelector('.navigator-public-room-list');
             const navigatorApartmentRoomList = document.querySelector('.navigator-apartment-room-list');
             const navigatorApartmentEmpty = document.getElementById('navigator-apartment-empty');
-            const navigatorApartmentOccupiedRoomList = document.querySelector('.navigator-apartment-occupied-room-list');
-            const navigatorApartmentOccupiedEmpty = document.getElementById('navigator-apartment-occupied-empty');
             const chatTitle = document.getElementById('chat-title');
             const apartmentCreateButton = document.getElementById('apartment-create-button');
             const apartmentStatus = document.getElementById('apartment-status');
@@ -1618,11 +1612,8 @@
             function renderNavigatorRooms(rooms, activeRoomId) {
                 navigatorPublicRoomList.replaceChildren();
                 navigatorApartmentRoomList.replaceChildren();
-                navigatorApartmentOccupiedRoomList.replaceChildren();
                 const apartmentRooms = rooms.filter((room) => room.type === 'apartment');
-                const apartmentOccupiedRooms = rooms.filter((room) => room.type === 'apartment_occupied');
                 navigatorApartmentEmpty.hidden = apartmentRooms.length > 0;
-                navigatorApartmentOccupiedEmpty.hidden = apartmentOccupiedRooms.length > 0;
                 rooms.forEach((room) => {
                     const button = document.createElement('button');
                     button.className = 'navigator-room-button';
@@ -1632,26 +1623,20 @@
                     button.append(document.createTextNode(room.name));
                     const detail = document.createElement('span');
                     detail.className = 'navigator-room-description';
-                    if (room.type === 'apartment' || room.type === 'apartment_occupied') {
+                    if (room.type === 'apartment') {
                         detail.textContent = `${room.count} ${room.count === 1 ? 'bruger' : 'brugere'} i rummet`;
                     } else {
                         detail.textContent = room.id === activeRoomId ? 'Du er her nu' : 'Offentligt rum';
                     }
                     button.append(detail);
                     button.addEventListener('click', () => {
-                        if (room.type === 'apartment' || room.type === 'apartment_occupied') {
+                        if (room.type === 'apartment') {
                             socket.emit('apartment-visit', { apartmentId: room.id.slice('apartment:'.length) });
                         } else {
                             socket.emit('room-switch', { roomId: room.id });
                         }
                     });
-                    if (room.type === 'apartment_occupied') {
-                        navigatorApartmentOccupiedRoomList.append(button);
-                    } else if (room.type === 'apartment') {
-                        navigatorApartmentRoomList.append(button);
-                    } else {
-                        navigatorPublicRoomList.append(button);
-                    }
+                    (room.type === 'apartment' ? navigatorApartmentRoomList : navigatorPublicRoomList).append(button);
                 });
             }
 

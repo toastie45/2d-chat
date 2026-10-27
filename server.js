@@ -1102,11 +1102,10 @@ async function startServer() {
                 for (const apartment of apartments) {
                     const id = `apartment:${apartment.id}`;
                     const presentCount = await redis.hLen(roomKeys(id).players);
-                    const type = presentCount > 0 ? 'apartment_occupied' : 'apartment';
                     rooms.push({
                         id,
                         name: `${apartment.username}s Lejlighed (#${apartment.apartment_number})`,
-                        type,
+                        type: 'apartment',
                         count: presentCount,
                         ownerUsername: apartment.username,
                         apartmentNumber: Number(apartment.apartment_number)
