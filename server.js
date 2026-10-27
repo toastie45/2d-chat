@@ -1190,11 +1190,15 @@ async function startServer() {
                         io.to(socket.id).emit('apartment-visit-result', { message: 'Der blev ikke lukket op.' });
                     }
                 }, 30_000);
-                io.to(`session:${socket.data.sessionId}`).emit('apartment-door-knock', {
-                    knockId,
-                    guestName: socket.data.user.username,
-                    apartmentNumber: Number(apartment.apartment_number)
-                });
+                for (const [socketId, userId] of activeSocketUsers.entries()) {
+                    if (String(userId) === String(apartment.owner_id)) {
+                        io.to(socketId).emit('apartment-door-knock', {
+                            knockId,
+                            guestName: socket.data.user.username,
+                            apartmentNumber: Number(apartment.apartment_number)
+                        });
+                    }
+                }
                 socket.emit('apartment-visit-result', { message: 'Du banker på. Venter på svar…' });
             } catch (error) {
                 console.error('Could not request apartment access:', getSafeErrorCode(error));
