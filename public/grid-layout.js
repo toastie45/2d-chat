@@ -49,6 +49,15 @@
         }
     }
 
+    // Include the clipped half diamonds along the top and bottom edges as real cells.
+    for (let col = 1; col < columns; col++) {
+        for (const y of [0, height]) {
+            const x = col * cellSize;
+            const coordinate = coordinateForCenter(x, y);
+            cells.push({ ...coordinate, ...positionFor(coordinate.col, coordinate.row), kind: 'edge' });
+        }
+    }
+
     return Object.freeze({
         width,
         height,

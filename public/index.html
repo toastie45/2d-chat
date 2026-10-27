@@ -525,7 +525,7 @@
         .apartment-editor-custom-color { width: 34px; height: 28px; padding: 2px; border: 1px solid #494c43; border-radius: 5px; background: #252623; cursor: pointer; }
         .apartment-editor-grid { position: relative; width: 100%; aspect-ratio: 3 / 2; overflow: hidden; margin: 12px 0; border: 1px solid #353732; border-radius: 7px; background: #100d09; }
         .apartment-editor-tile { position: absolute; padding: 0; border: 1px solid #624a27; background: #282015; cursor: pointer; }
-        .apartment-editor-tile[data-kind="closed"] { border-color: #b45d60; background: #633438; }
+        .apartment-editor-tile[data-kind="closed"] { border-color: #55574e; background: #171915; }
         .apartment-editor-tile[data-kind="door"] { border-color: #69a6e3; background: #285583; }
         .apartment-editor-tile:focus-visible { z-index: 1; outline: 2px solid #fff; outline-offset: 1px; }
         .apartment-editor-actions { display: flex; gap: 8px; }
@@ -1331,6 +1331,12 @@
                                 <button class="apartment-editor-tool" type="button" data-apartment-tool="closed" aria-pressed="true">Lukket</button>
                                 <button class="apartment-editor-tool" type="button" data-apartment-tool="door" aria-pressed="false">Dør</button>
                             </div>
+                            <label class="profile-field" id="apartment-editor-door-destination-wrap" for="apartment-editor-door-destination" hidden>Destination for dør
+                                <select id="apartment-editor-door-destination">
+                                    <option value="common">#1 Fællesrum</option>
+                                    <option value="disco">#2 Diskoteket</option>
+                                </select>
+                            </label>
                             <div class="apartment-editor-colors" id="apartment-editor-colors" role="group" aria-label="Vælg flisefarve">
                                 <button class="apartment-editor-color" type="button" data-apartment-color="#1f6a4b" aria-label="Grøn" title="Grøn" style="background:#1f6a4b" aria-pressed="false"></button>
                                 <button class="apartment-editor-color" type="button" data-apartment-color="#287c64" aria-label="Turkis" title="Turkis" style="background:#287c64" aria-pressed="false"></button>
@@ -1640,6 +1646,8 @@
             const apartmentEditorPanel = document.getElementById('apartment-editor-panel');
             const apartmentEditorGrid = document.getElementById('apartment-editor-grid');
             const apartmentEditorPaintMode = document.getElementById('apartment-editor-paint-mode');
+            const apartmentEditorDoorDestinationWrap = document.getElementById('apartment-editor-door-destination-wrap');
+            const apartmentEditorDoorDestination = document.getElementById('apartment-editor-door-destination');
             const apartmentEditorName = document.getElementById('apartment-editor-name');
             const apartmentEditorSave = document.getElementById('apartment-editor-save');
             const apartmentEditorReset = document.getElementById('apartment-editor-reset');
@@ -2135,16 +2143,20 @@
                     const key = `${cell.col}:${cell.row}`;
                     const state = apartmentTiles[key] || 'open';
                     const isCustomColor = /^#[0-9a-f]{6}$/i.test(state);
+                    const isDoor = state === 'door' || (typeof state === 'string' && state.startsWith('door:'));
                     const tile = document.createElement('button');
                     tile.type = 'button';
                     tile.className = 'apartment-editor-tile';
                     tile.dataset.cell = key;
-                    tile.dataset.kind = isCustomColor ? 'color' : state;
+                    tile.dataset.kind = isCustomColor ? 'color' : isDoor ? 'door' : state;
                     if (isCustomColor) {
                         tile.style.backgroundColor = state;
                         tile.style.borderColor = state;
                     }
-                    tile.setAttribute('aria-label', `${isCustomColor ? 'Farvet' : state === 'open' ? 'Åbent' : state === 'closed' ? 'Lukket' : 'Dør'} felt, kolonne ${cell.col + 1}, række ${cell.row + 1}`);
+                    const doorDestination = isDoor && typeof state === 'string' ? state.slice('door:'.length) : 'common';
+                    const destinationLabel = [...apartmentEditorDoorDestination.options]
+                        .find((option) => option.value === doorDestination)?.textContent || 'valgt rum';
+                    tile.setAttribute('aria-label', `${isCustomColor ? 'Farvet' : state === 'open' ? 'Åbent' : state === 'closed' ? 'Låst' : `Dør til ${destinationLabel}`} felt, kolonne ${cell.col + 1}, række ${cell.row + 1}`);
                     tile.style.left = `${(cell.x / gridLayout.width) * 100}%`;
                     tile.style.top = `${(cell.y / gridLayout.height) * 100}%`;
                     tile.style.width = `${(tileSide / gridLayout.width) * 100}%`;
@@ -2900,8 +2912,6 @@
                 let nearestCell = null;
                 let nearestDistance = Infinity;
                 for (const cell of gridCells) {
-                    const distanceWithinDiamond = Math.abs(cell.x - x) + Math.abs(cell.y - y);
-                    if (distanceWithinDiamond > cellSize / 2 + 0.5) continue;
                     const distance = (cell.x - x) ** 2 + (cell.y - y) ** 2;
                     if (distance < nearestDistance) {
                         nearestCell = cell;
@@ -2926,6 +2936,7 @@
                 for (const cell of gridCells) {
                     const tileState = apartmentRoom ? apartmentTiles[`${cell.col}:${cell.row}`] : null;
                     const customColor = typeof tileState === 'string' && /^#[0-9a-f]{6}$/i.test(tileState);
+                    const doorTile = tileState === 'door' || (typeof tileState === 'string' && tileState.startsWith('door:'));
                     ctx.beginPath();
                     ctx.moveTo(cell.x, cell.y - cellSize / 2);
                     ctx.lineTo(cell.x + cellSize / 2, cell.y);
@@ -2934,10 +2945,10 @@
                     ctx.closePath();
                     ctx.fillStyle = customColor
                         ? tileState
-                        : tileState === 'closed'
-                        ? '#633438'
-                        : tileState === 'door'
+                        : doorTile
                             ? '#285583'
+                            : tileState === 'closed'
+                                ? (cell.kind === 'primary' ? '#0e100d' : '#151914')
                             : discoRoom
                         ? (cell.kind === 'primary' ? '#12101b' : '#20162a')
                         : apartmentRoom
@@ -2946,10 +2957,10 @@
                     ctx.fill();
                     ctx.strokeStyle = customColor
                         ? tileState
-                        : tileState === 'closed'
-                        ? '#b45d60'
-                        : tileState === 'door'
+                        : doorTile
                             ? '#69a6e3'
+                            : tileState === 'closed'
+                                ? '#4b5048'
                             : discoRoom
                         ? (cell.kind === 'primary' ? '#302743' : '#624276')
                         : apartmentRoom
@@ -2957,7 +2968,16 @@
                             : (cell.kind === 'primary' ? '#293126' : '#3e5532');
                     ctx.lineWidth = 1.5;
                     ctx.stroke();
-                    if (tileState === 'door') {
+                    if (tileState === 'closed') {
+                        ctx.strokeStyle = '#c5c9bd';
+                        ctx.lineWidth = 1.7;
+                        ctx.beginPath();
+                        ctx.arc(cell.x, cell.y - 2, 4, Math.PI, 0);
+                        ctx.stroke();
+                        ctx.fillStyle = '#c5c9bd';
+                        ctx.fillRect(cell.x - 6, cell.y - 2, 12, 9);
+                    }
+                    if (doorTile) {
                         ctx.fillStyle = '#9dcaff';
                         ctx.fillRect(cell.x - 6, cell.y - 9, 12, 18);
                         ctx.fillStyle = '#183653';
@@ -3404,15 +3424,22 @@
                 closeAvatarContextMenu();
                 apartmentEditorStatus.textContent = 'Henter lejlighedens felter…';
                 socket.emit('apartment-layout-request');
+                socket.emit('apartment-door-options-request');
             });
             document.querySelectorAll('[data-apartment-tool]').forEach((button) => {
                 button.addEventListener('click', () => {
-                    apartmentEditTool = button.dataset.apartmentTool;
+                    apartmentEditTool = button.dataset.apartmentTool === 'door'
+                        ? `door:${apartmentEditorDoorDestination.value}`
+                        : button.dataset.apartmentTool;
                     document.querySelectorAll('[data-apartment-color]').forEach((colorButton) => colorButton.setAttribute('aria-pressed', 'false'));
                     document.querySelectorAll('[data-apartment-tool]').forEach((toolButton) => {
                         toolButton.setAttribute('aria-pressed', String(toolButton === button));
                     });
+                    apartmentEditorDoorDestinationWrap.hidden = button.dataset.apartmentTool !== 'door';
                 });
+            });
+            apartmentEditorDoorDestination.addEventListener('change', () => {
+                apartmentEditTool = `door:${apartmentEditorDoorDestination.value}`;
             });
             document.querySelectorAll('[data-apartment-color]').forEach((button) => {
                 button.addEventListener('click', () => {
@@ -3673,6 +3700,12 @@
                 canvas.focus({ preventScroll: true });
                 if (!apartmentEditorPanel.hidden && canEditCurrentApartment && apartmentCanvasPaintMode) {
                     paintApartmentCell(`${cell.col}:${cell.row}`);
+                    return;
+                }
+                const tileState = apartmentTiles[`${cell.col}:${cell.row}`];
+                if (activeRoom.startsWith('apartment:')
+                    && (tileState === 'door' || (typeof tileState === 'string' && tileState.startsWith('door:')))) {
+                    socket.emit('apartment-door-use', { col: cell.col, row: cell.row });
                     return;
                 }
                 moveToCell(cell.col, cell.row);
@@ -3952,6 +3985,30 @@
                 apartmentEditorStatus.textContent = '';
                 selectSidePanel('apartment-editor');
                 requestBoardRender();
+            });
+
+            socket.on('apartment-door-options', ({ roomId, rooms = [] } = {}) => {
+                if (roomId !== activeRoom || !canEditCurrentApartment || !Array.isArray(rooms)) return;
+                const selected = apartmentEditorDoorDestination.value;
+                apartmentEditorDoorDestination.replaceChildren();
+                rooms.forEach((room) => {
+                    if (!room || typeof room.id !== 'string' || typeof room.name !== 'string') return;
+                    const option = document.createElement('option');
+                    option.value = room.id;
+                    option.textContent = room.name;
+                    apartmentEditorDoorDestination.append(option);
+                });
+                if ([...apartmentEditorDoorDestination.options].some((option) => option.value === selected)) {
+                    apartmentEditorDoorDestination.value = selected;
+                }
+                renderApartmentEditorGrid();
+            });
+
+            socket.on('apartment-door-destination', ({ roomId } = {}) => {
+                if (roomId === 'common' || roomId === 'disco') socket.emit('room-switch', { roomId });
+                else if (typeof roomId === 'string' && roomId.startsWith('apartment:')) {
+                    socket.emit('apartment-visit', { apartmentId: roomId.slice('apartment:'.length) });
+                }
             });
 
             socket.on('apartment-layout-updated', ({ roomId, tiles, name, roomName, welcomeTitle } = {}) => {
