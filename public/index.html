@@ -340,6 +340,10 @@
 
         .toolbar-button:hover { border-color: #9fc65f; background: #2c3027; color: #d5f59c; }
         .toolbar-button:active { transform: translateY(1px); }
+        .navigator-category-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+        .navigator-category-tab { min-height: 36px; padding: 7px 9px; border: 1px solid #393b33; border-radius: 8px; background: #20211d; color: #c6c8bd; font: inherit; font-size: 11px; font-weight: 650; cursor: pointer; }
+        .navigator-category-tab:hover { border-color: #9fc65f; color: #e6e6df; }
+        .navigator-category-tab[aria-selected="true"] { border-color: #8cae53; background: #252a1e; color: #c1f078; }
         .navigator-room-list { display: grid; gap: 9px; }
         .navigator-section-title { margin: 18px 0 8px; color: #9fa194; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
         .navigator-section-title:first-child { margin-top: 0; }
@@ -447,6 +451,7 @@
             text-overflow: ellipsis;
             white-space: nowrap;
         }
+        .member-room { margin-left: auto; color: var(--muted); font-size: 10px; text-align: right; }
 
         .you-tag { margin-left: auto; color: var(--muted); font-size: 10px; }
         .user-search-input {
@@ -987,9 +992,6 @@
                             <button class="toolbar-button" id="navigator-nav-button" type="button" aria-pressed="false" aria-controls="navigator-panel" aria-label="Navigator" title="Navigator">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.8 8.2-2.4 5.2-5.2 2.4 2.4-5.2z"/></svg>
                             </button>
-                            <button class="toolbar-button" id="apartment-nav-button" type="button" aria-pressed="false" aria-controls="apartment-panel" aria-label="Lejligheder" title="Lejligheder">
-                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3L2 12h3v8h6v-6h2v6h6v-8h3L12 3z"/></svg>
-                            </button>
                             <button class="toolbar-button" id="search-nav-button" type="button" aria-pressed="false" aria-controls="search-panel" aria-label="Søg efter brugere" title="Søg efter brugere">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.4-4.4"/></svg>
                             </button>
@@ -1002,16 +1004,20 @@
                     <aside class="side-card">
                         <section class="side-panel" id="navigator-panel" aria-labelledby="navigator-title" hidden>
                             <h2 class="side-title" id="navigator-title">Navigator</h2>
-                            <h3 class="navigator-section-title">Offentlige rum</h3>
-                            <div class="navigator-room-list navigator-public-room-list" role="group" aria-label="Offentlige rum"></div>
-                        </section>
-                        <section class="side-panel" id="apartment-panel" aria-labelledby="apartment-title" hidden>
-                            <h2 class="side-title" id="apartment-title">Lejligheder</h2>
-                            <div class="navigator-room-list navigator-apartment-room-list" role="group" aria-label="Aktive lejligheder"></div>
-                            <p class="navigator-apartment-empty" id="navigator-apartment-empty">Ingen aktive lejligheder lige nu.</p>
+                            <div class="navigator-category-tabs" role="tablist" aria-label="Vælg rumtype">
+                                <button class="navigator-category-tab" id="navigator-public-tab" type="button" role="tab" aria-selected="true" aria-controls="navigator-public-view">Offentlige rum</button>
+                                <button class="navigator-category-tab" id="navigator-apartment-tab" type="button" role="tab" aria-selected="false" aria-controls="navigator-apartment-view" tabindex="-1">Lejligheder</button>
+                            </div>
+                            <div id="navigator-public-view" role="tabpanel" aria-labelledby="navigator-public-tab">
+                                <div class="navigator-room-list navigator-public-room-list" role="group" aria-label="Offentlige rum"></div>
+                            </div>
+                            <div id="navigator-apartment-view" role="tabpanel" aria-labelledby="navigator-apartment-tab" hidden>
+                                <div class="navigator-room-list navigator-apartment-room-list" role="group" aria-label="Aktive lejligheder"></div>
+                                <p class="navigator-apartment-empty" id="navigator-apartment-empty">Ingen aktive lejligheder lige nu.</p>
+                            </div>
                         </section>
                         <section class="side-panel" id="members-panel" aria-labelledby="members-title" hidden>
-                            <h2 class="side-title" id="members-title">Her lige nu</h2>
+                            <h2 class="side-title" id="members-title">Online på platformen</h2>
                             <div class="member-list" id="member-list" role="list" aria-live="polite"></div>
                             <p class="member-empty hidden" id="member-empty" role="status" aria-live="polite">Der er ingen brugere her endnu.</p>
                         </section>
@@ -1264,9 +1270,11 @@
             const refreshNavButton = document.getElementById('refresh-nav-button');
             const membersNavButton = document.getElementById('members-nav-button');
             const navigatorNavButton = document.getElementById('navigator-nav-button');
-            const apartmentNavButton = document.getElementById('apartment-nav-button');
             const navigatorPanel = document.getElementById('navigator-panel');
-            const apartmentPanel = document.getElementById('apartment-panel');
+            const navigatorPublicTab = document.getElementById('navigator-public-tab');
+            const navigatorApartmentTab = document.getElementById('navigator-apartment-tab');
+            const navigatorPublicView = document.getElementById('navigator-public-view');
+            const navigatorApartmentView = document.getElementById('navigator-apartment-view');
             const navigatorPublicRoomList = document.querySelector('.navigator-public-room-list');
             const navigatorApartmentRoomList = document.querySelector('.navigator-apartment-room-list');
             const navigatorApartmentEmpty = document.getElementById('navigator-apartment-empty');
@@ -1386,6 +1394,7 @@
             const avatarColors = ['#c1f078', '#83c9f4', '#f3a985', '#c4a7f5', '#f5d16f', '#f18db0'];
 
             let players = {};
+            let onlineUsers = [];
             let myId = null;
             let hoveredCell = null;
             let animationFrame = null;
@@ -1635,7 +1644,6 @@
             function updateToolbarState() {
                 membersNavButton.setAttribute('aria-pressed', String(!membersPanel.hidden));
                 navigatorNavButton.setAttribute('aria-pressed', String(!navigatorPanel.hidden));
-                apartmentNavButton.setAttribute('aria-pressed', String(!apartmentPanel.hidden));
                 chatNavButton.setAttribute('aria-pressed', String(!chatPanel.hidden));
                 profileNavButton.setAttribute('aria-pressed', String(!profileEditorPanel.hidden));
                 searchNavButton.setAttribute('aria-pressed', String(!searchPanel.hidden));
@@ -1659,13 +1667,23 @@
                 }
                 membersPanel.hidden = panel !== 'members';
                 navigatorPanel.hidden = panel !== 'navigator';
-                apartmentPanel.hidden = panel !== 'apartment';
                 chatPanel.hidden = panel !== 'chat';
                 searchPanel.hidden = panel !== 'search';
                 privateMailPanel.hidden = panel !== 'private-mail';
                 profileEditorPanel.hidden = panel !== 'profile-editor';
                 profileViewPanel.hidden = panel !== 'profile-view';
                 updateToolbarState();
+            }
+
+            function selectNavigatorCategory(category, moveFocus = false) {
+                const showApartments = category === 'apartments';
+                navigatorPublicView.hidden = showApartments;
+                navigatorApartmentView.hidden = !showApartments;
+                navigatorPublicTab.setAttribute('aria-selected', String(!showApartments));
+                navigatorApartmentTab.setAttribute('aria-selected', String(showApartments));
+                navigatorPublicTab.tabIndex = showApartments ? -1 : 0;
+                navigatorApartmentTab.tabIndex = showApartments ? 0 : -1;
+                if (moveFocus) (showApartments ? navigatorApartmentTab : navigatorPublicTab).focus();
             }
 
             function applyRoomState(roomId, roomName, serverPlayers = {}) {
@@ -2138,37 +2156,53 @@
             }
 
             function updateOnlineList() {
-                const onlinePlayers = Object.values(players);
-                const countLabel = `${onlinePlayers.length} ${onlinePlayers.length === 1 ? 'person' : 'personer'}`;
-                roomStripCount.textContent = `${countLabel} online`;
-                membersNavButton.setAttribute('aria-label', `Vis online i rummet, ${countLabel} online`);
-                const sortedPlayers = onlinePlayers
-                    .sort((first, second) => first.name.localeCompare(second.name, 'da'));
+                const roomPlayers = Object.values(players);
+                const roomCountLabel = `${roomPlayers.length} ${roomPlayers.length === 1 ? 'person' : 'personer'}`;
+                roomStripCount.textContent = `${roomCountLabel} online`;
                 renderFriendMenu();
-                memberList.replaceChildren();
-                memberEmpty.textContent = 'Der er ingen brugere her endnu.';
-                memberEmpty.classList.toggle('hidden', sortedPlayers.length > 0);
+                renderUserSearchResults();
+                if (!membersPanel.hidden) socket.emit('online-users-request');
+            }
 
-                sortedPlayers.forEach((player) => {
+            function renderOnlineUsers(users = []) {
+                onlineUsers = Array.isArray(users) ? users : [];
+                const countLabel = `${onlineUsers.length} ${onlineUsers.length === 1 ? 'person' : 'personer'}`;
+                membersNavButton.setAttribute('aria-label', `Vis online på platformen, ${countLabel} online`);
+                memberList.replaceChildren();
+                memberEmpty.textContent = onlineUsers.length ? '' : 'Der er ingen online brugere lige nu.';
+                memberEmpty.classList.toggle('hidden', onlineUsers.length > 0);
+
+                onlineUsers
+                    .slice()
+                    .sort((first, second) => first.name.localeCompare(second.name, 'da'))
+                    .forEach((player) => {
                     const row = createMemberRow(player);
                     row.setAttribute('role', 'listitem');
-                    row.setAttribute('aria-label', player.id === myId ? `${player.name}, dig` : player.name);
+                    row.setAttribute('aria-label', `${player.name}, ${player.roomName}${player.isSelf ? ', dig' : ''}`);
                     memberList.append(row);
                 });
-                renderUserSearchResults();
             }
 
             function createMemberRow(player, element = 'div') {
                 const row = document.createElement(element);
                 row.className = 'member';
-                const dot = document.createElement('span');
-                dot.className = 'member-dot';
-                dot.style.backgroundColor = colorForPlayer(player.id);
+                if (!player.roomName) {
+                    const dot = document.createElement('span');
+                    dot.className = 'member-dot';
+                    dot.style.backgroundColor = colorForPlayer(player.id);
+                    row.append(dot);
+                }
                 const name = document.createElement('span');
                 name.className = 'member-name';
                 name.textContent = player.name;
-                row.append(dot, name);
-                if (player.id === myId) {
+                row.append(name);
+                if (player.roomName) {
+                    const room = document.createElement('span');
+                    room.className = 'member-room';
+                    room.textContent = player.roomName;
+                    row.append(room);
+                }
+                if (player.isSelf || player.id === myId) {
                     const you = document.createElement('span');
                     you.className = 'you-tag';
                     you.textContent = 'dig';
@@ -2754,14 +2788,22 @@
 
             authSwitchButton.addEventListener('click', () => selectAuthMode(authMode === 'register' ? 'login' : 'register'));
             refreshNavButton.addEventListener('click', () => window.location.reload());
-            membersNavButton.addEventListener('click', () => selectSidePanel('members'));
+            membersNavButton.addEventListener('click', () => {
+                selectSidePanel('members');
+                socket.emit('online-users-request');
+            });
             navigatorNavButton.addEventListener('click', () => {
                 selectSidePanel('navigator');
                 socket.emit('navigator-request');
             });
-            apartmentNavButton.addEventListener('click', () => {
-                selectSidePanel('apartment');
-                socket.emit('navigator-request');
+            navigatorPublicTab.addEventListener('click', () => selectNavigatorCategory('public'));
+            navigatorApartmentTab.addEventListener('click', () => selectNavigatorCategory('apartments'));
+            [navigatorPublicTab, navigatorApartmentTab].forEach((tab) => {
+                tab.addEventListener('keydown', (event) => {
+                    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+                    event.preventDefault();
+                    selectNavigatorCategory(event.key === 'ArrowRight' ? 'apartments' : 'public', true);
+                });
             });
             chatNavButton.addEventListener('click', () => selectSidePanel('chat'));
             profileNavButton.addEventListener('click', openProfileEditor);
@@ -3203,6 +3245,7 @@
                 clearChatLog();
                 addChatSystemEntry(`Du er kommet ind i chatten som ${currentUser.username}.`);
                 updateOnlineList();
+                socket.emit('online-users-request');
                 requestProfileManagement();
                 socket.emit('private-mail-unread-request');
                 selectSidePanel('chat');
@@ -3220,6 +3263,7 @@
                 if (!roomId || !roomName) return;
                 applyRoomState(roomId, roomName, serverPlayers);
                 if (!navigatorPanel.hidden) socket.emit('navigator-request');
+                if (!membersPanel.hidden) socket.emit('online-users-request');
             });
 
             socket.on('navigator-rooms', ({ rooms = [], activeRoomId } = {}) => {
@@ -3228,7 +3272,10 @@
 
             socket.on('navigator-refresh', () => {
                 if (!navigatorPanel.hidden) socket.emit('navigator-request');
+                if (!membersPanel.hidden) socket.emit('online-users-request');
             });
+
+            socket.on('online-users', ({ users = [] } = {}) => renderOnlineUsers(users));
 
             socket.on('apartment-info', ({ playerId, apartmentId, apartmentNumber } = {}) => {
                 if (playerId !== contextPlayerId) return;

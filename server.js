@@ -913,6 +913,7 @@ async function startServer() {
                 }
                 io.to(roomChannel(currentRoomId)).emit('playerDisconnected', id);
             }
+            if (removedIds.length > 0) io.emit('navigator-refresh');
         }
         await cleanupOrphanedOnlineSessions();
     }
@@ -974,6 +975,7 @@ async function startServer() {
             }
             io.to(id).emit('session-kicked', { message: 'Du blev fjernet fra rummet efter 20 minutters inaktivitet.' });
             io.to(roomChannel(roomId)).emit('playerDisconnected', id);
+            io.emit('navigator-refresh');
             setTimeout(() => io.in(id).disconnectSockets(true), 100);
             }
         }
@@ -990,7 +992,10 @@ async function startServer() {
                 keys: [keys.players, keys.cells],
                 arguments: [socketId]
             });
-            if (removed) io.to(roomChannel(roomId)).emit('playerDisconnected', socketId);
+            if (removed) {
+                io.to(roomChannel(roomId)).emit('playerDisconnected', socketId);
+                io.emit('navigator-refresh');
+            }
         } catch (error) {
             console.error('Could not remove kicked chat participant:', getSafeErrorCode(error));
         }
@@ -1148,6 +1153,47 @@ async function startServer() {
             } catch (error) {
                 console.error('Could not list navigator rooms:', getSafeErrorCode(error));
                 socket.emit('navigator-rooms', { rooms: [], error: 'Rumlisten kunne ikke hentes.' });
+            }
+        });
+
+        socket.on('online-users-request', async () => {
+            if (!activeSocketIds.has(socket.id)) return;
+            try {
+                await cleanupStalePlayers();
+                const [roomIds, { rows: apartments }] = await Promise.all([
+                    getAllRoomIds(),
+                    pool.query(`
+                        SELECT a.id, a.apartment_number, u.username
+                        FROM chat_apartments a
+                        JOIN chat_users u ON u.id = a.owner_id
+                    `)
+                ]);
+                const roomNames = new Map([
+                    ['common', 'Fællesrum'],
+                    ['disco', 'Diskoteket'],
+                    ...apartments.map((apartment) => [
+                        `apartment:${apartment.id}`,
+                        `${apartment.username}s Lejlighed (#${apartment.apartment_number})`
+                    ])
+                ]);
+                const users = [];
+                for (const roomId of roomIds) {
+                    const players = await redis.hGetAll(roomKeys(roomId).players);
+                    for (const [playerId, encodedPlayer] of Object.entries(players)) {
+                        const player = JSON.parse(encodedPlayer);
+                        users.push({
+                            name: player.name,
+                            roomId,
+                            roomName: roomNames.get(roomId) || 'Ukendt rum',
+                            isSelf: playerId === socket.id
+                        });
+                    }
+                }
+                users.sort((first, second) => first.name.localeCompare(second.name, 'da'));
+                socket.emit('online-users', { users });
+            } catch (error) {
+                console.error('Could not list online users:', getSafeErrorCode(error));
+                socket.emit('online-users', { users: [], error: 'Online-listen kunne ikke hentes.' });
             }
         });
 
@@ -2296,6 +2342,7 @@ async function startServer() {
                     activeSocketRooms.delete(id);
                     activeSocketUsers.delete(id);
                     io.to(roomChannel(roomId)).emit('playerDisconnected', id);
+                    io.emit('navigator-refresh');
                     try { await accountOnlineSession(id, true); }
                     catch (error) { console.error('Could not account for missing chat session:', getSafeErrorCode(error)); }
                     io.in(id).disconnectSockets(true);
