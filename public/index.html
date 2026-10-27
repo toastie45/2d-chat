@@ -2022,6 +2022,19 @@
                 updateToolbarState();
             }
 
+            function toggleProfileSettingsPanel(name) {
+                const openForm = name === 'password'
+                    ? profilePasswordForm.hidden
+                    : profileWelcomeForm.hidden;
+                profilePasswordForm.hidden = name !== 'password' || !openForm;
+                profileWelcomeForm.hidden = name !== 'welcome' || !openForm;
+                profilePasswordToggle.setAttribute('aria-expanded', String(name === 'password' && openForm));
+                profileWelcomeToggle.setAttribute('aria-expanded', String(name === 'welcome' && openForm));
+                if (!openForm) return;
+                if (name === 'password') profilePasswordCurrent.focus();
+                else profileWelcomeMessage.focus();
+            }
+
             function selectNavigatorCategory(category, moveFocus = false) {
                 const showApartments = category === 'apartments';
                 navigatorPublicView.hidden = showApartments;
@@ -2823,6 +2836,25 @@
                     ctx.stroke();
                 }
 
+                // Draw every nameplate first so all avatars remain visually in front of the names.
+                ctx.font = '11px Inter, system-ui, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                for (const player of Object.values(players)) {
+                    const position = player.position || player.target || positionFor(player);
+                    if (!position) continue;
+                    const visualHeight = avatarImageLoaded ? avatarHeight : avatarRadius * 2;
+                    const avatarY = getAvatarDrawY(position);
+                    const nameWidth = ctx.measureText(player.name).width;
+                    const labelWidth = Math.min(cellSize - 10, nameWidth + 14);
+                    const labelY = avatarY + visualHeight / 2 + 3;
+                    roundedRect(ctx, position.x - labelWidth / 2, labelY, labelWidth, 19, 6);
+                    ctx.fillStyle = '#10110f';
+                    ctx.fill();
+                    ctx.fillStyle = '#e8e7df';
+                    ctx.fillText(player.name, position.x, labelY + 4, labelWidth - 8);
+                }
+
                 const now = Date.now();
                 for (const player of Object.values(players)) {
                     const position = player.position || player.target || positionFor(player);
@@ -2830,7 +2862,6 @@
                     const muted = isMutedPlayer(player);
                     const visualHeight = avatarImageLoaded ? avatarHeight : avatarRadius * 2;
                     const visualWidth = avatarImageLoaded ? avatarWidth : avatarRadius * 2;
-                    const labelHeight = 19;
                     const avatarY = getAvatarDrawY(position);
 
                     ctx.save();
@@ -2887,17 +2918,6 @@
                         ctx.restore();
                     }
 
-                    ctx.font = '11px Inter, system-ui, sans-serif';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'top';
-                    const nameWidth = ctx.measureText(player.name).width;
-                    const labelWidth = Math.min(cellSize - 10, nameWidth + 14);
-                    const labelY = avatarY + visualHeight / 2 + 3;
-                    roundedRect(ctx, position.x - labelWidth / 2, labelY, labelWidth, labelHeight, 6);
-                    ctx.fillStyle = '#10110f';
-                    ctx.fill();
-                    ctx.fillStyle = '#e8e7df';
-                    ctx.fillText(player.name, position.x, labelY + 4, labelWidth - 8);
                 }
 
                 // Highlighted bubbles are drawn last so they remain visible when bubbles overlap.
@@ -3353,10 +3373,8 @@
             });
 
             profilePasswordToggle.addEventListener('click', () => {
-                const isOpening = profilePasswordForm.hidden;
-                profilePasswordForm.hidden = !isOpening;
-                profilePasswordToggle.setAttribute('aria-expanded', String(isOpening));
-                if (isOpening) profilePasswordCurrent.focus();
+                selectSidePanel('profile-editor');
+                toggleProfileSettingsPanel('password');
             });
 
             profilePasswordForm.addEventListener('submit', async (event) => {
@@ -3390,10 +3408,8 @@
             });
 
             profileWelcomeToggle.addEventListener('click', () => {
-                const isOpening = profileWelcomeForm.hidden;
-                profileWelcomeForm.hidden = !isOpening;
-                profileWelcomeToggle.setAttribute('aria-expanded', String(isOpening));
-                if (isOpening) profileWelcomeMessage.focus();
+                selectSidePanel('profile-editor');
+                toggleProfileSettingsPanel('welcome');
             });
 
             profileWelcomeForm.addEventListener('submit', async (event) => {
