@@ -50,11 +50,39 @@ const SESSION_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 const PUBLIC_ROOM_NAMES = Object.freeze({ common: '#1 Fællesrum', disco: '#2 Diskoteket' });
 const GRID_CELLS = [...GRID_LAYOUT.cells];
 GRID_CELLS.sort((first, second) => {
-    const firstDistance = Math.abs(first.col - 2.5) + Math.abs(first.row - 1.5);
-    const secondDistance = Math.abs(second.col - 2.5) + Math.abs(second.row - 1.5);
+    const firstDistance = Math.abs(first.x - GRID_LAYOUT.width / 2) + Math.abs(first.y - GRID_LAYOUT.height / 2);
+    const secondDistance = Math.abs(second.x - GRID_LAYOUT.width / 2) + Math.abs(second.y - GRID_LAYOUT.height / 2);
     return firstDistance - secondDistance;
 });
 const GRID_CELL_KEYS = new Set(GRID_CELLS.map(({ col, row }) => `${col}:${row}`));
+
+function normalizeApartmentTiles(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    const tiles = {};
+    for (const [cell, state] of Object.entries(value)) {
+        if (GRID_CELL_KEYS.has(cell) && (state === 'closed' || state === 'door')) tiles[cell] = state;
+    }
+    return tiles;
+}
+
+function crossesClosedApartmentTile(start, destination, tiles) {
+    const from = GRID_LAYOUT.positionFor(start.col, start.row);
+    const to = GRID_LAYOUT.positionFor(destination.col, destination.row);
+    const distance = Math.hypot(to.x - from.x, to.y - from.y);
+    const samples = Math.ceil(distance / (GRID_LAYOUT.cellSize / 4));
+    for (let index = 1; index < samples; index += 1) {
+        const progress = index / samples;
+        const cell = GRID_LAYOUT.coordinateForCenter(
+            from.x + (to.x - from.x) * progress,
+            from.y + (to.y - from.y) * progress
+        );
+        if (GRID_CELL_KEYS.has(`${cell.col}:${cell.row}`) && tiles[`${cell.col}:${cell.row}`] === 'closed') {
+            return true;
+        }
+    }
+    return false;
+}
+
 const PLAYER_JOIN_SCRIPT = `
 local existing = redis.call('HGET', KEYS[1], ARGV[1])
 if existing then
@@ -68,7 +96,7 @@ end
 
 for index = 4, #ARGV do
     local cell = ARGV[index]
-    if redis.call('HEXISTS', KEYS[2], cell) == 0 then
+    if redis.call('HEXISTS', KEYS[2], cell) == 0 and redis.call('HGET', KEYS[3], cell) ~= 'closed' then
         local col, row = string.match(cell, '^([%-]?%d+):([%-]?%d+)$')
         local player = {
             id = ARGV[1],
@@ -95,6 +123,7 @@ if not encoded then return false end
 
 local player = cjson.decode(encoded)
 local nextCell = ARGV[2] .. ':' .. ARGV[3]
+if redis.call('HGET', KEYS[3], nextCell) == 'closed' then return false end
 local occupant = redis.call('HGET', KEYS[2], nextCell)
 if occupant and occupant ~= ARGV[1] then return false end
 
@@ -338,7 +367,11 @@ async function startServer() {
     const activeSocketRooms = new Map();
     const activeSocketUsers = new Map();
     const roomChannel = (roomId) => `chatroom:${roomId}`;
-    const roomKeys = (roomId) => ({ players: `chat:${roomId}:players`, cells: `chat:${roomId}:cells` });
+    const roomKeys = (roomId) => ({
+        players: `chat:${roomId}:players`,
+        cells: `chat:${roomId}:cells`,
+        tiles: `chat:${roomId}:tiles`
+    });
     async function getAllRoomIds() {
         const { rows } = await pool.query('SELECT id FROM chat_apartments');
         return ['common', 'disco', ...rows.map((row) => `apartment:${row.id}`)];
@@ -381,6 +414,7 @@ async function startServer() {
         )
     `);
     await pool.query("ALTER TABLE chat_apartments ADD COLUMN IF NOT EXISTS room_type VARCHAR(16) NOT NULL DEFAULT 'apartment'");
+    await pool.query("ALTER TABLE chat_apartments ADD COLUMN IF NOT EXISTS layout_json JSONB NOT NULL DEFAULT '{}'::jsonb");
     await pool.query('CREATE INDEX IF NOT EXISTS chat_users_registration_ip_hash_idx ON chat_users (registration_ip_hash) WHERE registration_ip_hash IS NOT NULL');
     await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_online_sessions (
@@ -1127,6 +1161,31 @@ async function startServer() {
         return rowCount > 0;
     }
 
+    async function canEditApartmentRoom(userId, roomId) {
+        const match = /^apartment:([1-9]\d{0,18})$/.exec(String(roomId || ''));
+        if (!match) return false;
+        const { rowCount } = await pool.query(
+            'SELECT 1 FROM chat_apartments WHERE id = $1 AND owner_id = $2',
+            [match[1], userId]
+        );
+        return rowCount > 0;
+    }
+
+    async function loadApartmentTiles(roomId) {
+        const match = /^apartment:([1-9]\d{0,18})$/.exec(String(roomId || ''));
+        if (!match) return {};
+        const { rows: [apartment] } = await pool.query(
+            'SELECT layout_json FROM chat_apartments WHERE id = $1',
+            [match[1]]
+        );
+        if (!apartment) return {};
+        const tiles = normalizeApartmentTiles(apartment.layout_json);
+        const tilesKey = roomKeys(roomId).tiles;
+        await redis.del(tilesKey);
+        if (Object.keys(tiles).length) await redis.hSet(tilesKey, tiles);
+        return tiles;
+    }
+
     async function getRoomWelcome(roomId) {
         if (roomId.startsWith('apartment:')) {
             const { rows: [apartment] } = await pool.query(`
@@ -1151,8 +1210,9 @@ async function startServer() {
 
     async function placeSocketInRoom(socket, roomId) {
         const keys = roomKeys(roomId);
+        const apartmentTiles = await loadApartmentTiles(roomId);
         const joined = await redis.eval(PLAYER_JOIN_SCRIPT, {
-            keys: [keys.players, keys.cells],
+            keys: [keys.players, keys.cells, keys.tiles],
             arguments: [socket.id, socket.data.user.username, String(Date.now()),
                 ...GRID_CELLS.map((cell) => `${cell.col}:${cell.row}`)]
         });
@@ -1180,8 +1240,11 @@ async function startServer() {
             `, [roomId.slice('apartment:'.length)]);
             if (apartment) roomName = `${apartment.username}s Lejlighed (#${apartment.apartment_number})`;
         }
-        const welcome = await getRoomWelcome(roomId);
-        socket.emit('room-changed', { roomId, roomName, players, ...welcome });
+        const [welcome, canEditApartment] = await Promise.all([
+            getRoomWelcome(roomId),
+            canEditApartmentRoom(socket.data.user.id, roomId)
+        ]);
+        socket.emit('room-changed', { roomId, roomName, players, apartmentTiles, canEditApartment, ...welcome });
         socket.to(roomChannel(roomId)).emit('newPlayer', publicPlayer(JSON.parse(joined)));
         io.emit('navigator-refresh');
         return publicPlayer(JSON.parse(joined));
@@ -1205,7 +1268,7 @@ async function startServer() {
 
         for (const cell of nearbyCells) {
             const movedJson = await redis.eval(PLAYER_MOVE_SCRIPT, {
-                keys: [keys.players, keys.cells],
+                keys: [keys.players, keys.cells, keys.tiles],
                 arguments: [socket.id, String(cell.col), String(cell.row), String(Date.now())]
             });
             if (!movedJson) continue;
@@ -1314,6 +1377,76 @@ async function startServer() {
             } catch (error) {
                 console.error('Could not remove guest from apartment:', getSafeErrorCode(error));
                 socket.emit('apartment-kick-result', { message: 'Gæsten kunne ikke sendes ud. Prøv igen.' });
+            }
+        });
+
+        socket.on('apartment-layout-request', async () => {
+            if (!activeSocketIds.has(socket.id)) return;
+            const roomId = activeSocketRooms.get(socket.id);
+            try {
+                if (!await canEditApartmentRoom(socket.data.user.id, roomId)) {
+                    socket.emit('apartment-layout-result', { success: false, message: 'Du kan kun indrette din egen lejlighed, når du er der.' });
+                    return;
+                }
+                const tiles = await loadApartmentTiles(roomId);
+                socket.emit('apartment-layout-data', { roomId, tiles });
+            } catch (error) {
+                console.error('Could not load apartment tiles:', getSafeErrorCode(error));
+                socket.emit('apartment-layout-result', { success: false, message: 'Lejligheden kunne ikke indlæses.' });
+            }
+        });
+
+        socket.on('apartment-layout-save', async ({ tiles: requestedTiles } = {}) => {
+            if (!activeSocketIds.has(socket.id) || !Array.isArray(requestedTiles) || requestedTiles.length > GRID_CELLS.length) return;
+            const roomId = activeSocketRooms.get(socket.id);
+            try {
+                if (!await canEditApartmentRoom(socket.data.user.id, roomId)) {
+                    socket.emit('apartment-layout-result', { success: false, message: 'Du kan kun indrette din egen lejlighed, når du er der.' });
+                    return;
+                }
+                const nextTiles = {};
+                const seenTiles = new Set();
+                for (const tile of requestedTiles) {
+                    if (!tile || !Number.isInteger(tile.col) || !Number.isInteger(tile.row)
+                        || !['open', 'closed', 'door'].includes(tile.state)) {
+                        socket.emit('apartment-layout-result', { success: false, message: 'Lejlighedsplanen indeholder ugyldige felter.' });
+                        return;
+                    }
+                    const key = `${tile.col}:${tile.row}`;
+                    if (!GRID_CELL_KEYS.has(key) || seenTiles.has(key)) {
+                        socket.emit('apartment-layout-result', { success: false, message: 'Lejlighedsplanen indeholder ugyldige eller gentagne felter.' });
+                        return;
+                    }
+                    seenTiles.add(key);
+                    if (tile.state !== 'open') nextTiles[key] = tile.state;
+                }
+                if (Object.values(nextTiles).filter((state) => state === 'closed').length >= GRID_CELLS.length) {
+                    socket.emit('apartment-layout-result', { success: false, message: 'Mindst ét felt skal være åbent eller en dør, så man kan komme ind.' });
+                    return;
+                }
+                const keys = roomKeys(roomId);
+                for (const [cell, state] of Object.entries(nextTiles)) {
+                    if (state === 'closed' && await redis.hGet(keys.cells, cell)) {
+                        socket.emit('apartment-layout-result', { success: false, message: 'Flyt først brugeren væk fra det felt, du vil lukke.' });
+                        return;
+                    }
+                }
+                const apartmentId = roomId.slice('apartment:'.length);
+                const update = await pool.query(
+                    'UPDATE chat_apartments SET layout_json = $1::jsonb WHERE id = $2 AND owner_id = $3',
+                    [JSON.stringify(nextTiles), apartmentId, socket.data.user.id]
+                );
+                if (!update.rowCount) {
+                    socket.emit('apartment-layout-result', { success: false, message: 'Lejligheden blev ikke fundet.' });
+                    return;
+                }
+                await redis.del(keys.tiles);
+                if (Object.keys(nextTiles).length) await redis.hSet(keys.tiles, nextTiles);
+                io.to(roomChannel(roomId)).emit('apartment-layout-updated', { roomId, tiles: nextTiles });
+                socket.emit('apartment-layout-result', { success: true, message: 'Lejligheden er gemt.', tiles: nextTiles });
+            } catch (error) {
+                console.error('Could not save apartment tiles:', getSafeErrorCode(error));
+                socket.emit('apartment-layout-result', { success: false, message: 'Lejligheden kunne ikke gemmes.' });
             }
         });
 
@@ -2420,6 +2553,7 @@ async function startServer() {
                 const initialRoomId = apartment ? `apartment:${apartment.id}` : 'common';
                 socket.data.roomId = initialRoomId;
                 const initialRoomKeys = roomKeys(initialRoomId);
+                const apartmentTiles = await loadApartmentTiles(initialRoomId);
                 await cleanupStalePlayers();
                 const { rows: mutedUsers } = await pool.query(`
                     SELECT target.username
@@ -2434,7 +2568,7 @@ async function startServer() {
                     ...GRID_CELLS.map((cell) => `${cell.col}:${cell.row}`)
                 ];
                 const joinedPlayerJson = await redis.eval(PLAYER_JOIN_SCRIPT, {
-                    keys: [initialRoomKeys.players, initialRoomKeys.cells],
+                    keys: [initialRoomKeys.players, initialRoomKeys.cells, initialRoomKeys.tiles],
                     arguments: joinArguments
                 });
                 if (!joinedPlayerJson) {
@@ -2481,11 +2615,14 @@ async function startServer() {
                     if (apartment) roomName = `${apartment.username}s Lejlighed (#${apartment.apartment_number})`;
                 }
                 const welcome = await getRoomWelcome(initialRoomId);
+                const canEditApartment = await canEditApartmentRoom(socket.data.user.id, initialRoomId);
                 socket.emit('join-success', {
                     players: currentPlayers,
                     mutedUsernames: mutedUsers.map((mutedUser) => mutedUser.username),
                     roomId: initialRoomId,
                     roomName: roomName,
+                    apartmentTiles,
+                    canEditApartment,
                     ...welcome
                 });
                 const [totalOnlineMs, { rows: [progress] }] = await Promise.all([
@@ -2520,9 +2657,19 @@ async function startServer() {
             if (!isGridCoordinate(position.col, position.row)) return;
 
             try {
-                const keys = roomKeys(socket.data.roomId || 'common');
+                const roomId = socket.data.roomId || 'common';
+                const keys = roomKeys(roomId);
+                if (roomId.startsWith('apartment:')) {
+                    const currentJson = await redis.hGet(keys.players, socket.id);
+                    if (!currentJson) return;
+                    const tileStates = await redis.hGetAll(keys.tiles);
+                    if (crossesClosedApartmentTile(JSON.parse(currentJson), position, tileStates)) {
+                        socket.emit('room-error', { message: 'Et lukket felt blokerer vejen.' });
+                        return;
+                    }
+                }
                 const movedPlayerJson = await redis.eval(PLAYER_MOVE_SCRIPT, {
-                    keys: [keys.players, keys.cells],
+                    keys: [keys.players, keys.cells, keys.tiles],
                     arguments: [socket.id, String(position.col), String(position.row), String(Date.now())]
                 });
                 if (!movedPlayerJson) {
