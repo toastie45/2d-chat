@@ -507,8 +507,12 @@
         }
         .profile-form { display: grid; gap: 12px; }
         .profile-password-action { display: flex; margin: 0 20px 10px; }
-        .profile-password-panel { display: grid; gap: 10px; margin: 0 20px 14px; padding: 12px; border: 1px solid #353732; border-radius: 7px; background: #191a18; }
-        .profile-password-panel[hidden] { display: none; }
+        .profile-security-actions { display: flex; gap: 7px; margin: 0 20px 10px; }
+        .profile-password-panel, .profile-welcome-panel { display: grid; gap: 10px; margin: 0 20px 14px; padding: 12px; border: 1px solid #353732; border-radius: 7px; background: #191a18; }
+        .profile-password-panel[hidden], .profile-welcome-panel[hidden] { display: none; }
+        .room-welcome { margin: 0 16px 14px; padding: 15px; border: 1px solid #353732; border-radius: 7px; background: #1a1b19; }
+        .room-welcome h3 { margin: 0 0 7px; color: #eef0e9; font-size: 14px; }
+        .room-welcome p { margin: 0; color: #c4c6bd; font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
         .profile-details { margin-top: 0; }
         .profile-facts {
             display: grid;
@@ -1287,15 +1291,22 @@
                         </section>
                         <section class="side-panel chat-section" id="chat-panel" aria-labelledby="chat-title">
                             <h2 class="side-title" id="chat-title">Velkommen i #1 Fællesrum</h2>
+                            <article class="room-welcome" aria-live="polite">
+                                <h3 id="room-welcome-title">Velkommen i #1 Fællesrum</h3>
+                                <p id="room-welcome-text">Her kan du møde andre og chatte sammen. God fornøjelse!</p>
+                            </article>
                             <div class="chat-log" id="chat-log" role="log" aria-live="polite" aria-relevant="additions">
                                 <p class="chat-empty" id="chat-empty">Samtalen begynder her.</p>
                             </div>
                         </section>
                         <section class="side-panel profile-panel" id="profile-editor-panel" aria-labelledby="profile-editor-title" hidden>
                             <h2 class="side-title" id="profile-editor-title">Min profil</h2>
-                            <div class="profile-password-action">
+                            <div class="profile-security-actions">
                                 <button class="toolbar-button" id="profile-password-toggle" type="button" aria-expanded="false" aria-controls="profile-password-panel" aria-label="Skift adgangskode" title="Skift adgangskode">
                                     <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"></path></svg>
+                                </button>
+                                <button class="toolbar-button" id="profile-welcome-toggle" type="button" aria-expanded="false" aria-controls="profile-welcome-panel" aria-label="Rediger velkomst" title="Rediger velkomst">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"></path><path d="M8 9h8M8 12h5"></path></svg>
                                 </button>
                             </div>
                             <form class="profile-password-panel" id="profile-password-panel" hidden>
@@ -1304,6 +1315,11 @@
                                 <label class="profile-field" for="profile-confirm-password">Gentag ny adgangskode<input id="profile-confirm-password" type="password" minlength="8" maxlength="72" autocomplete="new-password" required></label>
                                 <button class="profile-save" id="profile-password-save" type="submit">Skift adgangskode</button>
                                 <p class="profile-status" id="profile-password-status" aria-live="polite"></p>
+                            </form>
+                            <form class="profile-welcome-panel" id="profile-welcome-panel" hidden>
+                                <label class="profile-field" for="profile-welcome-message">Velkomsttekst til din lejlighed<textarea id="profile-welcome-message" maxlength="500" rows="4" placeholder="Skriv en velkomst til gæster i din lejlighed"></textarea></label>
+                                <button class="profile-save" id="profile-welcome-save" type="submit">Gem velkomst</button>
+                                <p class="profile-status" id="profile-welcome-status" aria-live="polite"></p>
                             </form>
                             <p class="profile-section-title">Profiloplysninger · <span id="profile-avatar-name"></span></p>
                             <div class="profile-details">
@@ -1574,6 +1590,13 @@
             const profilePasswordConfirm = document.getElementById('profile-confirm-password');
             const profilePasswordSave = document.getElementById('profile-password-save');
             const profilePasswordStatus = document.getElementById('profile-password-status');
+            const profileWelcomeToggle = document.getElementById('profile-welcome-toggle');
+            const profileWelcomeForm = document.getElementById('profile-welcome-panel');
+            const profileWelcomeMessage = document.getElementById('profile-welcome-message');
+            const profileWelcomeSave = document.getElementById('profile-welcome-save');
+            const profileWelcomeStatus = document.getElementById('profile-welcome-status');
+            const roomWelcomeTitle = document.getElementById('room-welcome-title');
+            const roomWelcomeText = document.getElementById('room-welcome-text');
             const profileAvatarName = document.getElementById('profile-avatar-name');
             const profileRealName = document.getElementById('profile-real-name');
             const profileDiscordName = document.getElementById('profile-discord-name');
@@ -1710,6 +1733,7 @@
 
             function applyOwnProfile(result) {
                 profileRealName.value = result.realName;
+                profileWelcomeMessage.value = result.welcomeMessage || '';
                 profileSteamName.value = result.steamName;
                 profileDiscordName.value = result.discordName;
                 profileInterests.value = result.interests;
@@ -1924,10 +1948,16 @@
                 if (moveFocus) (showApartments ? navigatorApartmentTab : navigatorPublicTab).focus();
             }
 
-            function applyRoomState(roomId, roomName, serverPlayers = {}) {
+            function updateRoomWelcome(title, message) {
+                roomWelcomeTitle.textContent = title || `Velkommen i ${roomStripName.textContent}`;
+                roomWelcomeText.textContent = message || 'Her kan du møde andre og chatte sammen. God fornøjelse!';
+            }
+
+            function applyRoomState(roomId, roomName, serverPlayers = {}, welcome = {}) {
                 activeRoom = roomId;
                 roomStripName.textContent = roomName;
                 chatTitle.textContent = `Velkommen i ${roomName}`;
+                updateRoomWelcome(welcome.welcomeTitle, welcome.welcomeText);
                 document.querySelectorAll('.avatar-context-room').forEach((label) => { label.textContent = roomName; });
                 players = {};
                 for (const player of Object.values(serverPlayers)) showPlayer(player);
@@ -3285,6 +3315,34 @@
                 }
             });
 
+            profileWelcomeToggle.addEventListener('click', () => {
+                const isOpening = profileWelcomeForm.hidden;
+                profileWelcomeForm.hidden = !isOpening;
+                profileWelcomeToggle.setAttribute('aria-expanded', String(isOpening));
+                if (isOpening) profileWelcomeMessage.focus();
+            });
+
+            profileWelcomeForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                profileWelcomeSave.disabled = true;
+                profileWelcomeStatus.textContent = 'Gemmer velkomst…';
+                try {
+                    const response = await authFetch('/api/profile/welcome', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ welcomeMessage: profileWelcomeMessage.value })
+                    });
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.error || 'Velkomsten kunne ikke gemmes.');
+                    profileWelcomeMessage.value = result.welcomeMessage;
+                    profileWelcomeStatus.textContent = 'Velkomsten er gemt.';
+                } catch (error) {
+                    profileWelcomeStatus.textContent = error.message || 'Velkomsten kunne ikke gemmes. Prøv igen.';
+                } finally {
+                    profileWelcomeSave.disabled = false;
+                }
+            });
+
             logoutButton.addEventListener('click', async () => {
                 logoutButton.disabled = true;
                 try {
@@ -3539,12 +3597,13 @@
                 socket.disconnect();
             });
 
-            socket.on('join-success', ({ players: serverPlayers, mutedUsernames: initialMutedUsernames = [], roomId = 'common', roomName }) => {
+            socket.on('join-success', ({ players: serverPlayers, mutedUsernames: initialMutedUsernames = [], roomId = 'common', roomName, welcomeTitle, welcomeText }) => {
                 players = {};
                 myId = socket.id;
                 activeRoom = roomId;
                 roomStripName.textContent = roomName;
                 chatTitle.textContent = `Velkommen i ${roomName}`;
+                updateRoomWelcome(welcomeTitle, welcomeText);
                 document.querySelectorAll('.avatar-context-room').forEach((label) => { label.textContent = roomName; });
                 profileManagement = { relations: [] };
                 mutedUsernames = new Set(initialMutedUsernames.map((username) => username.toLocaleLowerCase('en-US')));
@@ -3572,11 +3631,15 @@
                 canvas.focus();
             });
 
-            socket.on('room-changed', ({ roomId, roomName, players: serverPlayers = {} } = {}) => {
+            socket.on('room-changed', ({ roomId, roomName, players: serverPlayers = {}, welcomeTitle, welcomeText } = {}) => {
                 if (!roomId || !roomName) return;
-                applyRoomState(roomId, roomName, serverPlayers);
+                applyRoomState(roomId, roomName, serverPlayers, { welcomeTitle, welcomeText });
                 if (!navigatorPanel.hidden) socket.emit('navigator-request');
                 if (!membersPanel.hidden) socket.emit('online-users-request');
+            });
+
+            socket.on('room-welcome-updated', ({ welcomeTitle, welcomeText } = {}) => {
+                updateRoomWelcome(welcomeTitle, welcomeText);
             });
 
             socket.on('navigator-rooms', ({ rooms = [], activeRoomId } = {}) => {

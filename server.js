@@ -356,6 +356,7 @@ async function startServer() {
     `);
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS real_name VARCHAR(80)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS profile_text VARCHAR(500)');
+    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS welcome_message VARCHAR(500)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS discord_name VARCHAR(64)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS interests VARCHAR(160)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS registration_ip_hash TEXT');
@@ -635,12 +636,13 @@ async function startServer() {
         response.json({ user: request.session.user });
     });
 
-    const OWN_PROFILE_COLUMNS = 'real_name, profile_text, discord_name, interests, steam_name, birth_date::text AS birth_date, region';
+    const OWN_PROFILE_COLUMNS = 'real_name, profile_text, welcome_message, discord_name, interests, steam_name, birth_date::text AS birth_date, region';
 
     function serializeOwnProfile(row) {
         return {
             realName: row.real_name || '',
             profileText: row.profile_text || '',
+            welcomeMessage: row.welcome_message || '',
             discordName: row.discord_name || '',
             interests: row.interests || '',
             steamName: row.steam_name || '',
@@ -704,6 +706,37 @@ async function startServer() {
                 [passwordHash, request.session.user.id]
             );
             response.json({ success: true });
+        } catch (error) {
+            next(error);
+        }
+    });
+
+    app.put('/api/profile/welcome', async (request, response, next) => {
+        if (!isAuthorizedTabSession(request.session, getRequestTabId(request))) {
+            response.status(401).json({ error: 'Log ind for at fortsætte.' });
+            return;
+        }
+        const welcomeMessage = request.body && request.body.welcomeMessage;
+        if (typeof welcomeMessage !== 'string' || welcomeMessage.length > 500) {
+            response.status(400).json({ error: 'Velkomstteksten må højst være 500 tegn.' });
+            return;
+        }
+        try {
+            await pool.query(
+                'UPDATE chat_users SET welcome_message = $1 WHERE id = $2',
+                [welcomeMessage.trim(), request.session.user.id]
+            );
+            const { rows: [apartment] } = await pool.query(
+                'SELECT a.id, a.apartment_number, u.username FROM chat_apartments a JOIN chat_users u ON u.id = a.owner_id WHERE a.owner_id = $1',
+                [request.session.user.id]
+            );
+            if (apartment) {
+                io.to(roomChannel(`apartment:${apartment.id}`)).emit('room-welcome-updated', {
+                    welcomeTitle: `Velkommen til ${apartment.username}s lejlighed (#${apartment.apartment_number})`,
+                    welcomeText: welcomeMessage.trim() || `${apartment.username} har ikke skrevet en velkomst endnu.`
+                });
+            }
+            response.json({ success: true, welcomeMessage: welcomeMessage.trim() });
         } catch (error) {
             next(error);
         }
@@ -1091,6 +1124,28 @@ async function startServer() {
         return rowCount > 0;
     }
 
+    async function getRoomWelcome(roomId) {
+        if (roomId.startsWith('apartment:')) {
+            const { rows: [apartment] } = await pool.query(`
+                SELECT a.apartment_number, u.username, u.welcome_message
+                FROM chat_apartments a
+                JOIN chat_users u ON u.id = a.owner_id
+                WHERE a.id = $1
+            `, [roomId.slice('apartment:'.length)]);
+            if (apartment) {
+                return {
+                    welcomeTitle: `Velkommen til ${apartment.username}s lejlighed (#${apartment.apartment_number})`,
+                    welcomeText: apartment.welcome_message || `${apartment.username} har ikke skrevet en velkomst endnu.`
+                };
+            }
+        }
+        const roomName = PUBLIC_ROOM_NAMES[roomId] || 'chatten';
+        return {
+            welcomeTitle: `Velkommen i ${roomName}`,
+            welcomeText: 'Her kan du møde andre og chatte sammen. God fornøjelse!'
+        };
+    }
+
     async function placeSocketInRoom(socket, roomId) {
         const keys = roomKeys(roomId);
         const joined = await redis.eval(PLAYER_JOIN_SCRIPT, {
@@ -1122,7 +1177,8 @@ async function startServer() {
             `, [roomId.slice('apartment:'.length)]);
             if (apartment) roomName = `${apartment.username}s Lejlighed (#${apartment.apartment_number})`;
         }
-        socket.emit('room-changed', { roomId, roomName, players });
+        const welcome = await getRoomWelcome(roomId);
+        socket.emit('room-changed', { roomId, roomName, players, ...welcome });
         socket.to(roomChannel(roomId)).emit('newPlayer', publicPlayer(JSON.parse(joined)));
         io.emit('navigator-refresh');
         return publicPlayer(JSON.parse(joined));
@@ -2421,11 +2477,13 @@ async function startServer() {
                     `, [initialRoomId.slice('apartment:'.length)]);
                     if (apartment) roomName = `${apartment.username}s Lejlighed (#${apartment.apartment_number})`;
                 }
+                const welcome = await getRoomWelcome(initialRoomId);
                 socket.emit('join-success', {
                     players: currentPlayers,
                     mutedUsernames: mutedUsers.map((mutedUser) => mutedUser.username),
                     roomId: initialRoomId,
-                    roomName: roomName
+                    roomName: roomName,
+                    ...welcome
                 });
                 const [totalOnlineMs, { rows: [progress] }] = await Promise.all([
                     getTotalOnlineMs(socket.data.user.id),
