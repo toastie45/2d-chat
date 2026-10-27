@@ -509,8 +509,8 @@
         .profile-form { display: grid; gap: 12px; }
         .profile-password-action { display: flex; margin: 0 20px 10px; }
         .profile-security-actions { display: flex; gap: 7px; margin: 0 20px 10px; }
-        .profile-password-panel, .profile-welcome-panel { display: grid; gap: 10px; margin: 0 20px 14px; padding: 12px; border: 1px solid #353732; border-radius: 7px; background: #191a18; }
-        .profile-password-panel[hidden], .profile-welcome-panel[hidden] { display: none; }
+        .profile-password-panel { display: grid; gap: 10px; margin: 0 20px 14px; padding: 12px; border: 1px solid #353732; border-radius: 7px; background: #191a18; }
+        .profile-password-panel[hidden] { display: none; }
         .room-welcome { margin: 0 3px 14px; padding: 15px; border: 1px solid #353732; border-radius: 7px; background: #1a1b19; }
         .room-welcome h3 { margin: 0 0 7px; color: #eef0e9; font-size: 14px; }
         .room-welcome p { margin: 0; color: #c4c6bd; font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -1324,9 +1324,12 @@
                             </div>
                         </section>
                         <section class="side-panel" id="apartment-editor-panel" aria-labelledby="apartment-editor-title" hidden>
-                            <h2 class="side-title" id="apartment-editor-title">Indret din lejlighed</h2>
+                            <h2 class="side-title" id="apartment-editor-title">Indret din lejlighed / Velkomst info</h2>
                             <label class="profile-field" for="apartment-editor-name">Lejlighedens navn
                                 <input id="apartment-editor-name" type="text" maxlength="60" autocomplete="off" placeholder="F.eks. Tommys hyggelige sted">
+                            </label>
+                            <label class="profile-field" for="apartment-editor-welcome">Velkomst info til gæster
+                                <textarea id="apartment-editor-welcome" maxlength="500" rows="4" placeholder="Skriv en velkomst til gæster i din lejlighed"></textarea>
                             </label>
                             <p class="apartment-editor-note">Klik på felterne her eller på den store bane for at male dit udkast. Det træder først i kraft, når du trykker Gem ændringer.</p>
                             <p class="apartment-editor-label">1. Vælg værktøj</p>
@@ -1367,9 +1370,6 @@
                                 <button class="toolbar-button" id="profile-password-toggle" type="button" aria-expanded="false" aria-controls="profile-password-panel" aria-label="Skift adgangskode" title="Skift adgangskode">
                                     <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"></path></svg>
                                 </button>
-                                <button class="toolbar-button" id="profile-welcome-toggle" type="button" aria-expanded="false" aria-controls="profile-welcome-panel" aria-label="Rediger velkomst" title="Rediger velkomst">
-                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"></path><path d="M8 9h8M8 12h5"></path></svg>
-                                </button>
                             </div>
                             <form class="profile-password-panel" id="profile-password-panel" hidden>
                                 <label class="profile-field" for="profile-current-password">Nuværende adgangskode<input id="profile-current-password" type="password" autocomplete="current-password" required></label>
@@ -1377,11 +1377,6 @@
                                 <label class="profile-field" for="profile-confirm-password">Gentag ny adgangskode<input id="profile-confirm-password" type="password" minlength="8" maxlength="72" autocomplete="new-password" required></label>
                                 <button class="profile-save" id="profile-password-save" type="submit">Skift adgangskode</button>
                                 <p class="profile-status" id="profile-password-status" aria-live="polite"></p>
-                            </form>
-                            <form class="profile-welcome-panel" id="profile-welcome-panel" hidden>
-                                <label class="profile-field" for="profile-welcome-message">Velkomsttekst til din lejlighed<textarea id="profile-welcome-message" maxlength="500" rows="4" placeholder="Skriv en velkomst til gæster i din lejlighed"></textarea></label>
-                                <button class="profile-save" id="profile-welcome-save" type="submit">Gem velkomst</button>
-                                <p class="profile-status" id="profile-welcome-status" aria-live="polite"></p>
                             </form>
                             <p class="profile-section-title">Profiloplysninger · <span id="profile-avatar-name"></span></p>
                             <div class="profile-details">
@@ -1652,6 +1647,7 @@
             const apartmentEditorDoorDestinationWrap = document.getElementById('apartment-editor-door-destination-wrap');
             const apartmentEditorDoorDestination = document.getElementById('apartment-editor-door-destination');
             const apartmentEditorName = document.getElementById('apartment-editor-name');
+            const apartmentEditorWelcome = document.getElementById('apartment-editor-welcome');
             const apartmentEditorSave = document.getElementById('apartment-editor-save');
             const apartmentEditorReset = document.getElementById('apartment-editor-reset');
             const apartmentEditorStatus = document.getElementById('apartment-editor-status');
@@ -1666,11 +1662,6 @@
             const profilePasswordConfirm = document.getElementById('profile-confirm-password');
             const profilePasswordSave = document.getElementById('profile-password-save');
             const profilePasswordStatus = document.getElementById('profile-password-status');
-            const profileWelcomeToggle = document.getElementById('profile-welcome-toggle');
-            const profileWelcomeForm = document.getElementById('profile-welcome-panel');
-            const profileWelcomeMessage = document.getElementById('profile-welcome-message');
-            const profileWelcomeSave = document.getElementById('profile-welcome-save');
-            const profileWelcomeStatus = document.getElementById('profile-welcome-status');
             const roomWelcomeTitle = document.getElementById('room-welcome-title');
             const roomWelcomeText = document.getElementById('room-welcome-text');
             const profileAvatarName = document.getElementById('profile-avatar-name');
@@ -1748,6 +1739,7 @@
             let apartmentDraftTiles = {};
             let savedApartmentTiles = {};
             let savedApartmentName = '';
+            let savedApartmentWelcome = '';
             let apartmentEditTool = 'closed';
             let contextPlayerId = null;
             let activeWhisperPlayerId = null;
@@ -1884,15 +1876,6 @@
 
             function applyOwnProfile(result) {
                 profileRealName.value = result.realName;
-                profileWelcomeMessage.value = result.welcomeMessage || '';
-                if (Object.hasOwn(result, 'apartmentNumber')) {
-                    const canEditApartmentWelcome = Boolean(result.apartmentNumber);
-                    profileWelcomeToggle.hidden = !canEditApartmentWelcome;
-                    if (!canEditApartmentWelcome) {
-                        profileWelcomeForm.hidden = true;
-                        profileWelcomeToggle.setAttribute('aria-expanded', 'false');
-                    }
-                }
                 profileSteamName.value = result.steamName;
                 profileDiscordName.value = result.discordName;
                 profileInterests.value = result.interests;
@@ -2098,17 +2081,12 @@
                 updateToolbarState();
             }
 
-            function toggleProfileSettingsPanel(name) {
-                const openForm = name === 'password'
-                    ? profilePasswordForm.hidden
-                    : profileWelcomeForm.hidden;
-                profilePasswordForm.hidden = name !== 'password' || !openForm;
-                profileWelcomeForm.hidden = name !== 'welcome' || !openForm;
-                profilePasswordToggle.setAttribute('aria-expanded', String(name === 'password' && openForm));
-                profileWelcomeToggle.setAttribute('aria-expanded', String(name === 'welcome' && openForm));
+            function toggleProfileSettingsPanel() {
+                const openForm = profilePasswordForm.hidden;
+                profilePasswordForm.hidden = !openForm;
+                profilePasswordToggle.setAttribute('aria-expanded', String(openForm));
                 if (!openForm) return;
-                if (name === 'password') profilePasswordCurrent.focus();
-                else profileWelcomeMessage.focus();
+                profilePasswordCurrent.focus();
             }
 
             function selectNavigatorCategory(category, moveFocus = false) {
@@ -3474,6 +3452,7 @@
                 if (!canEditCurrentApartment) return;
                 apartmentDraftTiles = { ...savedApartmentTiles };
                 apartmentEditorName.value = savedApartmentName;
+                apartmentEditorWelcome.value = savedApartmentWelcome;
                 apartmentEditorStatus.textContent = 'Ugemte ændringer er fortrudt.';
                 renderApartmentEditorGrid();
             });
@@ -3483,6 +3462,7 @@
                 apartmentEditorStatus.textContent = 'Gemmer lejligheden…';
                 socket.emit('apartment-layout-save', {
                     name: apartmentEditorName.value,
+                    welcomeMessage: apartmentEditorWelcome.value,
                     tiles: Object.entries(apartmentDraftTiles).map(([cell, state]) => {
                         const [col, row] = cell.split(':').map(Number);
                         return { col, row, state };
@@ -3613,7 +3593,7 @@
 
             profilePasswordToggle.addEventListener('click', () => {
                 selectSidePanel('profile-editor');
-                toggleProfileSettingsPanel('password');
+                toggleProfileSettingsPanel();
             });
 
             profilePasswordForm.addEventListener('submit', async (event) => {
@@ -3643,32 +3623,6 @@
                     profilePasswordStatus.textContent = error.message || 'Adgangskoden kunne ikke ændres. Prøv igen.';
                 } finally {
                     profilePasswordSave.disabled = false;
-                }
-            });
-
-            profileWelcomeToggle.addEventListener('click', () => {
-                selectSidePanel('profile-editor');
-                toggleProfileSettingsPanel('welcome');
-            });
-
-            profileWelcomeForm.addEventListener('submit', async (event) => {
-                event.preventDefault();
-                profileWelcomeSave.disabled = true;
-                profileWelcomeStatus.textContent = 'Gemmer velkomst…';
-                try {
-                    const response = await authFetch('/api/profile/welcome', {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ welcomeMessage: profileWelcomeMessage.value })
-                    });
-                    const result = await response.json();
-                    if (!response.ok) throw new Error(result.error || 'Velkomsten kunne ikke gemmes.');
-                    profileWelcomeMessage.value = result.welcomeMessage;
-                    profileWelcomeStatus.textContent = 'Velkomsten er gemt.';
-                } catch (error) {
-                    profileWelcomeStatus.textContent = error.message || 'Velkomsten kunne ikke gemmes. Prøv igen.';
-                } finally {
-                    profileWelcomeSave.disabled = false;
                 }
             });
 
@@ -3981,11 +3935,13 @@
                 updateRoomWelcome(welcomeTitle, welcomeText);
             });
 
-            socket.on('apartment-layout-data', ({ roomId, tiles, name, roomName } = {}) => {
+            socket.on('apartment-layout-data', ({ roomId, tiles, name, welcomeMessage, roomName } = {}) => {
                 if (roomId !== activeRoom || !canEditCurrentApartment) return;
                 applyApartmentRoomState(tiles, true);
                 apartmentEditorName.value = name || '';
                 savedApartmentName = name || '';
+                apartmentEditorWelcome.value = welcomeMessage || '';
+                savedApartmentWelcome = welcomeMessage || '';
                 updateApartmentRoomTitle(roomName);
                 apartmentEditorStatus.textContent = '';
                 selectSidePanel('apartment-editor');
@@ -4016,16 +3972,19 @@
                 }
             });
 
-            socket.on('apartment-layout-updated', ({ roomId, tiles, name, roomName, welcomeTitle } = {}) => {
+            socket.on('apartment-layout-updated', ({ roomId, tiles, name, welcomeMessage, roomName, welcomeTitle, welcomeText } = {}) => {
                 if (roomId !== activeRoom) return;
                 applyApartmentRoomState(tiles, canEditCurrentApartment);
                 apartmentEditorName.value = name || '';
                 savedApartmentName = name || '';
+                apartmentEditorWelcome.value = welcomeMessage || '';
+                savedApartmentWelcome = welcomeMessage || '';
                 updateApartmentRoomTitle(roomName, welcomeTitle);
+                updateRoomWelcome(welcomeTitle, welcomeText);
                 requestBoardRender();
             });
 
-            socket.on('apartment-layout-result', ({ success, message, tiles, name, roomName, welcomeTitle } = {}) => {
+            socket.on('apartment-layout-result', ({ success, message, tiles, name, welcomeMessage, roomName, welcomeTitle, welcomeText } = {}) => {
                 apartmentEditorSave.disabled = false;
                 apartmentEditorStatus.textContent = message || '';
                 if (success) {
@@ -4034,7 +3993,12 @@
                         apartmentEditorName.value = name || '';
                         savedApartmentName = name || '';
                     }
+                    if (welcomeMessage !== undefined) {
+                        apartmentEditorWelcome.value = welcomeMessage || '';
+                        savedApartmentWelcome = welcomeMessage || '';
+                    }
                     updateApartmentRoomTitle(roomName, welcomeTitle);
+                    updateRoomWelcome(welcomeTitle, welcomeText);
                 }
                 requestBoardRender();
             });

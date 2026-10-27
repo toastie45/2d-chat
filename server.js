@@ -1425,10 +1425,16 @@ async function startServer() {
                 }
                 const tiles = await loadApartmentTiles(roomId);
                 const { rows: [apartment] } = await pool.query(
-                    'SELECT a.apartment_name, a.apartment_number, u.username FROM chat_apartments a JOIN chat_users u ON u.id = a.owner_id WHERE a.id = $1',
+                    'SELECT a.apartment_name, a.apartment_number, u.username, u.welcome_message FROM chat_apartments a JOIN chat_users u ON u.id = a.owner_id WHERE a.id = $1',
                     [roomId.slice('apartment:'.length)]
                 );
-                socket.emit('apartment-layout-data', { roomId, tiles, name: apartment?.apartment_name || '', roomName: apartment ? getApartmentRoomName(apartment) : '' });
+                socket.emit('apartment-layout-data', {
+                    roomId,
+                    tiles,
+                    name: apartment?.apartment_name || '',
+                    welcomeMessage: apartment?.welcome_message || '',
+                    roomName: apartment ? getApartmentRoomName(apartment) : ''
+                });
             } catch (error) {
                 console.error('Could not load apartment tiles:', getSafeErrorCode(error));
                 socket.emit('apartment-layout-result', { success: false, message: 'Lejligheden kunne ikke indlæses.' });
@@ -1492,7 +1498,7 @@ async function startServer() {
             }
         });
 
-        socket.on('apartment-layout-save', async ({ tiles: requestedTiles, name: requestedName } = {}) => {
+        socket.on('apartment-layout-save', async ({ tiles: requestedTiles, name: requestedName, welcomeMessage: requestedWelcomeMessage } = {}) => {
             if (!activeSocketIds.has(socket.id) || !Array.isArray(requestedTiles) || requestedTiles.length > GRID_CELLS.length) return;
             const roomId = activeSocketRooms.get(socket.id);
             try {
@@ -1505,6 +1511,19 @@ async function startServer() {
                     return;
                 }
                 const apartmentName = requestedName.trim();
+                let welcomeMessage = requestedWelcomeMessage;
+                if (welcomeMessage === undefined) {
+                    const { rows: [owner] } = await pool.query(
+                        'SELECT welcome_message FROM chat_users WHERE id = $1',
+                        [socket.data.user.id]
+                    );
+                    welcomeMessage = owner?.welcome_message || '';
+                }
+                if (typeof welcomeMessage !== 'string' || welcomeMessage.length > 500) {
+                    socket.emit('apartment-layout-result', { success: false, message: 'Velkomstteksten må højst være 500 tegn.' });
+                    return;
+                }
+                welcomeMessage = welcomeMessage.trim();
                 const nextTiles = {};
                 const seenTiles = new Set();
                 for (const tile of requestedTiles) {
@@ -1549,18 +1568,34 @@ async function startServer() {
                     }
                 }
                 const apartmentId = roomId.slice('apartment:'.length);
-                const update = await pool.query(
-                    'UPDATE chat_apartments SET layout_json = $1::jsonb, apartment_name = $2 WHERE id = $3 AND owner_id = $4',
-                    [JSON.stringify(nextTiles), apartmentName || null, apartmentId, socket.data.user.id]
-                );
-                if (!update.rowCount) {
-                    socket.emit('apartment-layout-result', { success: false, message: 'Lejligheden blev ikke fundet.' });
-                    return;
+                const databaseClient = await pool.connect();
+                let update;
+                try {
+                    await databaseClient.query('BEGIN');
+                    update = await databaseClient.query(
+                        'UPDATE chat_apartments SET layout_json = $1::jsonb, apartment_name = $2 WHERE id = $3 AND owner_id = $4',
+                        [JSON.stringify(nextTiles), apartmentName || null, apartmentId, socket.data.user.id]
+                    );
+                    if (!update.rowCount) {
+                        await databaseClient.query('ROLLBACK');
+                        socket.emit('apartment-layout-result', { success: false, message: 'Lejligheden blev ikke fundet.' });
+                        return;
+                    }
+                    await databaseClient.query(
+                        'UPDATE chat_users SET welcome_message = $1 WHERE id = $2',
+                        [welcomeMessage, socket.data.user.id]
+                    );
+                    await databaseClient.query('COMMIT');
+                } catch (error) {
+                    await databaseClient.query('ROLLBACK').catch(() => {});
+                    throw error;
+                } finally {
+                    databaseClient.release();
                 }
                 await redis.del(keys.tiles);
                 if (Object.keys(nextTiles).length) await redis.hSet(keys.tiles, nextTiles);
                 const { rows: [apartment] } = await pool.query(
-                    'SELECT a.apartment_name, a.apartment_number, u.username FROM chat_apartments a JOIN chat_users u ON u.id = a.owner_id WHERE a.id = $1',
+                    'SELECT a.apartment_name, a.apartment_number, u.username, u.welcome_message FROM chat_apartments a JOIN chat_users u ON u.id = a.owner_id WHERE a.id = $1',
                     [apartmentId]
                 );
                 const roomName = apartment ? getApartmentRoomName(apartment) : '';
@@ -1568,8 +1603,10 @@ async function startServer() {
                     roomId,
                     tiles: nextTiles,
                     name: apartmentName,
+                    welcomeMessage,
                     roomName,
-                    welcomeTitle: roomName ? `Velkommen i ${roomName}` : 'Velkommen i lejligheden'
+                    welcomeTitle: roomName ? `Velkommen i ${roomName}` : 'Velkommen i lejligheden',
+                    welcomeText: apartment?.welcome_message || `${apartment?.username || 'Ejeren'} har ikke skrevet en velkomst endnu.`
                 };
                 io.to(roomChannel(roomId)).emit('apartment-layout-updated', updatePayload);
                 io.emit('navigator-refresh');
