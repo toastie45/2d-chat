@@ -3641,9 +3641,12 @@
 
             socket.on('room-changed', ({ roomId, roomName, players: serverPlayers = {}, welcomeTitle, welcomeText } = {}) => {
                 if (!roomId || !roomName) return;
+                const wasNavigatorOpen = !navigatorPanel.hidden;
+                const wasMembersOpen = !membersPanel.hidden;
                 applyRoomState(roomId, roomName, serverPlayers, { welcomeTitle, welcomeText });
-                if (!navigatorPanel.hidden) socket.emit('navigator-request');
-                if (!membersPanel.hidden) socket.emit('online-users-request');
+                selectSidePanel('chat');
+                if (wasNavigatorOpen) socket.emit('navigator-request');
+                if (wasMembersOpen) socket.emit('online-users-request');
             });
 
             socket.on('room-welcome-updated', ({ welcomeTitle, welcomeText } = {}) => {
