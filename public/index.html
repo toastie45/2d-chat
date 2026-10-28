@@ -2553,8 +2553,9 @@
                 avatarContextWhisper.disabled = false;
                 avatarContextWhisper.title = 'Start en privat hvisken';
                 const apartment = isSelf ? ownApartment : null;
-                avatarContextApartment.hidden = !player || (isSelf && !apartment);
-                avatarContextApartment.disabled = !isSelf || !apartment;
+                const alreadyInApartment = activeRoom.startsWith('apartment:');
+                avatarContextApartment.hidden = !player || alreadyInApartment || (isSelf && !apartment) || !isSelf;
+                avatarContextApartment.disabled = !isSelf || !apartment || alreadyInApartment;
                 avatarContextApartment.textContent = apartment
                     ? `Gå til lejlighed (#${apartment.number})`
                     : isSelf ? '' : 'Henter lejlighed…';
@@ -3990,7 +3991,9 @@
                 avatarContextStatus.setAttribute('aria-expanded', 'false');
                 avatarContextKick.hidden = true;
                 updateAvatarContextMute();
-                if (target.id !== myId) socket.emit('apartment-info-request', { playerId: target.id });
+                if (target.id !== myId && !activeRoom.startsWith('apartment:')) {
+                    socket.emit('apartment-info-request', { playerId: target.id });
+                }
                 socket.emit('apartment-kick-option-request', { targetPlayerId: target.id });
                 avatarContextMenu.classList.remove('hidden');
                 positionAvatarContextMenu(event.clientX, event.clientY);
@@ -4338,8 +4341,9 @@
 
             socket.on('apartment-info', ({ playerId, apartmentId, apartmentNumber } = {}) => {
                 if (playerId !== contextPlayerId) return;
-                avatarContextApartment.hidden = !apartmentId;
-                avatarContextApartment.disabled = !apartmentId;
+                const alreadyInApartment = activeRoom.startsWith('apartment:');
+                avatarContextApartment.hidden = !apartmentId || alreadyInApartment;
+                avatarContextApartment.disabled = !apartmentId || alreadyInApartment;
                 avatarContextApartment.textContent = apartmentId
                     ? `Gå til lejlighed (#${apartmentNumber})`
                     : 'Ingen lejlighed';
