@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="da">
+<html lang="da" class="auth-checking">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -156,6 +156,32 @@
             place-items: center;
             padding: 46px 0;
         }
+
+        .auth-bootstrap {
+            display: none;
+            width: min(100%, 390px);
+            min-height: 104px;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 24px;
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: #171815;
+            color: var(--muted);
+            font-size: 13px;
+        }
+        html.auth-checking #login-section { display: none; }
+        html.auth-checking .auth-bootstrap { display: flex; }
+        .auth-bootstrap-spinner {
+            width: 17px;
+            height: 17px;
+            border: 2px solid #45483e;
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: auth-spin .8s linear infinite;
+        }
+        @keyframes auth-spin { to { transform: rotate(360deg); } }
 
         .login-card {
             width: min(100%, 390px);
@@ -1202,6 +1228,10 @@
 <body>
     <div class="page">
         <main>
+            <div class="auth-bootstrap" id="auth-bootstrap" role="status" aria-live="polite">
+                <span class="auth-bootstrap-spinner" aria-hidden="true"></span>
+                <span>Genopretter session…</span>
+            </div>
             <section class="login-card" id="login-section">
                 <h1 id="auth-title">Log ind og find din plads.</h1>
                 <p id="auth-description">Log ind for at møde andre på gulvet og fortsætte, hvor du slap.</p>
@@ -2762,6 +2792,7 @@
 
             function resetPendingAuthentication() {
                 stopGameLoop();
+                document.documentElement.classList.remove('auth-checking');
                 currentUser = null;
                 ownApartment = null;
                 resetTopbarProgress();
@@ -4156,6 +4187,7 @@
                                 joinButton.disabled = false;
                                 joinButton.textContent = 'Prøv igen';
                             }
+                            document.documentElement.classList.remove('auth-checking');
                         });
                 }
             });
@@ -4181,6 +4213,7 @@
                 } catch (error) {
                     loginError.textContent = error.message || 'Forbindelsen blev afbrudt. Prøv igen om et øjeblik.';
                 } finally {
+                    document.documentElement.classList.remove('auth-checking');
                     if (gameSection.classList.contains('hidden') && currentUser) {
                         joinButton.disabled = false;
                         joinButton.textContent = 'Prøv igen';
@@ -4191,6 +4224,7 @@
             socket.on('room-error', async ({ code, message } = {}) => {
                 setRoomNotice(message || 'Der opstod en fejl. Prøv igen.');
                 if (gameSection.classList.contains('hidden') && currentUser) {
+                    document.documentElement.classList.remove('auth-checking');
                     if (code === 'CHAT_ACCOUNT_ALREADY_ONLINE' || code === 'CHAT_IP_ACTIVE_USER_LIMIT') {
                         const rejectionMessage = message || 'Du kan ikke logge ind med denne bruger lige nu.';
                         socket.disconnect();
@@ -4263,6 +4297,7 @@
                 updateToolbarState();
                 loginSection.classList.add('hidden');
                 gameSection.classList.remove('hidden');
+                document.documentElement.classList.remove('auth-checking');
                 requestAnimationFrame(syncRoomSideCardHeight);
                 updateAccountActions();
                 loginError.textContent = '';
@@ -4794,17 +4829,24 @@
 
             authFetch('/api/auth/me')
                 .then(async (response) => {
-                    if (response.status === 401) return;
+                    if (response.status === 401) {
+                        document.documentElement.classList.remove('auth-checking');
+                        return;
+                    }
                     const result = await response.json();
                     if (!response.ok) throw new Error(result.error || 'Kunne ikke hente din session.');
                     currentUser = result.user;
                     updateAccountActions();
                     usernameInput.value = result.user.username;
+                    usernameInput.disabled = true;
+                    passwordInput.disabled = true;
+                    joinButton.textContent = 'Forbinder…';
                     socket.connect();
                 })
                 .catch((error) => {
                     loginError.textContent = error.message || 'Kunne ikke forbinde. Prøv igen.';
                     joinButton.disabled = false;
+                    document.documentElement.classList.remove('auth-checking');
                 });
         })();
     </script>
