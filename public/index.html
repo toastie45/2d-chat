@@ -594,6 +594,8 @@
         .apartment-editor-color[aria-pressed="true"] { outline: 2px solid #f2f0e9; outline-offset: 2px; }
         .apartment-editor-custom-color { width: 34px; height: 28px; padding: 2px; border: 1px solid #494c43; border-radius: 5px; background: #252623; cursor: pointer; }
         .apartment-editor-grid { position: relative; width: 100%; aspect-ratio: 3 / 2; overflow: hidden; margin: 12px 0; border: 1px solid #353732; border-radius: 7px; background: #000; }
+        .apartment-editor-grid[data-room-kind="public"] { background-position: center; background-repeat: no-repeat; background-size: 100% 100%; }
+        .apartment-editor-grid[data-room-kind="public"] .apartment-editor-tile { background: transparent; border-color: rgb(193 240 120 / 42%); }
         .apartment-editor-tile { position: absolute; padding: 0; border: 1px solid #3e5532; background: #10110f; cursor: pointer; }
         .apartment-editor-tile[data-kind="closed"], .apartment-editor-tile[data-kind="door"] { border-color: #77796f; background: transparent; }
         .apartment-editor-tile[data-kind="closed"]::after, .apartment-editor-tile[data-kind="door"]::after { position: absolute; inset: 0; display: grid; place-items: center; color: #f2f0e9; font: 700 8px/1 system-ui, sans-serif; text-shadow: 0 1px 2px #000; transform: rotate(-45deg); pointer-events: none; }
@@ -2561,6 +2563,11 @@
 
             function renderApartmentEditorGrid() {
                 apartmentEditorGrid.replaceChildren();
+                const publicRoomEditor = activeRoomEditorKind === 'public';
+                apartmentEditorGrid.dataset.roomKind = publicRoomEditor ? 'public' : 'apartment';
+                apartmentEditorGrid.style.backgroundImage = publicRoomEditor && roomBackgroundImageUrl
+                    ? `url("${roomBackgroundImageUrl.replace(/["\\]/g, '\\$&')}")`
+                    : 'none';
                 const tileSide = cellSize / Math.SQRT2;
                 for (const cell of gridCells) {
                     const key = `${cell.col}:${cell.row}`;
@@ -2570,7 +2577,7 @@
                     tile.className = 'apartment-editor-tile';
                     tile.dataset.cell = key;
                     tile.dataset.kind = state.kind;
-                    if (state.color) tile.style.backgroundColor = state.color;
+                    if (state.color && !publicRoomEditor) tile.style.backgroundColor = state.color;
                     const doorDestination = state.kind === 'door' ? state.destination : 'common';
                     const destinationLabel = [...apartmentEditorDoorDestination.options]
                         .find((option) => option.value === doorDestination)?.textContent || 'valgt rum';
