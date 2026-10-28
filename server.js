@@ -313,7 +313,7 @@ function publicPlayer(player) {
         name: player.name,
         col: player.col,
         row: player.row,
-        mood: player.mood === 'mobset' ? 'mobset' : 'glad',
+        mood: ['glad', 'mobset', 'ked'].includes(player.mood) ? player.mood : 'glad',
         text: player.text,
         messageTime: player.messageTime
     };
@@ -2821,7 +2821,7 @@ async function startServer() {
         });
 
         socket.on('player-mood-set', async ({ mood } = {}) => {
-            if (!activeSocketIds.has(socket.id) || !['glad', 'mobset'].includes(mood)) return;
+            if (!activeSocketIds.has(socket.id) || !['glad', 'mobset', 'ked'].includes(mood)) return;
             const roomId = activeSocketRooms.get(socket.id);
             if (!roomId) return;
             try {
