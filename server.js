@@ -368,6 +368,17 @@ async function startServer() {
         return Boolean(normalized && adminUsernames.has(normalized.normalized));
     };
     const getRequestIpAddress = (request) => String(request.ip || request.socket.remoteAddress || '').trim();
+    const recordUserLastIp = async (userId, ipAddress, ipHash) => {
+        if (!userId || !ipAddress || !ipHash) return;
+        await pool.query(`
+            INSERT INTO chat_user_last_ips (user_id, ip_hash, ip_address_encrypted, last_seen_at)
+            VALUES ($1, $2, $3, NOW())
+            ON CONFLICT (user_id) DO UPDATE SET
+                ip_hash = EXCLUDED.ip_hash,
+                ip_address_encrypted = EXCLUDED.ip_address_encrypted,
+                last_seen_at = NOW()
+        `, [userId, ipHash, encryptIpAddress(ipAddress)]);
+    };
     const getActiveIpBan = async (ipHash) => {
         if (!ipHash) return null;
         const { rows: [ban] } = await pool.query(`
@@ -546,6 +557,15 @@ async function startServer() {
         )
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS chat_ip_bans_expires_at_idx ON chat_ip_bans (expires_at) WHERE expires_at IS NOT NULL');
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS chat_user_last_ips (
+            user_id BIGINT PRIMARY KEY REFERENCES chat_users(id) ON DELETE CASCADE,
+            ip_hash TEXT NOT NULL,
+            ip_address_encrypted TEXT NOT NULL,
+            last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS chat_user_last_ips_ip_hash_idx ON chat_user_last_ips (ip_hash)');
     await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_profile_relationships (
             user_id BIGINT NOT NULL REFERENCES chat_users(id) ON DELETE CASCADE,
@@ -820,6 +840,8 @@ async function startServer() {
             request.session.clientIp,
             SESSION_SECRET
         );
+        request.session.ipRecorded = true;
+        await recordUserLastIp(user.id, request.session.clientIp, request.session.ipHash);
         await new Promise((resolve, reject) => {
             request.session.save((error) => error ? reject(error) : resolve());
         });
@@ -831,11 +853,21 @@ async function startServer() {
             return;
         }
         try {
-            const ipHash = hashRegistrationIp(getRequestIpAddress(request), SESSION_SECRET);
+            const clientIp = getRequestIpAddress(request);
+            const ipHash = hashRegistrationIp(clientIp, SESSION_SECRET);
             const ban = await getActiveIpBan(ipHash);
             if (ban) {
                 response.status(403).json({ code: 'CHAT_IP_BANNED', error: formatIpBanMessage(ban) });
                 return;
+            }
+            if (!request.session.ipRecorded || request.session.ipHash !== ipHash) {
+                request.session.clientIp = clientIp;
+                request.session.ipHash = ipHash;
+                request.session.ipRecorded = true;
+                await recordUserLastIp(request.session.user.id, clientIp, ipHash);
+                await new Promise((resolve, reject) => {
+                    request.session.save((error) => error ? reject(error) : resolve());
+                });
             }
             response.json({ user: request.session.user });
         } catch (error) {
@@ -1603,21 +1635,22 @@ async function startServer() {
                     ])
                 ]);
                 const { rows: onlineSessions } = await pool.query(`
-                    SELECT s.socket_id, s.user_id::text AS user_id, u.username
+                    SELECT s.socket_id, s.user_id::text AS user_id, s.ip_hash, u.username
                     FROM chat_online_sessions s JOIN chat_users u ON u.id = s.user_id
                 `);
                 const onlineBySocket = new Map(onlineSessions.map((session) => [session.socket_id, session]));
                 if (searchQuery) {
                     const onlineByUserId = new Map(onlineSessions.map((session) => [session.user_id, session]));
-                    const roomBySocket = new Map();
-                    for (const roomId of await getAllRoomIds()) {
-                        const players = await redis.hGetAll(roomKeys(roomId).players);
-                        for (const socketId of Object.keys(players)) {
-                            roomBySocket.set(socketId, roomNames.get(roomId) || 'Ukendt rum');
-                        }
-                    }
                     const { rows: accounts } = await pool.query(`
-                        SELECT id::text AS user_id, username, COUNT(*) OVER()::int AS match_count
+                        SELECT id::text AS user_id, username,
+                               (registration_ip_hash IS NOT NULL OR EXISTS (
+                                   SELECT 1 FROM chat_user_last_ips last_ip WHERE last_ip.user_id = chat_users.id
+                               )) AS has_known_ip,
+                               EXISTS (
+                                   SELECT 1 FROM chat_user_last_ips last_ip WHERE last_ip.user_id = chat_users.id
+                               ) AS has_last_login_ip,
+                               (registration_ip_hash IS NOT NULL) AS has_registration_ip,
+                               COUNT(*) OVER()::int AS match_count
                         FROM chat_users
                         WHERE username ILIKE '%' || $1 || '%'
                         ORDER BY username
@@ -1629,8 +1662,10 @@ async function startServer() {
                             socketId: session?.socket_id || null,
                             userId: account.user_id,
                             username: account.username,
-                            roomName: session ? roomBySocket.get(session.socket_id) || 'Online · rum ikke fundet' : 'Offline',
+                            roomName: session ? 'Online' : 'Offline',
                             isOnline: Boolean(session),
+                            hasKnownIp: Boolean(session?.ip_hash || account.has_known_ip),
+                            ipSource: session?.ip_hash ? 'aktuel IP' : account.has_last_login_ip ? 'seneste login' : account.has_registration_ip ? 'oprettelses-IP' : '',
                             isSelf: account.user_id === String(socket.data.user.id)
                         };
                     });
@@ -1654,6 +1689,7 @@ async function startServer() {
                             roomId,
                             roomName: roomNames.get(roomId) || 'Ukendt rum',
                             isOnline: true,
+                            hasKnownIp: Boolean(onlineSession?.ip_hash),
                             isSelf: String(onlineSession?.user_id || activeSocketUsers.get(socketId) || '') === String(socket.data.user.id)
                         });
                     }
@@ -1720,25 +1756,43 @@ async function startServer() {
             }
         });
 
-        socket.on('admin-user-ban', async ({ targetSocketId, durationMinutes, permanent, reason, initials } = {}) => {
+        socket.on('admin-user-ban', async (payload = {}) => {
             if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
-            if (typeof targetSocketId !== 'string' || targetSocketId.length > 128) {
-                socket.emit('admin-action-result', { success: false, message: 'Brugeren er ikke længere online.' });
+            const data = payload && typeof payload === 'object' ? payload : {};
+            const { targetSocketId, targetUserId, durationMinutes, permanent, reason, initials } = data;
+            if (typeof targetUserId !== 'string' || !/^[1-9]\d{0,18}$/.test(targetUserId)) {
+                socket.emit('admin-action-result', { success: false, message: 'Brugeren kunne ikke findes.' });
                 return;
             }
             try {
-                const [{ rows: [targetSession] }, targetSockets] = await Promise.all([
+                const [{ rows: [targetAccount] }, { rows: targetSessions }, { rows: [lastKnownIp] }] = await Promise.all([
                     pool.query(`
-                        SELECT s.user_id::text AS user_id, s.ip_hash, u.username
-                        FROM chat_online_sessions s JOIN chat_users u ON u.id = s.user_id
-                        WHERE s.socket_id = $1
-                    `, [targetSocketId]),
-                    io.in(targetSocketId).fetchSockets()
+                        SELECT id::text AS user_id, username, registration_ip_hash
+                        FROM chat_users WHERE id = $1
+                    `, [targetUserId]),
+                    pool.query(`
+                        SELECT socket_id, ip_hash FROM chat_online_sessions WHERE user_id = $1
+                    `, [targetUserId]),
+                    pool.query(`
+                        SELECT ip_hash, ip_address_encrypted
+                        FROM chat_user_last_ips WHERE user_id = $1
+                    `, [targetUserId])
                 ]);
-                const targetSocket = targetSockets[0];
-                if (!targetSession || !targetSocket || String(targetSession.user_id) === String(socket.data.user.id)) {
+                if (!targetAccount) {
+                    socket.emit('admin-action-result', { success: false, message: 'Brugeren findes ikke længere.' });
+                    return;
+                }
+                if (targetAccount.user_id === String(socket.data.user.id)) {
                     socket.emit('admin-action-result', { success: false, message: 'Du kan ikke banne din egen bruger.' });
                     return;
+                }
+                const matchedSession = targetSessions.find((session) => session.socket_id === targetSocketId)
+                    || targetSessions[0]
+                    || null;
+                let targetSocket = null;
+                if (matchedSession && typeof matchedSession.socket_id === 'string') {
+                    const targetSockets = await io.in(matchedSession.socket_id).fetchSockets();
+                    targetSocket = targetSockets[0] || null;
                 }
                 const cleanReason = typeof reason === 'string' ? redactSecrets(reason.trim()).slice(0, 240) : '';
                 const cleanInitials = typeof initials === 'string' ? initials.trim().toLocaleUpperCase('da-DK') : '';
@@ -1755,9 +1809,18 @@ async function startServer() {
                     socket.emit('admin-action-result', { success: false, message: 'Vælg en gyldig banvarighed på 1 minut til 1 år.' });
                     return;
                 }
-                const targetIpHash = targetSession.ip_hash || targetSocket.data.ipHash;
-                if (!targetIpHash || !targetSocket.data.clientIp) {
-                    socket.emit('admin-action-result', { success: false, message: 'Brugerens IP-adresse kunne ikke fastslås.' });
+                const targetIpHash = targetSocket?.data.ipHash
+                    || matchedSession?.ip_hash
+                    || lastKnownIp?.ip_hash
+                    || targetAccount.registration_ip_hash;
+                const targetIpAddress = targetSocket?.data.clientIp
+                    || (lastKnownIp ? decryptIpAddress(lastKnownIp.ip_address_encrypted) : null)
+                    || (targetAccount.registration_ip_hash ? 'Ukendt (oprettelses-IP)' : null);
+                if (!targetIpHash || !targetIpAddress) {
+                    socket.emit('admin-action-result', {
+                        success: false,
+                        message: 'Brugeren har ingen kendt IP-adresse endnu og kan derfor ikke IP-bannes.'
+                    });
                     return;
                 }
                 if (targetIpHash === socket.data.ipHash) {
@@ -1776,7 +1839,7 @@ async function startServer() {
                         admin_initials = EXCLUDED.admin_initials,
                         created_at = NOW(),
                         expires_at = EXCLUDED.expires_at
-                `, [targetIpHash, encryptIpAddress(targetSocket.data.clientIp), targetSession.username,
+                `, [targetIpHash, encryptIpAddress(targetIpAddress), targetAccount.username,
                     cleanReason, cleanInitials, expiresAt]);
                 const banMessage = formatIpBanMessage({ reason: cleanReason, admin_initials: cleanInitials, expires_at: expiresAt });
                 const { rows: affectedSessions } = await pool.query(
@@ -1784,7 +1847,10 @@ async function startServer() {
                 );
                 const affectedSockets = affectedSessions.map((session) => session.socket_id);
                 for (const id of affectedSockets) await kickPlayer(id, banMessage);
-                socket.emit('admin-action-result', { success: true, message: `${targetSession.username} og aktive brugere på IP-adressen blev bannet.` });
+                socket.emit('admin-action-result', {
+                    success: true,
+                    message: `${targetAccount.username} blev IP-bannet${affectedSockets.length ? `, og ${affectedSockets.length} aktive forbindelse(r) blev afbrudt` : ''}.`
+                });
             } catch (error) {
                 console.error('Could not ban chat IP:', getSafeErrorCode(error));
                 socket.emit('admin-action-result', { success: false, message: 'Ban kunne ikke gemmes. Prøv igen.' });

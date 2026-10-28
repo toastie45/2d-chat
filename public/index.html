@@ -3188,12 +3188,16 @@
                     ban.className = 'admin-row-button ban';
                     ban.type = 'button';
                     ban.textContent = 'Ban';
-                    ban.disabled = !user.isOnline || Boolean(user.isSelf);
-                    ban.title = user.isSelf ? 'Du kan ikke banne din egen bruger' : !user.isOnline ? 'Brugeren er offline' : `Ban ${user.username}`;
+                    ban.disabled = !user.hasKnownIp || Boolean(user.isSelf);
+                    ban.title = user.isSelf
+                        ? 'Du kan ikke banne din egen bruger'
+                        : !user.hasKnownIp
+                            ? 'Der er ingen kendt IP-adresse for brugeren endnu'
+                            : `Ban ${user.username}${user.isOnline ? '' : ` via ${user.ipSource || 'senest kendte IP'}`}`;
                     ban.addEventListener('click', () => {
-                        if (user.isSelf) return;
-                        pendingAdminBanTarget = user.socketId;
-                        adminBanTarget.textContent = `${user.username} · ${user.roomName || 'Ukendt rum'}`;
+                        if (user.isSelf || !user.hasKnownIp) return;
+                        pendingAdminBanTarget = { userId: user.userId, socketId: user.socketId };
+                        adminBanTarget.textContent = `${user.username} · ${user.roomName || 'Ukendt rum'}${user.ipSource ? ` · IP: ${user.ipSource}` : ''}`;
                         adminBanDuration.value = '60';
                         adminBanCustomWrap.hidden = true;
                         adminBanReason.value = '';
@@ -3931,14 +3935,15 @@
             adminBanDialog.addEventListener('close', () => { pendingAdminBanTarget = null; });
             adminBanForm.addEventListener('submit', (event) => {
                 event.preventDefault();
-                if (!pendingAdminBanTarget) return;
+                if (!pendingAdminBanTarget?.userId) return;
                 const permanent = adminBanDuration.value === 'permanent';
                 const durationMinutes = adminBanDuration.value === 'manual'
                     ? Number(adminBanCustomMinutes.value)
                     : Number(adminBanDuration.value);
                 adminBanStatus.textContent = 'Gemmer banlysningen…';
                 socket.emit('admin-user-ban', {
-                    targetSocketId: pendingAdminBanTarget,
+                    targetSocketId: pendingAdminBanTarget.socketId,
+                    targetUserId: pendingAdminBanTarget.userId,
                     permanent,
                     durationMinutes,
                     reason: adminBanReason.value,
