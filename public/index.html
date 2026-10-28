@@ -813,6 +813,8 @@
         .admin-users-dropdown > summary:focus-visible { outline: 2px solid #d5f59c; outline-offset: 4px; border-radius: 3px; }
         .admin-users-dropdown[open] > summary { border-bottom: 1px solid #34362f; }
         .admin-section-content { padding: 12px; }
+        .admin-subsection { margin-top: 18px; padding-top: 14px; border-top: 1px solid #34362f; }
+        .admin-subsection-title { margin: 0 0 10px; color: #f2f0e9; font-size: 12px; font-weight: 700; }
         .admin-list { display: grid; gap: 8px; }
         .admin-user-row, .admin-ban-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 11px; border: 1px solid #393b33; border-radius: 8px; background: #20211d; }
         .admin-user-details, .admin-ban-details { display: grid; min-width: 0; gap: 4px; }
@@ -1653,16 +1655,14 @@
                                     <button class="admin-row-button admin-refresh" id="admin-users-refresh" type="button">Opdater brugerlisten</button>
                                     <p class="admin-status" id="admin-users-status" aria-live="polite"></p>
                                     <div class="admin-list" id="admin-online-users" role="list"></div>
+                                    <section class="admin-subsection" id="admin-bans-view" aria-labelledby="admin-bans-title">
+                                        <h3 class="admin-subsection-title" id="admin-bans-title">Bannede brugere</h3>
+                                        <button class="admin-row-button admin-refresh" id="admin-bans-refresh" type="button">Opdater banlisten</button>
+                                        <p class="admin-status" id="admin-bans-status" aria-live="polite"></p>
+                                        <div class="admin-list" id="admin-ip-bans" role="list"></div>
+                                    </section>
                                 </div>
                             </details>
-                            <section class="admin-section" id="admin-bans-view" aria-labelledby="admin-bans-title">
-                                <h3 class="admin-section-title" id="admin-bans-title">Bannede brugere</h3>
-                                <div class="admin-section-content">
-                                    <button class="admin-row-button admin-refresh" id="admin-bans-refresh" type="button">Opdater banlisten</button>
-                                    <p class="admin-status" id="admin-bans-status" aria-live="polite"></p>
-                                    <div class="admin-list" id="admin-ip-bans" role="list"></div>
-                                </div>
-                            </section>
                         </section>
                     </aside>
                 </div>
