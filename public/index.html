@@ -804,9 +804,15 @@
             box-shadow: 0 24px 90px #000a;
         }
         .level-overview-dialog::backdrop { background: #050605c9; }
-        .admin-section { margin-top: 20px; padding-top: 16px; border-top: 1px solid #34362f; }
+        .admin-section { margin-top: 16px; padding-top: 14px; border-top: 1px solid #34362f; }
         .admin-section:first-of-type { margin-top: 0; padding-top: 0; border-top: 0; }
         .admin-section-title { margin: 0 0 10px; color: #f2f0e9; font-size: 13px; font-weight: 700; }
+        .admin-users-dropdown > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0; cursor: pointer; list-style: none; }
+        .admin-users-dropdown > summary::-webkit-details-marker { display: none; }
+        .admin-users-dropdown > summary::after { content: ""; width: 7px; height: 7px; flex: 0 0 auto; border-right: 1.5px solid #b9dc7b; border-bottom: 1.5px solid #b9dc7b; transform: rotate(45deg) translateY(-2px); transition: transform 160ms ease; }
+        .admin-users-dropdown[open] > summary::after { transform: rotate(225deg) translate(-2px, -1px); }
+        .admin-users-dropdown > summary:focus-visible { outline: 2px solid #d5f59c; outline-offset: 4px; border-radius: 3px; }
+        .admin-users-dropdown .admin-users-content { padding-top: 12px; }
         .admin-list { display: grid; gap: 8px; }
         .admin-user-row, .admin-ban-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 11px; border: 1px solid #393b33; border-radius: 8px; background: #20211d; }
         .admin-user-details, .admin-ban-details { display: grid; min-width: 0; gap: 4px; }
@@ -1641,12 +1647,14 @@
                         </section>
                         <section class="side-panel" id="admin-panel" aria-labelledby="admin-title" hidden>
                             <h2 class="side-title" id="admin-title">Admin</h2>
-                            <section class="admin-section" id="admin-users-view" aria-labelledby="admin-users-title">
-                                <h3 class="admin-section-title" id="admin-users-title">Brugerkontrol</h3>
-                                <button class="admin-row-button admin-refresh" id="admin-users-refresh" type="button">Opdater brugerlisten</button>
-                                <p class="admin-status" id="admin-users-status" aria-live="polite"></p>
-                                <div class="admin-list" id="admin-online-users" role="list"></div>
-                            </section>
+                            <details class="admin-section admin-users-dropdown" id="admin-users-view" aria-labelledby="admin-users-title">
+                                <summary class="admin-section-title" id="admin-users-title">Brugerkontrol</summary>
+                                <div class="admin-users-content">
+                                    <button class="admin-row-button admin-refresh" id="admin-users-refresh" type="button">Opdater brugerlisten</button>
+                                    <p class="admin-status" id="admin-users-status" aria-live="polite"></p>
+                                    <div class="admin-list" id="admin-online-users" role="list"></div>
+                                </div>
+                            </details>
                             <section class="admin-section" id="admin-bans-view" aria-labelledby="admin-bans-title">
                                 <h3 class="admin-section-title" id="admin-bans-title">Bannede brugere</h3>
                                 <button class="admin-row-button admin-refresh" id="admin-bans-refresh" type="button">Opdater banlisten</button>
