@@ -806,6 +806,8 @@
         .level-overview-dialog::backdrop { background: #050605c9; }
         .admin-section { margin: 0; padding: 0; border: 0; background: transparent; }
         .admin-section-content { padding: 0; }
+        .admin-subsection { margin-top: 18px; padding-top: 14px; border-top: 1px solid #34362f; }
+        .admin-subsection-title { margin: 0 0 10px; color: #f2f0e9; font-size: 12px; font-weight: 700; }
         .admin-user-search { width: 100%; min-height: 36px; margin-bottom: 10px; padding: 8px 10px; border: 1px solid #3b3e36; border-radius: 7px; background: #151613; color: #f2f0e9; font: inherit; font-size: 11px; }
         .admin-user-search:focus { border-color: #9fc65f; outline: 2px solid #9fc65f33; }
         .admin-list { display: grid; gap: 8px; }
@@ -1644,8 +1646,8 @@
                             <h2 class="side-title" id="admin-title">Admin</h2>
                             <label class="visually-hidden" for="admin-section-select">Vælg adminsektion</label>
                             <select class="profile-page-select" id="admin-section-select">
+                                <option value="" selected>Vælg adminfunktion:</option>
                                 <option value="users">Brugerkontrol</option>
-                                <option value="bans">Bannede brugere</option>
                             </select>
                             <section class="admin-section" id="admin-users-view" aria-labelledby="admin-users-title">
                                 <h3 class="visually-hidden" id="admin-users-title">Brugerkontrol</h3>
@@ -1654,14 +1656,12 @@
                                     <button class="admin-row-button admin-refresh" id="admin-users-refresh" type="button">Opdater brugerlisten</button>
                                     <p class="admin-status" id="admin-users-status" aria-live="polite"></p>
                                     <div class="admin-list" id="admin-online-users" role="list"></div>
-                                </div>
-                            </section>
-                            <section class="admin-section" id="admin-bans-view" aria-labelledby="admin-bans-title" hidden>
-                                <h3 class="visually-hidden" id="admin-bans-title">Bannede brugere</h3>
-                                <div class="admin-section-content">
-                                    <button class="admin-row-button admin-refresh" id="admin-bans-refresh" type="button">Opdater banlisten</button>
-                                    <p class="admin-status" id="admin-bans-status" aria-live="polite"></p>
-                                    <div class="admin-list" id="admin-ip-bans" role="list"></div>
+                                    <section class="admin-subsection" id="admin-bans-view" aria-labelledby="admin-bans-title">
+                                        <h3 class="admin-subsection-title" id="admin-bans-title">Bannede brugere</h3>
+                                        <button class="admin-row-button admin-refresh" id="admin-bans-refresh" type="button">Opdater banlisten</button>
+                                        <p class="admin-status" id="admin-bans-status" aria-live="polite"></p>
+                                        <div class="admin-list" id="admin-ip-bans" role="list"></div>
+                                    </section>
                                 </div>
                             </section>
                         </section>
@@ -1835,7 +1835,6 @@
             const adminPanel = document.getElementById('admin-panel');
             const adminSectionSelect = document.getElementById('admin-section-select');
             const adminUsersView = document.getElementById('admin-users-view');
-            const adminBansView = document.getElementById('admin-bans-view');
             const adminUserSearch = document.getElementById('admin-user-search');
             const adminUsersRefresh = document.getElementById('admin-users-refresh');
             const adminBansRefresh = document.getElementById('admin-bans-refresh');
@@ -3148,13 +3147,10 @@
                 socket.emit('admin-online-users-request', { query });
             }
 
-            function selectAdminSection(section) {
-                const showUsers = section === 'users';
-                adminSectionSelect.value = showUsers ? 'users' : 'bans';
-                adminUsersView.hidden = !showUsers;
-                adminBansView.hidden = showUsers;
-                if (showUsers) requestAdminUserList();
-                else socket.emit('admin-ip-bans-request');
+            function selectAdminSection() {
+                adminUsersView.hidden = false;
+                requestAdminUserList();
+                socket.emit('admin-ip-bans-request');
             }
 
             function renderAdminOnlineUsers(users = [], query = '', totalCount = users.length) {
@@ -3927,9 +3923,9 @@
             adminNavButton.addEventListener('click', () => {
                 if (!isAdminUser) return;
                 selectSidePanel('admin');
-                selectAdminSection(adminSectionSelect.value || 'users');
+                selectAdminSection();
             });
-            adminSectionSelect.addEventListener('change', () => selectAdminSection(adminSectionSelect.value));
+            adminSectionSelect.addEventListener('change', selectAdminSection);
             adminUsersRefresh.addEventListener('click', requestAdminUserList);
             adminUserSearch.addEventListener('input', () => {
                 clearTimeout(adminUserSearchTimer);
