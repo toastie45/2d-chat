@@ -1509,6 +1509,7 @@
             <button class="avatar-context-action avatar-context-subaction" id="avatar-context-mood-mobset" type="button" role="menuitemradio" data-avatar-mood="mobset" aria-checked="false" hidden>Mobset</button>
             <button class="avatar-context-action avatar-context-subaction" id="avatar-context-mood-ked" type="button" role="menuitemradio" data-avatar-mood="ked" aria-checked="false" hidden>Ked</button>
             <button class="avatar-context-action avatar-context-subaction" id="avatar-context-mood-blappet" type="button" role="menuitemradio" data-avatar-mood="blappet" aria-checked="false" hidden>Blappet</button>
+            <button class="avatar-context-action avatar-context-subaction" id="avatar-context-mood-boevet" type="button" role="menuitemradio" data-avatar-mood="boevet" aria-checked="false" hidden>B&#248;vet</button>
         </div>
         <dialog class="level-overview-dialog" id="level-overview-dialog" aria-labelledby="level-overview-title">
             <div class="level-overview-header">
@@ -1555,12 +1556,14 @@
             const mobsetAvatarImage = new Image();
             const kedAvatarImage = new Image();
             const blappetAvatarImage = new Image();
+            const boevetAvatarImage = new Image();
             const avatarWidth = 54;
             const avatarHeight = 75;
             let avatarImageLoaded = false;
             let mobsetAvatarImageLoaded = false;
             let kedAvatarImageLoaded = false;
             let blappetAvatarImageLoaded = false;
+            let boevetAvatarImageLoaded = false;
             avatarImage.addEventListener('load', () => {
                 avatarImageLoaded = true;
                 requestBoardRender();
@@ -1581,6 +1584,11 @@
                 requestBoardRender();
             });
             blappetAvatarImage.src = '/images/blappet.png';
+            boevetAvatarImage.addEventListener('load', () => {
+                boevetAvatarImageLoaded = true;
+                requestBoardRender();
+            });
+            boevetAvatarImage.src = '/images/boevet.png';
             const loginSection = document.getElementById('login-section');
             const gameSection = document.getElementById('game-section');
             const usernameInput = document.getElementById('username-input');
@@ -1750,6 +1758,7 @@
             const avatarContextMoodMobset = document.getElementById('avatar-context-mood-mobset');
             const avatarContextMoodKed = document.getElementById('avatar-context-mood-ked');
             const avatarContextMoodBlappet = document.getElementById('avatar-context-mood-blappet');
+            const avatarContextMoodBoevet = document.getElementById('avatar-context-mood-boevet');
             const roomNotice = document.getElementById('room-notice');
             const logoutButton = document.getElementById('logout-button');
             const chatLog = document.getElementById('chat-log');
@@ -2432,7 +2441,7 @@
             }
 
             function setOwnMood(mood) {
-                if (!myId || !players[myId] || !['glad', 'mobset', 'ked', 'blappet'].includes(mood)) return;
+                if (!myId || !players[myId] || !['glad', 'mobset', 'ked', 'blappet', 'boevet'].includes(mood)) return;
                 if ((players[myId].mood || 'glad') === mood) return;
                 socket.emit('player-mood-set', { mood });
             }
@@ -2447,10 +2456,12 @@
                 avatarContextMoodMobset.hidden = !isSelf || !moodExpanded;
                 avatarContextMoodKed.hidden = !isSelf || !moodExpanded;
                 avatarContextMoodBlappet.hidden = !isSelf || !moodExpanded;
+                avatarContextMoodBoevet.hidden = !isSelf || !moodExpanded;
                 avatarContextMoodGlad.setAttribute('aria-checked', String(!player?.mood || player.mood === 'glad'));
                 avatarContextMoodMobset.setAttribute('aria-checked', String(player?.mood === 'mobset'));
                 avatarContextMoodKed.setAttribute('aria-checked', String(player?.mood === 'ked'));
                 avatarContextMoodBlappet.setAttribute('aria-checked', String(player?.mood === 'blappet'));
+                avatarContextMoodBoevet.setAttribute('aria-checked', String(player?.mood === 'boevet'));
                 const whisperInRange = Boolean(player && !isSelf && canWhisperTo(contextPlayerId));
                 avatarContextWhisper.hidden = !whisperInRange;
                 avatarContextWhisper.disabled = false;
@@ -3113,6 +3124,8 @@
                             ? (kedAvatarImageLoaded ? kedAvatarImage : avatarImageLoaded ? avatarImage : null)
                             : player.mood === 'blappet'
                                 ? (blappetAvatarImageLoaded ? blappetAvatarImage : avatarImageLoaded ? avatarImage : null)
+                                : player.mood === 'boevet'
+                                ? (boevetAvatarImageLoaded ? boevetAvatarImage : avatarImageLoaded ? avatarImage : null)
                                 : avatarImageLoaded ? avatarImage : null;
                     const muted = isMutedPlayer(player);
                     const visualHeight = avatarImageLoaded ? avatarHeight : avatarRadius * 2;
@@ -3504,10 +3517,10 @@
                     avatarContextMenu.style.top = `${Math.max(8, window.innerHeight - avatarContextMenu.offsetHeight - 8)}px`;
                 }
             });
-            [avatarContextMoodGlad, avatarContextMoodMobset, avatarContextMoodKed, avatarContextMoodBlappet].forEach((button) => {
+            [avatarContextMoodGlad, avatarContextMoodMobset, avatarContextMoodKed, avatarContextMoodBlappet, avatarContextMoodBoevet].forEach((button) => {
                 button.addEventListener('click', () => {
                     const mood = button.dataset.avatarMood;
-                    if (contextPlayerId !== myId || !['glad', 'mobset', 'ked', 'blappet'].includes(mood)) return;
+                    if (contextPlayerId !== myId || !['glad', 'mobset', 'ked', 'blappet', 'boevet'].includes(mood)) return;
                     setOwnMood(mood);
                     closeAvatarContextMenu();
                 });
@@ -3839,7 +3852,7 @@
                 if (!myId || !players[myId] || gameSection.classList.contains('hidden')) return;
                 if (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable="true"]')) return;
                 event.preventDefault();
-                const moods = ['glad', 'mobset', 'ked', 'blappet'];
+                const moods = ['glad', 'mobset', 'ked', 'blappet', 'boevet'];
                 const currentMoodIndex = moods.indexOf(players[myId].mood || 'glad');
                 const direction = event.key === 'ArrowDown' ? 1 : -1;
                 setOwnMood(moods[(currentMoodIndex + direction + moods.length) % moods.length]);
@@ -4231,7 +4244,7 @@
             });
 
             socket.on('playerMoodChanged', ({ id, mood } = {}) => {
-                if (typeof id !== 'string' || !players[id] || !['glad', 'mobset', 'ked', 'blappet'].includes(mood)) return;
+                if (typeof id !== 'string' || !players[id] || !['glad', 'mobset', 'ked', 'blappet', 'boevet'].includes(mood)) return;
                 players[id].mood = mood;
                 requestBoardRender();
                 if (contextPlayerId === id) updateAvatarContextMute();
