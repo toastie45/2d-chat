@@ -1306,7 +1306,7 @@
                             </div>
                             <div id="navigator-apartment-view" role="tabpanel" aria-labelledby="navigator-apartment-tab" hidden>
                                 <div class="navigator-room-list navigator-apartment-room-list" role="group" aria-label="Aktive lejligheder"></div>
-                                <p class="navigator-apartment-empty" id="navigator-apartment-empty">Ingen andre aktive lejligheder lige nu.</p>
+                                <p class="navigator-apartment-empty" id="navigator-apartment-empty">Ingen aktive lejligheder lige nu.</p>
                             </div>
                         </section>
                         <section class="side-panel" id="members-panel" aria-labelledby="members-title" hidden>
@@ -2349,10 +2349,9 @@
             function renderNavigatorRooms(rooms, activeRoomId) {
                 navigatorPublicRoomList.replaceChildren();
                 navigatorApartmentRoomList.replaceChildren();
-                const availableRooms = rooms.filter((room) => !(room.type === 'apartment' && room.id === activeRoomId));
-                const apartmentRooms = availableRooms.filter((room) => room.type === 'apartment');
+                const apartmentRooms = rooms.filter((room) => room.type === 'apartment');
                 navigatorApartmentEmpty.hidden = apartmentRooms.length > 0;
-                availableRooms.forEach((room) => {
+                rooms.forEach((room) => {
                     const button = document.createElement('button');
                     button.className = 'navigator-room-button';
                     button.type = 'button';
@@ -2553,15 +2552,10 @@
                 avatarContextWhisper.hidden = !whisperInRange;
                 avatarContextWhisper.disabled = false;
                 avatarContextWhisper.title = 'Start en privat hvisken';
-                const apartment = isSelf ? ownApartment : null;
-                const alreadyInOwnApartment = Boolean(apartment && activeRoom === `apartment:${apartment.id}`);
-                avatarContextApartment.hidden = !player || (isSelf && (!apartment || alreadyInOwnApartment)) || !isSelf;
-                avatarContextApartment.disabled = !isSelf || !apartment || alreadyInOwnApartment;
-                avatarContextApartment.textContent = apartment
-                    ? `Gå til lejlighed (#${apartment.number})`
-                    : isSelf ? '' : 'Henter lejlighed…';
-                if (apartment) avatarContextApartment.dataset.apartmentId = apartment.id;
-                else delete avatarContextApartment.dataset.apartmentId;
+                avatarContextApartment.hidden = true;
+                avatarContextApartment.disabled = true;
+                avatarContextApartment.textContent = isSelf ? '' : 'Henter lejlighed…';
+                delete avatarContextApartment.dataset.apartmentId;
                 const highlighted = Boolean(player && highlightedSpeechBubblePlayers.has(contextPlayerId));
                 avatarContextHighlight.hidden = !player || isSelf;
                 avatarContextHighlight.disabled = !player || isSelf;
@@ -4340,9 +4334,10 @@
 
             socket.on('apartment-info', ({ playerId, apartmentId, apartmentNumber } = {}) => {
                 if (playerId !== contextPlayerId) return;
+                const isOwner = playerId === myId;
                 const alreadyInTargetApartment = Boolean(apartmentId && activeRoom === `apartment:${apartmentId}`);
-                avatarContextApartment.hidden = !apartmentId || alreadyInTargetApartment;
-                avatarContextApartment.disabled = !apartmentId || alreadyInTargetApartment;
+                avatarContextApartment.hidden = isOwner || !apartmentId || alreadyInTargetApartment;
+                avatarContextApartment.disabled = isOwner || !apartmentId || alreadyInTargetApartment;
                 avatarContextApartment.textContent = apartmentId
                     ? `Gå til lejlighed (#${apartmentNumber})`
                     : 'Ingen lejlighed';
