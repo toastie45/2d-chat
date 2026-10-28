@@ -3227,7 +3227,7 @@
                 for (const player of avatarDrawOrder) {
                     const position = player.position || player.target || positionFor(player);
                     if (!position) continue;
-                    const playerAvatarImage = player.mood === 'mobset'
+                    const moodFaceImage = player.mood === 'mobset'
                         ? (mobsetAvatarImageLoaded ? mobsetAvatarImage : avatarImageLoaded ? avatarImage : null)
                         : player.mood === 'ked'
                             ? (kedAvatarImageLoaded ? kedAvatarImage : avatarImageLoaded ? avatarImage : null)
@@ -3249,14 +3249,38 @@
                     ctx.fill();
                     ctx.restore();
 
-                    if (playerAvatarImage) {
+                    if (avatarImageLoaded) {
                         ctx.drawImage(
-                            playerAvatarImage,
+                            avatarImage,
                             position.x - visualWidth / 2,
                             avatarY - visualHeight / 2,
                             visualWidth,
                             visualHeight
                         );
+                        // Keep the avatar silhouette, ears, and body fixed. Only replace
+                        // the inner face area so mood changes cannot make the outline jump.
+                        if (moodFaceImage && moodFaceImage !== avatarImage) {
+                            ctx.save();
+                            ctx.beginPath();
+                            ctx.ellipse(
+                                position.x,
+                                avatarY - visualHeight * 0.19,
+                                visualWidth * 0.275,
+                                visualHeight * 0.255,
+                                0,
+                                0,
+                                Math.PI * 2
+                            );
+                            ctx.clip();
+                            ctx.drawImage(
+                                moodFaceImage,
+                                position.x - visualWidth / 2,
+                                avatarY - visualHeight / 2,
+                                visualWidth,
+                                visualHeight
+                            );
+                            ctx.restore();
+                        }
                     } else {
                         ctx.beginPath();
                         ctx.arc(position.x, avatarY, avatarRadius + 3, 0, Math.PI * 2);
