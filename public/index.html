@@ -829,6 +829,11 @@
         .admin-room-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 9px; border: 1px solid #393b33; border-radius: 8px; background: #20211d; }
         .admin-room-edit { display: grid; grid-template-columns: minmax(0, 1fr) 82px; gap: 6px; }
         .admin-room-meta { margin-bottom: 5px; color: var(--muted); font-size: 10px; }
+        .admin-room-details { display: grid; grid-template-columns: 104px minmax(0, 1fr); align-items: center; gap: 9px; }
+        .admin-room-preview { display: block; width: 104px; height: 64px; border: 1px solid #3b3e36; border-radius: 6px; object-fit: cover; }
+        .admin-room-bg-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+        .admin-room-file { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
+        .admin-room-bg-status { flex: 1 0 100%; color: var(--muted); font-size: 10px; }
         .navigator-floor-heading { margin: 14px 0 2px; color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
         .admin-refresh { margin: 0 0 10px; }
         .admin-status { min-height: 16px; margin: 8px 0; color: var(--muted); font-size: 10px; }
@@ -1306,6 +1311,8 @@
             .admin-room-create button { grid-column: 1 / -1; }
             .admin-room-row { grid-template-columns: minmax(0, 1fr); }
             .admin-room-row .admin-row-actions { justify-content: flex-end; }
+            .admin-room-details { grid-template-columns: 82px minmax(0, 1fr); }
+            .admin-room-preview { width: 82px; height: 54px; }
         }
     </style>
 </head>
@@ -1685,7 +1692,7 @@
                             </section>
                             <section class="admin-section" id="admin-rooms-view" aria-labelledby="admin-rooms-title" hidden>
                                 <h3 class="visually-hidden" id="admin-rooms-title">Navigator - etager og rum</h3>
-                                <p class="admin-status">Opret rum på en etage, eller rediger/slet eksisterende rum. Fællesrum og Diskoteket er faste rum.</p>
+                                <p class="admin-status">Opret rum på en etage, rediger/slet rum og upload en baggrund til hvert offentligt rum. Billeder beskæres til 3:2 og gemmes som JPG på højst 950 KB. Fællesrum og Diskoteket er faste rum.</p>
                                 <form class="admin-room-create" id="admin-room-create-form">
                                     <input id="admin-room-name" type="text" maxlength="60" placeholder="Nyt rumnavn" aria-label="Nyt rumnavn" required>
                                     <input id="admin-room-floor" type="number" min="1" max="100" value="1" aria-label="Etagenummer" required>
@@ -1794,6 +1801,15 @@
             const roomBackgroundImage = new Image();
             let roomBackgroundImageLoaded = false;
             let roomBackgroundImageRequested = false;
+            let roomBackgroundImageUrl = '';
+            function setRoomBackground(url = '') {
+                const nextUrl = typeof url === 'string' && url ? url : '/images/test-room-background.png';
+                if (nextUrl === roomBackgroundImageUrl) return;
+                roomBackgroundImageUrl = nextUrl;
+                roomBackgroundImageLoaded = false;
+                roomBackgroundImageRequested = true;
+                roomBackgroundImage.src = nextUrl;
+            }
             roomBackgroundImage.addEventListener('load', () => {
                 roomBackgroundImageLoaded = true;
                 requestBoardRender();
@@ -2597,6 +2613,7 @@
 
             function applyRoomState(roomId, roomName, serverPlayers = {}, welcome = {}, apartmentState = {}) {
                 activeRoom = roomId;
+                setRoomBackground(welcome.roomBackgroundUrl);
                 roomStripName.textContent = roomName;
                 roomStripName.setAttribute('aria-label', `Vis velkomst for ${roomName}`);
                 chatTitle.textContent = `Tekstchat i ${roomName}`;
@@ -3213,6 +3230,63 @@
                 if (showRooms) socket.emit('admin-public-rooms-request');
             }
 
+            async function uploadAdminRoomBackground(roomId, file, statusElement) {
+                if (!file || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+                    statusElement.textContent = 'Vælg en PNG-, JPG- eller WebP-fil.';
+                    return;
+                }
+                if (file.size > 20 * 1024 * 1024) {
+                    statusElement.textContent = 'Billedfilen må højst være 20 MB før tilpasning.';
+                    return;
+                }
+                statusElement.textContent = 'Tilpasser billedet til rummets 3:2-format…';
+                const objectUrl = URL.createObjectURL(file);
+                try {
+                    const source = new Image();
+                    source.src = objectUrl;
+                    await source.decode();
+                    if (!source.naturalWidth || !source.naturalHeight || source.naturalWidth > 8000 || source.naturalHeight > 8000) {
+                        statusElement.textContent = 'Billedet skal være mindre end 8000 × 8000 px.';
+                        return;
+                    }
+                    const output = document.createElement('canvas');
+                    output.width = 1536;
+                    output.height = 1024;
+                    const context = output.getContext('2d');
+                    context.fillStyle = '#080a08';
+                    context.fillRect(0, 0, output.width, output.height);
+                    const scale = Math.max(output.width / source.naturalWidth, output.height / source.naturalHeight);
+                    const cropWidth = output.width / scale;
+                    const cropHeight = output.height / scale;
+                    context.drawImage(source,
+                        (source.naturalWidth - cropWidth) / 2,
+                        (source.naturalHeight - cropHeight) / 2,
+                        cropWidth, cropHeight, 0, 0, output.width, output.height);
+                    let blob = null;
+                    for (const quality of [0.9, 0.82, 0.74, 0.66]) {
+                        blob = await new Promise((resolve) => output.toBlob(resolve, 'image/jpeg', quality));
+                        if (blob && blob.size <= 950_000) break;
+                    }
+                    if (!blob || blob.size > 950_000) {
+                        statusElement.textContent = 'Billedet kunne ikke komprimeres til under 950 KB.';
+                        return;
+                    }
+                    if (!socket.connected) {
+                        statusElement.textContent = 'Forbindelsen er væk. Prøv igen.';
+                        return;
+                    }
+                    statusElement.textContent = 'Uploader baggrund…';
+                    socket.emit('admin-public-room-background-upload', {
+                        id: roomId,
+                        image: new Uint8Array(await blob.arrayBuffer())
+                    });
+                } catch (error) {
+                    statusElement.textContent = 'Billedet kunne ikke læses. Prøv en anden fil.';
+                } finally {
+                    URL.revokeObjectURL(objectUrl);
+                }
+            }
+
             function renderAdminPublicRooms(rooms = []) {
                 adminPublicRooms.replaceChildren();
                 if (!rooms.length) {
@@ -3241,10 +3315,49 @@
                     floor.type = 'number'; floor.min = '1'; floor.max = '100'; floor.required = true; floor.value = String(room.floorNumber);
                     floor.setAttribute('aria-label', `Etage for rum #${room.roomNumber}`);
                     const details = document.createElement('div');
+                    details.className = 'admin-room-details';
                     const meta = document.createElement('div');
                     meta.className = 'admin-room-meta';
                     meta.textContent = `#${room.roomNumber} · ${room.count} online${room.isSystem ? ' · fast rum' : ''}`;
-                    details.append(meta, form);
+                    const preview = document.createElement('img');
+                    preview.className = 'admin-room-preview';
+                    preview.src = room.backgroundUrl || '/images/test-room-background.png';
+                    preview.alt = `Baggrund for ${room.name}`;
+                    const editFields = document.createElement('div');
+                    editFields.append(meta, form);
+                    details.append(preview, editFields);
+                    const backgroundTools = document.createElement('div');
+                    backgroundTools.className = 'admin-room-bg-tools';
+                    const fileInput = document.createElement('input');
+                    fileInput.className = 'admin-room-file';
+                    fileInput.type = 'file';
+                    fileInput.accept = 'image/png,image/jpeg,image/webp';
+                    fileInput.setAttribute('aria-label', `Vælg baggrund for ${room.name}`);
+                    const chooseBackground = document.createElement('button');
+                    chooseBackground.className = 'admin-row-button';
+                    chooseBackground.type = 'button';
+                    chooseBackground.textContent = 'Upload baggrund';
+                    const backgroundStatus = document.createElement('span');
+                    backgroundStatus.className = 'admin-room-bg-status';
+                    chooseBackground.addEventListener('click', () => fileInput.click());
+                    fileInput.addEventListener('change', () => {
+                        if (fileInput.files?.[0]) uploadAdminRoomBackground(room.id, fileInput.files[0], backgroundStatus);
+                        fileInput.value = '';
+                    });
+                    backgroundTools.append(fileInput, chooseBackground);
+                    if (room.hasBackground) {
+                        const resetBackground = document.createElement('button');
+                        resetBackground.className = 'admin-row-button';
+                        resetBackground.type = 'button';
+                        resetBackground.textContent = 'Brug testbaggrund';
+                        resetBackground.addEventListener('click', () => {
+                            backgroundStatus.textContent = 'Nulstiller baggrunden…';
+                            socket.emit('admin-public-room-background-reset', { id: room.id });
+                        });
+                        backgroundTools.append(resetBackground);
+                    }
+                    backgroundTools.append(backgroundStatus);
+                    editFields.append(backgroundTools);
                     const actions = document.createElement('div');
                     actions.className = 'admin-row-actions';
                     const save = document.createElement('button');
@@ -3586,8 +3699,7 @@
 
             function drawBoard() {
                 if (!roomBackgroundImageRequested) {
-                    roomBackgroundImageRequested = true;
-                    roomBackgroundImage.src = '/images/test-room-background.png';
+                    setRoomBackground();
                 }
                 ctx.clearRect(0, 0, gridLayout.width, gridLayout.height);
                 const discoRoom = activeRoom === 'disco';
@@ -4823,8 +4935,9 @@
                 updateRoomWelcome(welcomeTitle, welcomeText);
             });
 
-            socket.on('public-room-metadata', ({ roomId, roomName, welcomeTitle, welcomeText } = {}) => {
+            socket.on('public-room-metadata', ({ roomId, roomName, welcomeTitle, welcomeText, roomBackgroundUrl } = {}) => {
                 if (roomId !== activeRoom) return;
+                setRoomBackground(roomBackgroundUrl);
                 updateApartmentRoomTitle(roomName, welcomeTitle);
                 updateRoomWelcome(welcomeTitle, welcomeText);
             });
@@ -4916,6 +5029,10 @@
             });
             socket.on('admin-public-rooms', ({ rooms = [] } = {}) => {
                 if (isAdminUser) renderAdminPublicRooms(Array.isArray(rooms) ? rooms : []);
+            });
+            socket.on('admin-room-background-result', ({ success, message } = {}) => {
+                adminRoomsStatus.textContent = message || (success ? 'Baggrunden er gemt.' : 'Baggrunden kunne ikke gemmes.');
+                if (success && adminSectionSelect.value === 'rooms') socket.emit('admin-public-rooms-request');
             });
             socket.on('admin-room-action-result', ({ success, message } = {}) => {
                 adminRoomsStatus.textContent = message || (success ? 'Ændringer gemt.' : 'Handlingen mislykkedes.');
