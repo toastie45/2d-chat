@@ -557,7 +557,6 @@
         .profile-delete-account p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
         .profile-save.danger { background: #8e3e3e; color: #fff; }
         .profile-save.danger:hover { background: #a34a4a; }
-        #registration-email-field[hidden] { display: none; }
         .room-welcome { margin: 0 3px 14px; padding: 15px; border: 1px solid #353732; border-radius: 7px; background: #1a1b19; }
         .room-welcome h3 { margin: 0 0 7px; color: #eef0e9; font-size: 14px; }
         .room-welcome p { margin: 0; color: #c4c6bd; font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -1237,7 +1236,6 @@
                 <p id="auth-description">Log ind for at møde andre på gulvet og fortsætte, hvor du slap.</p>
                 <form class="login-form" id="login-form">
                     <input id="username-input" maxlength="18" minlength="3" autocomplete="username" placeholder="Brugernavn" aria-label="Brugernavn" required>
-                    <label class="profile-field" id="registration-email-field" for="registration-email" hidden>Mailadresse<input id="registration-email" type="email" maxlength="254" autocomplete="email" placeholder="navn@eksempel.dk" aria-label="Mailadresse" required><small>Mailadressen er privat og vises ikke på din profil.</small></label>
                     <input id="password-input" type="password" maxlength="72" minlength="8" autocomplete="current-password" placeholder="Adgangskode (mindst 8 tegn)" aria-label="Adgangskode" required>
                     <button class="primary-button" id="join-button" type="submit">Log ind</button>
                 </form>
@@ -1246,8 +1244,6 @@
                     <button class="auth-switch-button" id="auth-switch-button" type="button">Opret konto</button>
                 </p>
                 <p class="error-message" id="login-error" aria-live="polite"></p>
-                <button class="auth-switch-button" id="auth-forgot-password" type="button">Glemt adgangskode?</button>
-                <button class="auth-switch-button" id="auth-email-resend" type="button" hidden>Send bekræftelsesmail igen</button>
             </section>
 
             <section class="game hidden" id="game-section">
@@ -1447,14 +1443,6 @@
                                 </button>
                             </div>
                             <div class="profile-password-panel" id="profile-password-panel" hidden>
-                                <form class="profile-security-form" id="profile-email-form">
-                                    <h3>Skift mailadresse</h3>
-                                    <label class="profile-field" for="profile-email">Ny mailadresse<input id="profile-email" type="email" maxlength="254" autocomplete="email" required></label>
-                                    <label class="profile-field" for="profile-email-password">Nuværende adgangskode<input id="profile-email-password" type="password" autocomplete="current-password" required></label>
-                                    <button class="profile-save" id="profile-email-save" type="submit">Skift mailadresse</button>
-                                    <p class="profile-status" id="profile-email-status" aria-live="polite"></p>
-                                    <button class="toolbar-button" id="profile-email-resend" type="button" hidden>Send bekræftelsesmail igen</button>
-                                </form>
                                 <form id="password-change-form">
                                     <h3>Skift adgangskode</h3>
                                     <label class="profile-field" for="profile-current-password">Nuværende adgangskode<input id="profile-current-password" type="password" autocomplete="current-password" required></label>
@@ -1679,13 +1667,9 @@
             const loginSection = document.getElementById('login-section');
             const gameSection = document.getElementById('game-section');
             const usernameInput = document.getElementById('username-input');
-            const registrationEmailField = document.getElementById('registration-email-field');
-            const registrationEmailInput = document.getElementById('registration-email');
             const passwordInput = document.getElementById('password-input');
             const joinButton = document.getElementById('join-button');
             const loginError = document.getElementById('login-error');
-            const authEmailResend = document.getElementById('auth-email-resend');
-            const authForgotPassword = document.getElementById('auth-forgot-password');
             const authTitle = document.getElementById('auth-title');
             const authDescription = document.getElementById('auth-description');
             const authSwitch = document.getElementById('auth-switch');
@@ -1792,12 +1776,6 @@
             const profilePasswordToggle = document.getElementById('profile-password-toggle');
             const profilePasswordForm = document.getElementById('profile-password-panel');
             const passwordChangeForm = document.getElementById('password-change-form');
-            const profileEmailForm = document.getElementById('profile-email-form');
-            const profileEmailInput = document.getElementById('profile-email');
-            const profileEmailPassword = document.getElementById('profile-email-password');
-            const profileEmailSave = document.getElementById('profile-email-save');
-            const profileEmailStatus = document.getElementById('profile-email-status');
-            const profileEmailResend = document.getElementById('profile-email-resend');
             const deleteAccountForm = document.getElementById('delete-account-form');
             const deleteAccountPassword = document.getElementById('delete-account-password');
             const deleteAccountUsername = document.getElementById('delete-account-username');
@@ -2029,10 +2007,6 @@
             }
 
             function applyOwnProfile(result) {
-                profileEmailInput.value = result.pendingEmail || result.email || '';
-                profileEmailResend.hidden = !(result.pendingEmail || result.email && !result.emailVerified);
-                if (result.pendingEmail) profileEmailStatus.textContent = `Afventer bekræftelse på ${result.pendingEmail}. Din nuværende adresse bruges indtil da.`;
-                else if (result.email && !result.emailVerified) profileEmailStatus.textContent = 'Din mailadresse mangler bekræftelse.';
                 profileRealName.value = result.realName;
                 profileSteamName.value = result.steamName;
                 profileDiscordName.value = result.discordName;
@@ -2183,16 +2157,12 @@
                 const isRegistering = authMode === 'register';
                 authTitle.textContent = isRegistering ? 'Opret din konto.' : 'Log ind og find din plads.';
                 authDescription.textContent = isRegistering
-                    ? 'Vælg brugernavn, mailadresse og adgangskode for at komme ind på gulvet.'
+                    ? 'Vælg brugernavn og adgangskode for at komme ind på gulvet.'
                     : 'Log ind for at møde andre på gulvet og fortsætte, hvor du slap.';
                 joinButton.textContent = isRegistering ? 'Opret konto' : 'Log ind';
                 passwordInput.autocomplete = isRegistering ? 'new-password' : 'current-password';
-                registrationEmailField.hidden = !isRegistering;
-                registrationEmailInput.required = isRegistering;
-                registrationEmailInput.disabled = !isRegistering;
                 authSwitch.hidden = Boolean(currentUser);
                 authSwitchButton.textContent = isRegistering ? 'Log ind' : 'Opret konto';
-                authForgotPassword.hidden = isRegistering;
                 authSwitch.firstChild.textContent = isRegistering ? 'Har du allerede en bruger? ' : 'Har du ikke en bruger? ';
             }
 
@@ -2222,7 +2192,6 @@
                 authMode = mode;
                 loginError.textContent = '';
                 loginError.style.color = '';
-                authEmailResend.hidden = true;
                 passwordInput.value = '';
                 showAuthMode();
                 if (!loginSection.classList.contains('hidden')) {
@@ -3570,7 +3539,6 @@
             document.getElementById('login-form').addEventListener('submit', async (event) => {
                 event.preventDefault();
                 loginError.textContent = '';
-                authEmailResend.hidden = true;
                 joinButton.disabled = true;
                 if (currentUser) {
                     if (socket.connected) {
@@ -3588,23 +3556,10 @@
                         body: JSON.stringify({
                             username: usernameInput.value,
                             password: passwordInput.value,
-                            ...(authMode === 'register' ? { email: registrationEmailInput.value } : {})
                         })
                     });
                     const result = await response.json();
-                    if (!response.ok) {
-                        if (result.code === 'EMAIL_UNVERIFIED') authEmailResend.hidden = false;
-                        throw new Error(result.error || 'Kunne ikke logge ind.');
-                    }
-                    if (result.emailVerificationRequired) {
-                        loginError.style.color = '#b7db81';
-                        loginError.textContent = `Kontoen er oprettet. Tjek ${result.email} for bekræftelseslinket, og log derefter ind.`;
-                        selectAuthMode('login');
-                        loginError.style.color = '#b7db81';
-                        loginError.textContent = `Kontoen er oprettet. Tjek ${result.email} for bekræftelseslinket, og log derefter ind.`;
-                        return;
-                    }
-                    loginError.style.color = '';
+                    if (!response.ok) throw new Error(result.error || 'Kunne ikke logge ind.');
                     sessionKickMessage = '';
                     currentUser = result.user;
                     updateAccountActions();
@@ -3619,50 +3574,6 @@
                     loginError.textContent = error.message || 'Kunne ikke forbinde. Prøv igen.';
                 } finally {
                     if (!currentUser) joinButton.disabled = false;
-                }
-            });
-
-            authEmailResend.addEventListener('click', async () => {
-                authEmailResend.disabled = true;
-                try {
-                    const response = await authFetch('/api/auth/email/verification/resend', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ username: usernameInput.value })
-                    });
-                    const result = await response.json();
-                    if (!response.ok) throw new Error(result.error || 'Mailen kunne ikke sendes.');
-                    loginError.style.color = '#b7db81';
-                    loginError.textContent = result.message;
-                } catch (error) {
-                    loginError.style.color = '';
-                    loginError.textContent = error.message || 'Mailen kunne ikke sendes.';
-                } finally {
-                    authEmailResend.disabled = false;
-                }
-            });
-
-            authForgotPassword.addEventListener('click', async () => {
-                loginError.style.color = '';
-                const username = usernameInput.value.trim();
-                if (!username) {
-                    loginError.textContent = 'Skriv dit brugernavn først.';
-                    usernameInput.focus();
-                    return;
-                }
-                authForgotPassword.disabled = true;
-                try {
-                    const response = await authFetch('/api/auth/password/reset/request', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ username })
-                    });
-                    const result = await response.json();
-                    if (!response.ok) throw new Error(result.error || 'Nulstillingsmailen kunne ikke sendes.');
-                    loginError.style.color = '#b7db81';
-                    loginError.textContent = result.message;
-                } catch (error) {
-                    loginError.textContent = error.message || 'Nulstillingsmailen kunne ikke sendes.';
-                } finally {
-                    authForgotPassword.disabled = false;
                 }
             });
 
@@ -3988,49 +3899,6 @@
                 }
             });
 
-            profileEmailForm.addEventListener('submit', async (event) => {
-                event.preventDefault();
-                profileEmailStatus.textContent = '';
-                profileEmailSave.disabled = true;
-                profileEmailStatus.textContent = 'Skifter mailadresse…';
-                try {
-                    const response = await authFetch('/api/profile/email', {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            email: profileEmailInput.value,
-                            currentPassword: profileEmailPassword.value
-                        })
-                    });
-                    const result = await response.json();
-                    if (!response.ok) throw new Error(result.error || 'Mailadressen kunne ikke ændres.');
-                    profileEmailInput.value = result.pendingEmail;
-                    profileEmailPassword.value = '';
-                    profileEmailResend.hidden = false;
-                    profileEmailStatus.textContent = `Bekræftelseslink sendt til ${result.pendingEmail}. Den nye adresse aktiveres, når du bekræfter den.`;
-                } catch (error) {
-                    profileEmailResend.hidden = false;
-                    profileEmailStatus.textContent = error.message || 'Mailadressen kunne ikke ændres. Prøv igen.';
-                } finally {
-                    profileEmailSave.disabled = false;
-                }
-            });
-
-            profileEmailResend.addEventListener('click', async () => {
-                profileEmailResend.disabled = true;
-                profileEmailStatus.textContent = 'Sender bekræftelsesmail…';
-                try {
-                    const response = await authFetch('/api/profile/email/verification/resend', { method: 'POST' });
-                    const result = await response.json();
-                    if (!response.ok) throw new Error(result.error || 'Bekræftelsesmailen kunne ikke sendes.');
-                    profileEmailStatus.textContent = `Bekræftelsesmail sendt til ${result.email}.`;
-                } catch (error) {
-                    profileEmailStatus.textContent = error.message || 'Bekræftelsesmailen kunne ikke sendes.';
-                } finally {
-                    profileEmailResend.disabled = false;
-                }
-            });
-
             deleteAccountForm.addEventListener('submit', async (event) => {
                 event.preventDefault();
                 deleteAccountStatus.textContent = '';
@@ -4060,7 +3928,6 @@
                     passwordInput.disabled = false;
                     usernameInput.value = '';
                     passwordInput.value = '';
-                    registrationEmailInput.value = '';
                     authMode = 'login';
                     showAuthMode();
                     loginError.textContent = 'Din bruger og tilknyttede oplysninger er slettet.';

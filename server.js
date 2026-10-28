@@ -28,7 +28,6 @@ const { calculateAge, getDanishRegions, getSteamUrl, normalizePublicProfile } = 
 const { registerChatMessage } = require('./lib/chat-rate-limit');
 const { analyzeProgressionMessage, SPAM_HISTORY_LIMIT, SPAM_HISTORY_WINDOW_MS } = require('./lib/chat-spam-filter');
 const { GUESTBOOK_MESSAGE_MAX_LENGTH, normalizeGuestbookMessage } = require('./lib/guestbook');
-const { sendResendEmail } = require('./lib/resend-mailer');
 const { USER_SEARCH_RESULT_LIMIT, getUserSearchPatterns } = require('./lib/user-search');
 const GRID_LAYOUT = require('./public/grid-layout');
 const { LEVEL_REQUIREMENTS, getUserLevel } = require('./public/level-progression');
@@ -454,44 +453,6 @@ async function startServer() {
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS discord_name VARCHAR(64)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS interests VARCHAR(160)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS registration_ip_hash TEXT');
-    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS email VARCHAR(254)');
-    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS email_normalized VARCHAR(254)');
-    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ');
-    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS pending_email VARCHAR(254)');
-    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS pending_email_normalized VARCHAR(254)');
-    await pool.query('CREATE TABLE IF NOT EXISTS chat_schema_migrations (version VARCHAR(100) PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())');
-    const migrationClient = await pool.connect();
-    try {
-        await migrationClient.query('BEGIN');
-        const migration = await migrationClient.query(
-            "INSERT INTO chat_schema_migrations (version) VALUES ('email-confirmation-backfill') ON CONFLICT DO NOTHING RETURNING version"
-        );
-        if (migration.rowCount) {
-            await migrationClient.query('UPDATE chat_users SET email_verified_at = created_at WHERE email_normalized IS NOT NULL AND email_verified_at IS NULL');
-        }
-        await migrationClient.query('COMMIT');
-    } catch (error) {
-        await migrationClient.query('ROLLBACK').catch(() => {});
-        throw error;
-    } finally {
-        migrationClient.release();
-    }
-    await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS chat_users_email_normalized_idx ON chat_users (email_normalized) WHERE email_normalized IS NOT NULL');
-    await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS chat_users_pending_email_normalized_idx ON chat_users (pending_email_normalized) WHERE pending_email_normalized IS NOT NULL');
-    await pool.query(`
-        CREATE TABLE IF NOT EXISTS chat_email_verifications (
-            user_id BIGINT NOT NULL REFERENCES chat_users(id) ON DELETE CASCADE,
-            purpose VARCHAR(16) NOT NULL CHECK (purpose IN ('register', 'change', 'reset')),
-            email VARCHAR(254) NOT NULL,
-            email_normalized VARCHAR(254) NOT NULL,
-            token_hash CHAR(64) NOT NULL UNIQUE,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            expires_at TIMESTAMPTZ NOT NULL,
-            PRIMARY KEY (user_id, purpose)
-        )
-    `);
-    await pool.query('ALTER TABLE chat_email_verifications DROP CONSTRAINT IF EXISTS chat_email_verifications_purpose_check');
-    await pool.query("ALTER TABLE chat_email_verifications ADD CONSTRAINT chat_email_verifications_purpose_check CHECK (purpose IN ('register', 'change', 'reset'))");
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS total_online_ms BIGINT NOT NULL DEFAULT 0');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS steam_name VARCHAR(256)');
     await pool.query('ALTER TABLE chat_users ALTER COLUMN steam_name TYPE VARCHAR(256)');
@@ -602,7 +563,6 @@ async function startServer() {
     app.get('/health', (_request, response) => response.status(200).type('text/plain').send('ok'));
     app.use(express.static(path.join(__dirname, 'public')));
     app.use(express.json({ limit: '8kb' }));
-    app.use(express.urlencoded({ extended: false, limit: '8kb' }));
     app.use(useTabSession(getHttpTabId));
     io.engine.use(useTabSession(getSocketTabId));
 
@@ -816,86 +776,10 @@ async function startServer() {
         response.json({ user: request.session.user });
     });
 
-    const OWN_PROFILE_COLUMNS = 'email, real_name, profile_text, welcome_message, discord_name, interests, steam_name, birth_date::text AS birth_date, region';
-
-    function normalizeEmail(value) {
-        if (typeof value !== 'string') return null;
-        const email = value.trim();
-        if (email.length < 5 || email.length > 254 || /[\s\u0000-\u001f\u007f]/.test(email)) return null;
-        const at = email.lastIndexOf('@');
-        if (at < 1 || at === email.length - 1 || email.indexOf('@') !== at) return null;
-        const local = email.slice(0, at);
-        const domain = email.slice(at + 1);
-        if (local.length > 64 || !/^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+$/.test(local)) return null;
-        if (domain.length > 253 || !domain.includes('.') || domain.split('.').some((label) =>
-            !label || label.length > 63 || !/^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/.test(label))) return null;
-        return { email, normalized: email.toLocaleLowerCase('en-US') };
-    }
-
-    const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    })[character]);
-
-    async function sendEmailVerification({ userId, username, email, purpose }) {
-        const appBaseUrl = process.env.APP_BASE_URL;
-        if (!appBaseUrl) {
-            const error = new Error('APP_BASE_URL is not configured.');
-            error.code = 'EMAIL_NOT_CONFIGURED';
-            throw error;
-        }
-        let baseUrl;
-        try {
-            baseUrl = new URL(appBaseUrl);
-            if (!['https:', 'http:'].includes(baseUrl.protocol) || process.env.NODE_ENV === 'production' && baseUrl.protocol !== 'https:') throw new Error('Invalid protocol');
-        } catch {
-            const error = new Error('APP_BASE_URL is invalid.');
-            error.code = 'EMAIL_NOT_CONFIGURED';
-            throw error;
-        }
-
-        const token = crypto.randomBytes(32).toString('base64url');
-        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-        const cooldownKey = `chat:email-verification-cooldown:${userId}:${purpose}`;
-        const cooldownStarted = await redis.set(cooldownKey, '1', { EX: 60, NX: true });
-        if (!cooldownStarted) {
-            const error = new Error('Wait before requesting another verification email.');
-            error.code = 'EMAIL_SEND_COOLDOWN';
-            throw error;
-        }
-        await pool.query(
-            `INSERT INTO chat_email_verifications (user_id, purpose, email, email_normalized, token_hash, expires_at)
-             VALUES ($1, $2, $3, $4, $5, NOW() + INTERVAL '24 hours')
-             ON CONFLICT (user_id, purpose) DO UPDATE SET email = EXCLUDED.email,
-                email_normalized = EXCLUDED.email_normalized, token_hash = EXCLUDED.token_hash,
-                created_at = NOW(), expires_at = EXCLUDED.expires_at`,
-            [userId, purpose, email.email, email.normalized, tokenHash]
-        );
-        const verifyUrl = new URL(purpose === 'reset' ? '/api/auth/password/reset' : '/api/auth/email/verify', baseUrl);
-        verifyUrl.searchParams.set('token', token);
-        const safeUsername = escapeHtml(username);
-        const action = purpose === 'register' ? 'bekræfte din mailadresse'
-            : purpose === 'reset' ? 'nulstille din adgangskode' : 'godkende skiftet af mailadresse';
-        try {
-            await sendResendEmail({
-                to: email.email,
-                subject: purpose === 'register' ? 'Bekræft din konto' : purpose === 'reset' ? 'Nulstil din adgangskode' : 'Bekræft din nye mailadresse',
-                text: `Hej ${username}. Åbn dette link for at ${action}: ${verifyUrl.href}\nLinket udløber om 24 timer.`,
-                html: `<div style="font-family:Arial,sans-serif;line-height:1.5;color:#20221e"><h2>${purpose === 'reset' ? 'Nulstil adgangskode' : 'Bekræft mailadresse'}</h2><p>Hej ${safeUsername}. Klik her for at ${action}:</p><p><a href="${escapeHtml(verifyUrl.href)}">${purpose === 'reset' ? 'Vælg ny adgangskode' : 'Bekræft mailadresse'}</a></p><p>Linket udløber om 24 timer. Hvis du ikke bad om dette, kan du ignorere mailen.</p></div>`
-            });
-        } catch (error) {
-            await pool.query('DELETE FROM chat_email_verifications WHERE user_id = $1 AND purpose = $2 AND token_hash = $3', [userId, purpose, tokenHash]);
-            await redis.del(cooldownKey);
-            throw error;
-        }
-    }
-
-    function sendVerificationPage(response, heading, message, success = false) {
-        response.status(success ? 200 : 400).type('html').send(`<!doctype html><html lang="da"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${heading}</title><body style="margin:0;background:#121412;color:#eee;font:16px system-ui;display:grid;min-height:100vh;place-items:center"><main style="max-width:480px;margin:24px;padding:28px;background:#1e211e;border:1px solid #383d35;border-radius:12px"><h1 style="font-size:22px">${heading}</h1><p>${message}</p><a style="color:#b7db81" href="/">Tilbage til chatten</a></main></body></html>`);
-    }
+    const OWN_PROFILE_COLUMNS = 'real_name, profile_text, welcome_message, discord_name, interests, steam_name, birth_date::text AS birth_date, region';
 
     function serializeOwnProfile(row) {
         return {
-            email: row.email || '',
             realName: row.real_name || '',
             profileText: row.profile_text || '',
             welcomeMessage: row.welcome_message || '',
@@ -915,7 +799,7 @@ async function startServer() {
         }
         try {
             const { rows: [profile] } = await pool.query(
-                `SELECT ${OWN_PROFILE_COLUMNS}, pending_email, email_verified_at, created_at, last_login_at,
+                `SELECT ${OWN_PROFILE_COLUMNS}, created_at, last_login_at,
                         (SELECT apartment_number FROM chat_apartments WHERE owner_id = chat_users.id) AS apartment_number
                  FROM chat_users WHERE id = $1`,
                 [request.session.user.id]
@@ -926,258 +810,12 @@ async function startServer() {
             }
             response.json({
                 ...serializeOwnProfile(profile),
-                pendingEmail: profile.pending_email || '',
-                emailVerified: Boolean(profile.email_verified_at),
                 apartmentNumber: profile.apartment_number ? Number(profile.apartment_number) : null,
                 createdAt: profile.created_at,
                 lastLoginAt: profile.last_login_at
             });
         } catch (error) {
             next(error);
-        }
-    });
-
-    app.put('/api/profile/email', async (request, response, next) => {
-        if (!isAuthorizedTabSession(request.session, getRequestTabId(request))) {
-            response.status(401).json({ error: 'Log ind for at fortsætte.' });
-            return;
-        }
-        const email = normalizeEmail(request.body && request.body.email);
-        const currentPassword = request.body && request.body.currentPassword;
-        if (!email) {
-            response.status(400).json({ error: 'Skriv en gyldig mailadresse.' });
-            return;
-        }
-        if (!isValidPassword(currentPassword)) {
-            response.status(400).json({ error: 'Skriv din nuværende adgangskode.' });
-            return;
-        }
-        try {
-            const { rows: [account] } = await pool.query(
-                'SELECT password_hash FROM chat_users WHERE id = $1', [request.session.user.id]
-            );
-            if (!account || !(await bcrypt.compare(currentPassword, account.password_hash))) {
-                response.status(400).json({ error: 'Den nuværende adgangskode er forkert.' });
-                return;
-            }
-            const { rows: [accountEmail] } = await pool.query('SELECT email_normalized FROM chat_users WHERE id = $1', [request.session.user.id]);
-            if (accountEmail && accountEmail.email_normalized === email.normalized) {
-                response.status(400).json({ error: 'Det er allerede din nuværende mailadresse.' });
-                return;
-            }
-            const { rowCount: emailInUse } = await pool.query(
-                'SELECT 1 FROM chat_users WHERE id <> $1 AND (email_normalized = $2 OR pending_email_normalized = $2) LIMIT 1',
-                [request.session.user.id, email.normalized]
-            );
-            if (emailInUse) {
-                response.status(409).json({ error: 'Mailadressen er allerede knyttet til en bruger.' });
-                return;
-            }
-            const { rows: [updated] } = await pool.query(
-                'UPDATE chat_users SET pending_email = $1, pending_email_normalized = $2 WHERE id = $3 RETURNING username',
-                [email.email, email.normalized, request.session.user.id]
-            );
-            if (!updated) {
-                response.status(404).json({ error: 'Brugeren blev ikke fundet.' });
-                return;
-            }
-            await sendEmailVerification({ userId: request.session.user.id, username: updated.username, email, purpose: 'change' });
-            response.json({ success: true, pendingEmail: email.email, emailVerificationSent: true });
-        } catch (error) {
-            if (error.code === '23505' && ['chat_users_email_normalized_idx', 'chat_users_pending_email_normalized_idx'].includes(error.constraint)) {
-                response.status(409).json({ error: 'Mailadressen er allerede knyttet til en bruger.' });
-                return;
-            }
-            if (error.code === 'EMAIL_NOT_CONFIGURED' || String(error.code).startsWith('RESEND_') || error.name === 'TypeError') {
-                response.status(503).json({ error: 'Mailen kunne ikke sendes. Tjek mailopsætningen, og prøv igen.' });
-                return;
-            }
-            if (error.code === 'EMAIL_SEND_COOLDOWN') {
-                response.status(429).json({ error: 'Vent et minut, før du sender en ny bekræftelsesmail.' });
-                return;
-            }
-            next(error);
-        }
-    });
-
-    app.post('/api/profile/email/verification/resend', async (request, response, next) => {
-        if (!isAuthorizedTabSession(request.session, getRequestTabId(request))) {
-            response.status(401).json({ error: 'Log ind for at fortsætte.' });
-            return;
-        }
-        try {
-            const { rows: [account] } = await pool.query(
-                'SELECT username, email, email_normalized, email_verified_at, pending_email, pending_email_normalized FROM chat_users WHERE id = $1',
-                [request.session.user.id]
-            );
-            if (!account) return response.status(404).json({ error: 'Brugeren blev ikke fundet.' });
-            const isPendingChange = Boolean(account.pending_email_normalized);
-            if (!isPendingChange && account.email_verified_at) {
-                return response.status(400).json({ error: 'Der er ingen mailadresse, der mangler bekræftelse.' });
-            }
-            const email = isPendingChange
-                ? { email: account.pending_email, normalized: account.pending_email_normalized }
-                : { email: account.email, normalized: account.email_normalized };
-            await sendEmailVerification({ userId: request.session.user.id, username: account.username, email, purpose: isPendingChange ? 'change' : 'register' });
-            response.json({ success: true, email: email.email });
-        } catch (error) {
-            if (error.code === 'EMAIL_NOT_CONFIGURED' || String(error.code).startsWith('RESEND_') || error.name === 'TypeError') {
-                response.status(503).json({ error: 'Mailen kunne ikke sendes. Tjek mailopsætningen, og prøv igen.' });
-                return;
-            }
-            if (error.code === 'EMAIL_SEND_COOLDOWN') {
-                response.status(429).json({ error: 'Vent et minut, før du sender en ny bekræftelsesmail.' });
-                return;
-            }
-            next(error);
-        }
-    });
-
-    app.post('/api/auth/email/verification/resend', enforceAuthRateLimit, async (request, response, next) => {
-        const account = normalizeUsername(request.body && request.body.username);
-        if (!account) return response.json({ success: true, message: 'Hvis kontoen mangler bekræftelse, sender vi et nyt link.' });
-        try {
-            const { rows: [user] } = await pool.query(
-                'SELECT id, username, email, email_normalized, email_verified_at FROM chat_users WHERE username_normalized = $1',
-                [account.normalized]
-            );
-            if (user && !user.email_verified_at && user.email && user.email_normalized) {
-                await sendEmailVerification({
-                    userId: user.id, username: user.username,
-                    email: { email: user.email, normalized: user.email_normalized }, purpose: 'register'
-                });
-            }
-            response.json({ success: true, message: 'Hvis kontoen mangler bekræftelse, sender vi et nyt link.' });
-        } catch (error) {
-            if (error.code === 'EMAIL_NOT_CONFIGURED' || String(error.code).startsWith('RESEND_') || error.name === 'TypeError') {
-                response.status(503).json({ error: 'Mailen kunne ikke sendes. Prøv igen senere.' });
-                return;
-            }
-            if (error.code === 'EMAIL_SEND_COOLDOWN') {
-                response.status(429).json({ error: 'Vent et minut, før du sender en ny bekræftelsesmail.' });
-                return;
-            }
-            next(error);
-        }
-    });
-
-    app.post('/api/auth/password/reset/request', enforceAuthRateLimit, async (request, response, next) => {
-        const account = normalizeUsername(request.body && request.body.username);
-        try {
-            if (account) {
-                const { rows: [user] } = await pool.query(
-                    'SELECT id, username, email, email_normalized, email_verified_at FROM chat_users WHERE username_normalized = $1',
-                    [account.normalized]
-                );
-                if (user && user.email_verified_at && user.email && user.email_normalized) {
-                    await sendEmailVerification({
-                        userId: user.id, username: user.username,
-                        email: { email: user.email, normalized: user.email_normalized }, purpose: 'reset'
-                    });
-                }
-            }
-            response.json({ success: true, message: 'Hvis kontoen har en bekræftet mailadresse, sender vi et nulstillingslink.' });
-        } catch (error) {
-            if (error.code === 'EMAIL_SEND_COOLDOWN' || error.code === 'EMAIL_NOT_CONFIGURED' || String(error.code).startsWith('RESEND_') || error.name === 'TypeError') {
-                response.json({ success: true, message: 'Hvis kontoen har en bekræftet mailadresse, sender vi et nulstillingslink.' });
-                return;
-            }
-            next(error);
-        }
-    });
-
-    app.get('/api/auth/password/reset', (request, response) => {
-        const token = typeof request.query.token === 'string' ? request.query.token : '';
-        if (!/^[A-Za-z0-9_-]{40,50}$/.test(token)) return sendVerificationPage(response, 'Ugyldigt link', 'Nulstillingslinket er ugyldigt eller udløbet.');
-        response.type('html').send(`<!doctype html><html lang="da"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nulstil adgangskode</title><body style="margin:0;background:#121412;color:#eee;font:16px system-ui;display:grid;min-height:100vh;place-items:center"><main style="width:min(420px,calc(100% - 40px));padding:28px;background:#1e211e;border:1px solid #383d35;border-radius:12px"><h1 style="font-size:22px">Vælg en ny adgangskode</h1><form method="post" action="/api/auth/password/reset" style="display:grid;gap:12px"><input type="hidden" name="token" value="${escapeHtml(token)}"><label>Ny adgangskode<input name="password" type="password" minlength="8" maxlength="72" autocomplete="new-password" required style="box-sizing:border-box;width:100%;margin-top:6px;padding:12px;background:#10110f;color:#fff;border:1px solid #383d35;border-radius:7px"></label><label>Gentag adgangskode<input name="confirmPassword" type="password" minlength="8" maxlength="72" autocomplete="new-password" required style="box-sizing:border-box;width:100%;margin-top:6px;padding:12px;background:#10110f;color:#fff;border:1px solid #383d35;border-radius:7px"></label><button style="padding:12px;background:#b7db81;border:0;border-radius:8px;font-weight:700;cursor:pointer">Gem ny adgangskode</button></form></main></body></html>`);
-    });
-
-    app.post('/api/auth/password/reset', async (request, response, next) => {
-        const token = request.body && request.body.token;
-        const password = request.body && request.body.password;
-        const confirmPassword = request.body && request.body.confirmPassword;
-        if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{40,50}$/.test(token) || !isValidPassword(password) || password !== confirmPassword) {
-            return sendVerificationPage(response, 'Ugyldige oplysninger', 'Adgangskoderne skal være ens og indeholde 8–72 UTF-8-bytes.');
-        }
-        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-        const client = await pool.connect();
-        try {
-            await client.query('BEGIN');
-            const { rows: [verification] } = await client.query(
-                `SELECT v.user_id FROM chat_email_verifications v
-                 JOIN chat_users u ON u.id = v.user_id AND u.email_normalized = v.email_normalized AND u.email_verified_at IS NOT NULL
-                 WHERE v.token_hash = $1 AND v.purpose = 'reset' AND v.expires_at > NOW() FOR UPDATE OF v`, [tokenHash]
-            );
-            if (!verification) {
-                await client.query('ROLLBACK');
-                return sendVerificationPage(response, 'Linket er udløbet', 'Bed om et nyt nulstillingslink fra login-siden.');
-            }
-            const passwordHash = await bcrypt.hash(password, 12);
-            const { rows: onlineSockets } = await client.query('SELECT socket_id FROM chat_online_sessions WHERE user_id = $1', [verification.user_id]);
-            const { rows: userSessions } = await client.query(`SELECT sid FROM "session" WHERE sess->'user'->>'id' = $1`, [String(verification.user_id)]);
-            await client.query('UPDATE chat_users SET password_hash = $1 WHERE id = $2', [passwordHash, verification.user_id]);
-            await client.query('DELETE FROM "session" WHERE sess->\'user\'->>\'id\' = $1', [String(verification.user_id)]);
-            await client.query("DELETE FROM chat_email_verifications WHERE user_id = $1 AND purpose = 'reset'", [verification.user_id]);
-            await client.query('COMMIT');
-            for (const { socket_id: socketId } of onlineSockets) io.in(socketId).disconnectSockets(true);
-            for (const { sid } of userSessions) io.in(`session:${sid}`).disconnectSockets(true);
-            sendVerificationPage(response, 'Adgangskoden er ændret', 'Din adgangskode er nulstillet. Du kan nu logge ind med den nye adgangskode.', true);
-        } catch (error) {
-            await client.query('ROLLBACK').catch(() => {});
-            next(error);
-        } finally {
-            client.release();
-        }
-    });
-
-    app.get('/api/auth/email/verify', (request, response) => {
-        const token = typeof request.query.token === 'string' ? request.query.token : '';
-        if (!/^[A-Za-z0-9_-]{40,50}$/.test(token)) return sendVerificationPage(response, 'Ugyldigt link', 'Bekræftelseslinket er ugyldigt eller udløbet.');
-        response.type('html').send(`<!doctype html><html lang="da"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Bekræft mailadresse</title><body style="margin:0;background:#121412;color:#eee;font:16px system-ui;display:grid;min-height:100vh;place-items:center"><main style="max-width:480px;margin:24px;padding:28px;background:#1e211e;border:1px solid #383d35;border-radius:12px"><h1 style="font-size:22px">Bekræft mailadresse</h1><p>Tryk for at bekræfte mailadressen.</p><form method="post" action="/api/auth/email/verify"><input type="hidden" name="token" value="${escapeHtml(token)}"><button style="padding:12px 18px;background:#b7db81;border:0;border-radius:8px;font-weight:700;cursor:pointer">Bekræft mailadresse</button></form></main></body></html>`);
-    });
-
-    app.post('/api/auth/email/verify', async (request, response, next) => {
-        const token = request.body && request.body.token;
-        if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{40,50}$/.test(token)) return sendVerificationPage(response, 'Ugyldigt link', 'Bekræftelseslinket er ugyldigt eller udløbet.');
-        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-        const client = await pool.connect();
-        try {
-            await client.query('BEGIN');
-            const { rows: [verification] } = await client.query(
-                `SELECT v.user_id, v.purpose, v.email, v.email_normalized
-                 FROM chat_email_verifications v WHERE v.token_hash = $1 AND v.expires_at > NOW() FOR UPDATE`, [tokenHash]
-            );
-            if (!verification) {
-                await client.query('ROLLBACK');
-                return sendVerificationPage(response, 'Linket er udløbet', 'Bed om et nyt bekræftelseslink i profilens kontosikkerhed.');
-            }
-            let updated;
-            if (verification.purpose === 'register') {
-                updated = await client.query(
-                    'UPDATE chat_users SET email_verified_at = NOW() WHERE id = $1 AND email_normalized = $2 AND email_verified_at IS NULL',
-                    [verification.user_id, verification.email_normalized]
-                );
-            } else {
-                updated = await client.query(
-                    `UPDATE chat_users SET email = pending_email, email_normalized = pending_email_normalized,
-                        pending_email = NULL, pending_email_normalized = NULL, email_verified_at = NOW()
-                     WHERE id = $1 AND pending_email_normalized = $2`,
-                    [verification.user_id, verification.email_normalized]
-                );
-            }
-            await client.query('DELETE FROM chat_email_verifications WHERE user_id = $1 AND purpose = $2', [verification.user_id, verification.purpose]);
-            await client.query('COMMIT');
-            if (!updated.rowCount) return sendVerificationPage(response, 'Linket kan ikke bruges', 'Mailadressen blev ændret siden linket blev sendt. Bed om et nyt link.');
-            sendVerificationPage(response, 'Mailadresse bekræftet', 'Din mailadresse er nu bekræftet. Du kan gå tilbage til chatten og logge ind.', true);
-        } catch (error) {
-            await client.query('ROLLBACK').catch(() => {});
-            if (error.code === '23505') {
-                sendVerificationPage(response, 'Mailadressen er allerede i brug', 'Mailadressen kunne ikke bekræftes, fordi den nu er knyttet til en anden bruger.');
-                return;
-            }
-            next(error);
-        } finally {
-            client.release();
         }
     });
 
@@ -1281,7 +919,6 @@ async function startServer() {
                 'UPDATE chat_users SET password_hash = $1 WHERE id = $2',
                 [passwordHash, request.session.user.id]
             );
-            await pool.query("DELETE FROM chat_email_verifications WHERE user_id = $1 AND purpose = 'reset'", [request.session.user.id]);
             response.json({ success: true });
         } catch (error) {
             next(error);
@@ -1372,7 +1009,6 @@ async function startServer() {
         if (!tabId) return;
         const account = normalizeUsername(request.body && request.body.username);
         const password = request.body && request.body.password;
-        const email = normalizeEmail(request.body && request.body.email);
         if (!account) {
             response.status(400).json({ error: 'Brugernavnet skal være 3–18 tegn: bogstaver, tal, punktum, bindestreg eller underscore.' });
             return;
@@ -1385,10 +1021,7 @@ async function startServer() {
             response.status(400).json({ error: 'Adgangskoden skal være 8–72 UTF-8-bytes.' });
             return;
         }
-        if (!email) {
-            response.status(400).json({ error: 'Skriv en gyldig mailadresse.' });
-            return;
-        }
+
         if (account.username !== request.body.username.trim()) {
             response.status(400).json({ error: 'Brugernavnet indeholder følsomme eller ugyldige tegn.' });
             return;
@@ -1417,8 +1050,8 @@ async function startServer() {
                     return;
                 }
                 const result = await client.query(
-                    'INSERT INTO chat_users (username, username_normalized, password_hash, email, email_normalized, registration_ip_hash, last_login_at) VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING id, username',
-                    [account.username, account.normalized, passwordHash, email.email, email.normalized, registrationIpHash]
+                    'INSERT INTO chat_users (username, username_normalized, password_hash, registration_ip_hash, last_login_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING id, username',
+                    [account.username, account.normalized, passwordHash, registrationIpHash]
                 );
                 await client.query('COMMIT');
                 user = { id: result.rows[0].id, username: result.rows[0].username };
@@ -1428,22 +1061,9 @@ async function startServer() {
             } finally {
                 client.release();
             }
-            try {
-                await sendEmailVerification({ userId: user.id, username: user.username, email, purpose: 'register' });
-            } catch (mailError) {
-                await pool.query('DELETE FROM chat_users WHERE id = $1', [user.id]);
-                if (mailError.code === 'EMAIL_NOT_CONFIGURED' || String(mailError.code).startsWith('RESEND_') || mailError.name === 'TypeError') {
-                    response.status(503).json({ error: 'Kontoen kunne ikke oprettes, fordi bekræftelsesmailen ikke kunne sendes. Prøv igen senere.' });
-                    return;
-                }
-                throw mailError;
-            }
-            response.status(201).json({ emailVerificationRequired: true, email: email.email });
+            await saveAuthenticatedSession(request, user, tabId);
+            response.status(201).json({ user });
         } catch (error) {
-            if (error.code === '23505' && error.constraint === 'chat_users_email_normalized_idx') {
-                response.status(409).json({ error: 'Mailadressen er allerede knyttet til en bruger.' });
-                return;
-            }
             if (error.code === '23505') {
                 response.status(409).json({ error: 'Brugernavnet er allerede i brug.' });
                 return;
@@ -1464,7 +1084,7 @@ async function startServer() {
 
         try {
             const result = await pool.query(
-                'SELECT id, username, password_hash, email_verified_at FROM chat_users WHERE username_normalized = $1',
+                'SELECT id, username, password_hash FROM chat_users WHERE username_normalized = $1',
                 [account.normalized]
             );
             const userRecord = result.rows[0];
@@ -1476,11 +1096,6 @@ async function startServer() {
                 response.status(401).json({ error: 'Forkert brugernavn eller adgangskode.' });
                 return;
             }
-            if (!userRecord.email_verified_at) {
-                response.status(403).json({ code: 'EMAIL_UNVERIFIED', error: 'Bekræft din mailadresse via linket, vi sendte, før du logger ind.' });
-                return;
-            }
-
             const user = { id: userRecord.id, username: userRecord.username };
             await saveAuthenticatedSession(request, user, tabId);
             await pool.query('UPDATE chat_users SET last_login_at = NOW() WHERE id = $1', [user.id]);
