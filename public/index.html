@@ -829,6 +829,13 @@
         .admin-room-create { display: grid; grid-template-columns: minmax(0, 1fr) 110px auto; gap: 8px; margin: 12px 0; }
         .admin-room-create input, .admin-room-edit input { min-width: 0; min-height: 34px; padding: 7px 9px; border: 1px solid #3b3e36; border-radius: 7px; background: #151613; color: #f2f0e9; font: inherit; font-size: 11px; }
         .admin-room-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 9px; border: 1px solid #393b33; border-radius: 8px; background: #20211d; }
+        .admin-room-welcome { grid-column: 1 / -1; border-top: 1px solid #353732; padding-top: 7px; }
+        .admin-room-welcome summary { color: #c1f078; font-size: 10px; font-weight: 650; cursor: pointer; }
+        .admin-room-welcome-form { display: grid; gap: 7px; margin-top: 8px; }
+        .admin-room-welcome-form label { display: grid; gap: 4px; color: var(--muted); font-size: 10px; }
+        .admin-room-welcome-form input, .admin-room-welcome-form textarea { width: 100%; min-width: 0; min-height: 32px; padding: 7px 9px; border: 1px solid #3b3e36; border-radius: 6px; background: #151613; color: #f2f0e9; font: inherit; font-size: 11px; }
+        .admin-room-welcome-form textarea { min-height: 64px; resize: vertical; }
+        .admin-room-welcome-status { color: var(--muted); font-size: 10px; }
         .admin-room-edit { display: grid; grid-template-columns: minmax(0, 1fr) 82px; gap: 6px; }
         .admin-room-meta { margin-bottom: 5px; color: var(--muted); font-size: 10px; }
         .admin-room-details { display: grid; grid-template-columns: 104px minmax(0, 1fr); align-items: center; gap: 9px; }
@@ -3170,24 +3177,21 @@
                 const visualWidth = avatarImageLoaded ? avatarWidth : avatarRadius * 2;
                 const visualHeight = avatarImageLoaded ? avatarHeight : avatarRadius * 2;
                 const labelHeight = 24;
-                let horizontalNudge = 0;
-                let lowerRowNudge = 0;
+                let sideBySideNudge = 0;
+                const lowerRow = position.y > gridLayout.height / 2;
                 for (const other of Object.values(players)) {
                     if (other.id === player.id) continue;
                     const otherPosition = positionFor(other);
                     const dx = otherPosition.x - position.x;
                     const dy = position.y - otherPosition.y;
                     if (Math.abs(dy) <= 2 && Math.abs(dx) > 2 && Math.abs(dx) <= cellSize + 2) {
-                        horizontalNudge += Math.sign(dx) * 4;
-                    }
-                    if (dy > 0 && dy < visualHeight && Math.abs(dx) < visualWidth + 2) {
-                        lowerRowNudge = Math.max(lowerRowNudge, 9);
+                        sideBySideNudge += Math.sign(dx) * (lowerRow ? -3 : 3);
                     }
                 }
-                horizontalNudge = Math.max(-8, Math.min(8, horizontalNudge));
+                sideBySideNudge = Math.max(-6, Math.min(6, sideBySideNudge));
                 return {
-                    x: Math.max(visualWidth / 2 + 2, Math.min(gridLayout.width - visualWidth / 2 - 2, position.x + horizontalNudge)),
-                    y: Math.max(visualHeight / 2 + 2, Math.min(gridLayout.height - visualHeight / 2 - labelHeight, position.y + lowerRowNudge))
+                    x: Math.max(visualWidth / 2 + 2, Math.min(gridLayout.width - visualWidth / 2 - 2, position.x + sideBySideNudge)),
+                    y: Math.max(visualHeight / 2 + 2, Math.min(gridLayout.height - visualHeight / 2 - labelHeight, position.y))
                 };
             }
 
@@ -3420,7 +3424,46 @@
                     remove.title = room.isSystem ? 'Faste systemrum kan ikke slettes' : room.count ? 'Rummet skal være tomt før det kan slettes' : 'Fjern rum';
                     form.append(name, floor);
                     actions.append(save, remove);
-                    row.append(details, actions);
+                    const welcomeEditor = document.createElement('details');
+                    welcomeEditor.className = 'admin-room-welcome';
+                    const welcomeSummary = document.createElement('summary');
+                    welcomeSummary.textContent = 'Redigér velkomst';
+                    const welcomeForm = document.createElement('form');
+                    welcomeForm.className = 'admin-room-welcome-form';
+                    const welcomeTitleLabel = document.createElement('label');
+                    welcomeTitleLabel.textContent = 'Overskrift';
+                    const welcomeTitleInput = document.createElement('input');
+                    welcomeTitleInput.type = 'text';
+                    welcomeTitleInput.maxLength = 100;
+                    welcomeTitleInput.value = room.welcomeTitle || `Velkommen i #${room.roomNumber} ${room.name}`;
+                    welcomeTitleInput.setAttribute('aria-label', `Velkomstoverskrift for ${room.name}`);
+                    welcomeTitleLabel.append(welcomeTitleInput);
+                    const welcomeTextLabel = document.createElement('label');
+                    welcomeTextLabel.textContent = 'Velkomsttekst';
+                    const welcomeTextInput = document.createElement('textarea');
+                    welcomeTextInput.maxLength = 500;
+                    welcomeTextInput.value = room.welcomeText || 'Her kan du møde andre og chatte sammen. God fornøjelse!';
+                    welcomeTextInput.setAttribute('aria-label', `Velkomsttekst for ${room.name}`);
+                    welcomeTextLabel.append(welcomeTextInput);
+                    const welcomeSave = document.createElement('button');
+                    welcomeSave.className = 'admin-row-button';
+                    welcomeSave.type = 'submit';
+                    welcomeSave.textContent = 'Gem velkomst';
+                    const welcomeStatus = document.createElement('span');
+                    welcomeStatus.className = 'admin-room-welcome-status';
+                    welcomeStatus.dataset.roomWelcomeStatus = room.id;
+                    welcomeForm.append(welcomeTitleLabel, welcomeTextLabel, welcomeSave, welcomeStatus);
+                    welcomeForm.addEventListener('submit', (event) => {
+                        event.preventDefault();
+                        welcomeStatus.textContent = 'Gemmer velkomst…';
+                        socket.emit('admin-public-room-welcome-update', {
+                            id: room.id,
+                            welcomeTitle: welcomeTitleInput.value,
+                            welcomeText: welcomeTextInput.value
+                        });
+                    });
+                    welcomeEditor.append(welcomeSummary, welcomeForm);
+                    row.append(details, actions, welcomeEditor);
                     form.addEventListener('submit', (event) => {
                         event.preventDefault();
                         socket.emit('admin-public-room-update', { id: room.id, name: name.value, floorNumber: Number(floor.value) });
@@ -5098,6 +5141,11 @@
             socket.on('admin-room-background-result', ({ success, message } = {}) => {
                 adminRoomsStatus.textContent = message || (success ? 'Baggrunden er gemt.' : 'Baggrunden kunne ikke gemmes.');
                 if (success && adminSectionSelect.value === 'rooms') socket.emit('admin-public-rooms-request');
+            });
+            socket.on('admin-room-welcome-result', ({ id, success, message } = {}) => {
+                const status = [...adminPublicRooms.querySelectorAll('[data-room-welcome-status]')]
+                    .find((element) => element.dataset.roomWelcomeStatus === id);
+                if (status) status.textContent = message || (success ? 'Velkomsten er gemt.' : 'Velkomsten kunne ikke gemmes.');
             });
             socket.on('admin-room-action-result', ({ success, message } = {}) => {
                 adminRoomsStatus.textContent = message || (success ? 'Ændringer gemt.' : 'Handlingen mislykkedes.');

@@ -493,7 +493,7 @@ async function startServer() {
     }
     async function getPublicRooms() {
         const { rows } = await pool.query(`
-            SELECT id, room_number, floor_number, name, is_system,
+            SELECT id, room_number, floor_number, name, is_system, welcome_title, welcome_text,
                    background_image IS NOT NULL AS has_background, background_version
             FROM chat_public_rooms ORDER BY floor_number, room_number
         `);
@@ -570,6 +570,8 @@ async function startServer() {
             floor_number INTEGER NOT NULL DEFAULT 1 CHECK (floor_number BETWEEN 1 AND 100),
             name VARCHAR(60) NOT NULL,
             is_system BOOLEAN NOT NULL DEFAULT FALSE,
+            welcome_title VARCHAR(100),
+            welcome_text VARCHAR(500),
             layout_json JSONB NOT NULL DEFAULT '{}'::jsonb,
             background_image BYTEA,
             background_mime_type VARCHAR(24),
@@ -582,6 +584,8 @@ async function startServer() {
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS background_mime_type VARCHAR(24)');
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS background_updated_at TIMESTAMPTZ');
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS background_version BIGINT NOT NULL DEFAULT 0');
+    await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS welcome_title VARCHAR(100)');
+    await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS welcome_text VARCHAR(500)');
     await pool.query("ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS layout_json JSONB NOT NULL DEFAULT '{}'::jsonb");
     await pool.query(`
         INSERT INTO chat_public_rooms (id, room_number, floor_number, name, is_system)
@@ -1641,13 +1645,14 @@ async function startServer() {
             }
         }
         const { rows: [publicRoom] = [] } = await pool.query(`
-            SELECT id, room_number, name, background_image IS NOT NULL AS has_background, background_version
+            SELECT id, room_number, name, welcome_title, welcome_text,
+                   background_image IS NOT NULL AS has_background, background_version
             FROM chat_public_rooms WHERE id = $1
         `, [roomId]);
         const roomName = publicRoom ? formatPublicRoomName(publicRoom) : PUBLIC_ROOM_NAMES[roomId] || 'chatten';
         return {
-            welcomeTitle: `Velkommen i ${roomName}`,
-            welcomeText: 'Her kan du møde andre og chatte sammen. God fornøjelse!',
+            welcomeTitle: publicRoom?.welcome_title || `Velkommen i ${roomName}`,
+            welcomeText: publicRoom?.welcome_text || 'Her kan du møde andre og chatte sammen. God fornøjelse!',
             roomBackgroundUrl: getPublicRoomBackgroundUrl(publicRoom)
         };
     }
@@ -1744,6 +1749,8 @@ async function startServer() {
                 roomNumber: Number(room.room_number),
                 floorNumber: Number(room.floor_number),
                 name: room.name,
+                welcomeTitle: room.welcome_title || `Velkommen i ${formatPublicRoomName(room)}`,
+                welcomeText: room.welcome_text || 'Her kan du møde andre og chatte sammen. God fornøjelse!',
                 isSystem: room.is_system,
                 hasBackground: room.has_background,
                 backgroundUrl: getPublicRoomBackgroundUrl(room),
@@ -1785,15 +1792,15 @@ async function startServer() {
                     return;
                 }
                 const { rows: [room] } = await pool.query(`
-                    SELECT id, room_number, name, TRUE AS has_background, background_version
+                    SELECT id, room_number, name, welcome_title, welcome_text, TRUE AS has_background, background_version
                     FROM chat_public_rooms WHERE id = $1
                 `, [id]);
                 const roomName = formatPublicRoomName(room);
                 io.to(roomChannel(id)).emit('public-room-metadata', {
                     roomId: id,
                     roomName,
-                    welcomeTitle: `Velkommen i ${roomName}`,
-                    welcomeText: 'Her kan du møde andre og chatte sammen. God fornøjelse!',
+                    welcomeTitle: room.welcome_title || `Velkommen i ${roomName}`,
+                    welcomeText: room.welcome_text || 'Her kan du møde andre og chatte sammen. God fornøjelse!',
                     roomBackgroundUrl: getPublicRoomBackgroundUrl(room)
                 });
                 socket.emit('admin-room-background-result', { success: true, message: `Baggrunden for ${roomName} er opdateret.` });
@@ -1819,13 +1826,13 @@ async function startServer() {
                     socket.emit('admin-room-background-result', { success: false, message: 'Rummet findes ikke længere.' });
                     return;
                 }
-                const { rows: [room] } = await pool.query('SELECT room_number, name FROM chat_public_rooms WHERE id = $1', [id]);
+                const { rows: [room] } = await pool.query('SELECT id, room_number, name, welcome_title, welcome_text FROM chat_public_rooms WHERE id = $1', [id]);
                 const roomName = formatPublicRoomName({ ...room, id });
                 io.to(roomChannel(id)).emit('public-room-metadata', {
                     roomId: id,
                     roomName,
-                    welcomeTitle: `Velkommen i ${roomName}`,
-                    welcomeText: 'Her kan du møde andre og chatte sammen. God fornøjelse!',
+                    welcomeTitle: room.welcome_title || `Velkommen i ${roomName}`,
+                    welcomeText: room.welcome_text || 'Her kan du møde andre og chatte sammen. God fornøjelse!',
                     roomBackgroundUrl: null
                 });
                 socket.emit('admin-room-background-result', { success: true, message: `${roomName} bruger nu testbaggrunden igen.` });
@@ -1876,15 +1883,16 @@ async function startServer() {
                     return;
                 }
                 const { rows: [updatedRoom] } = await pool.query(`
-                    SELECT id, room_number, name, background_image IS NOT NULL AS has_background, background_version
+                    SELECT id, room_number, name, welcome_title, welcome_text,
+                           background_image IS NOT NULL AS has_background, background_version
                     FROM chat_public_rooms WHERE id = $1
                 `, [id]);
                 const roomName = formatPublicRoomName(updatedRoom);
                 io.to(roomChannel(id)).emit('public-room-metadata', {
                     roomId: id,
                     roomName,
-                    welcomeTitle: `Velkommen i ${roomName}`,
-                    welcomeText: 'Her kan du møde andre og chatte sammen. God fornøjelse!',
+                    welcomeTitle: updatedRoom.welcome_title || `Velkommen i ${roomName}`,
+                    welcomeText: updatedRoom.welcome_text || 'Her kan du møde andre og chatte sammen. God fornøjelse!',
                     roomBackgroundUrl: getPublicRoomBackgroundUrl(updatedRoom)
                 });
                 socket.emit('admin-room-action-result', { success: true, message: 'Rummets navn og etage er gemt.' });
@@ -1893,6 +1901,46 @@ async function startServer() {
             } catch (error) {
                 console.error('Could not update public room:', getSafeErrorCode(error));
                 socket.emit('admin-room-action-result', { success: false, message: 'Rummets oplysninger kunne ikke gemmes.' });
+            }
+        });
+
+        socket.on('admin-public-room-welcome-update', async ({ id, welcomeTitle, welcomeText } = {}) => {
+            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            const cleanTitle = typeof welcomeTitle === 'string' ? welcomeTitle.normalize('NFKC').trim() : '';
+            const cleanText = typeof welcomeText === 'string'
+                ? welcomeText.normalize('NFKC').replace(/\r\n?/g, '\n').trim()
+                : '';
+            if (typeof id !== 'string' || !/^(common|disco|public:[1-9]\d{0,18})$/.test(id)
+                || cleanTitle.length > 100 || cleanText.length > 500
+                || /[\u0000-\u001f\u007f]/.test(cleanTitle)
+                || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(cleanText)) {
+                socket.emit('admin-room-welcome-result', { id, success: false, message: 'Kontrollér overskriften (maks. 100 tegn) og velkomstteksten (maks. 500 tegn).' });
+                return;
+            }
+            try {
+                const { rowCount } = await pool.query(
+                    'UPDATE chat_public_rooms SET welcome_title = $2, welcome_text = $3 WHERE id = $1',
+                    [id, cleanTitle || null, cleanText || null]
+                );
+                if (!rowCount) {
+                    socket.emit('admin-room-welcome-result', { id, success: false, message: 'Rummet findes ikke længere.' });
+                    return;
+                }
+                const [roomResponse, welcome] = await Promise.all([
+                    pool.query('SELECT id, room_number, name, background_image IS NOT NULL AS has_background, background_version FROM chat_public_rooms WHERE id = $1', [id]),
+                    getRoomWelcome(id)
+                ]);
+                const room = roomResponse.rows[0];
+                const roomName = formatPublicRoomName(room);
+                io.to(roomChannel(id)).emit('public-room-metadata', {
+                    roomId: id,
+                    roomName,
+                    ...welcome
+                });
+                socket.emit('admin-room-welcome-result', { id, success: true, message: `Velkomsten til ${roomName} er gemt.` });
+            } catch (error) {
+                console.error('Could not update public room welcome:', getSafeErrorCode(error));
+                socket.emit('admin-room-welcome-result', { id, success: false, message: 'Velkomsten kunne ikke gemmes.' });
             }
         });
 
@@ -2497,7 +2545,7 @@ async function startServer() {
                 }
                 await redis.del(keys.tiles);
                 if (Object.keys(nextTiles).length) await redis.hSet(keys.tiles, nextTiles);
-                const { rows: [room] } = await pool.query('SELECT room_number, name FROM chat_public_rooms WHERE id = $1', [roomId]);
+                const { rows: [room] } = await pool.query('SELECT id, room_number, name, welcome_title, welcome_text FROM chat_public_rooms WHERE id = $1', [roomId]);
                 const roomName = room ? formatPublicRoomName(room) : '';
                 io.to(roomChannel(roomId)).emit('public-room-layout-updated', { roomId, tiles: nextTiles });
                 io.emit('navigator-refresh');
@@ -2509,7 +2557,8 @@ async function startServer() {
                     name: '',
                     welcomeMessage: '',
                     roomName,
-                    welcomeTitle: `Velkommen i ${roomName}`
+                    welcomeTitle: room?.welcome_title || `Velkommen i ${roomName}`,
+                    welcomeText: room?.welcome_text || 'Her kan du møde andre og chatte sammen. God fornøjelse!'
                 });
             } catch (error) {
                 console.error('Could not save public room layout:', getSafeErrorCode(error));
