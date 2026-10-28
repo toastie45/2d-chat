@@ -1460,30 +1460,13 @@ async function startServer() {
             if (!activeSocketIds.has(socket.id)) return;
             const roomId = activeSocketRooms.get(socket.id);
             if (!await canEditApartmentRoom(socket.data.user.id, roomId)) return;
-            try {
-                const currentApartmentId = roomId.slice('apartment:'.length);
-                const { rows } = await pool.query(`
-                    SELECT a.id, a.apartment_number, a.apartment_name, u.username
-                    FROM chat_apartments a
-                    JOIN chat_users u ON u.id = a.owner_id
-                    WHERE a.id <> $1
-                    ORDER BY a.apartment_number
-                `, [currentApartmentId]);
-                socket.emit('apartment-door-options', {
-                    roomId,
-                    rooms: [
-                        { id: 'common', name: PUBLIC_ROOM_NAMES.common },
-                        { id: 'disco', name: PUBLIC_ROOM_NAMES.disco },
-                        ...rows.map((apartment) => ({
-                            id: `apartment:${apartment.id}`,
-                            name: getApartmentRoomName(apartment)
-                        }))
-                    ]
-                });
-            } catch (error) {
-                console.error('Could not load apartment door destinations:', getSafeErrorCode(error));
-                socket.emit('apartment-door-options', { roomId, rooms: [] });
-            }
+            socket.emit('apartment-door-options', {
+                roomId,
+                rooms: [
+                    { id: 'common', name: PUBLIC_ROOM_NAMES.common },
+                    { id: 'disco', name: PUBLIC_ROOM_NAMES.disco }
+                ]
+            });
         });
 
         socket.on('apartment-door-use', async ({ col, row } = {}) => {
