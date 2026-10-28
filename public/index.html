@@ -3177,20 +3177,11 @@
                 const visualWidth = avatarImageLoaded ? avatarWidth : avatarRadius * 2;
                 const visualHeight = avatarImageLoaded ? avatarHeight : avatarRadius * 2;
                 const labelHeight = 24;
-                let sideBySideNudge = 0;
                 const lowerRow = position.y > gridLayout.height / 2;
-                for (const other of Object.values(players)) {
-                    if (other.id === player.id) continue;
-                    const otherPosition = positionFor(other);
-                    const dx = otherPosition.x - position.x;
-                    const dy = position.y - otherPosition.y;
-                    if (Math.abs(dy) <= 2 && Math.abs(dx) > 2 && Math.abs(dx) <= cellSize + 2) {
-                        sideBySideNudge += Math.sign(dx) * (lowerRow ? -3 : 3);
-                    }
-                }
-                sideBySideNudge = Math.max(-6, Math.min(6, sideBySideNudge));
+                const horizontalScale = lowerRow ? 1.04 : 0.96;
+                const displayX = gridLayout.width / 2 + (position.x - gridLayout.width / 2) * horizontalScale;
                 return {
-                    x: Math.max(visualWidth / 2 + 2, Math.min(gridLayout.width - visualWidth / 2 - 2, position.x + sideBySideNudge)),
+                    x: Math.max(visualWidth / 2 + 2, Math.min(gridLayout.width - visualWidth / 2 - 2, displayX)),
                     y: Math.max(visualHeight / 2 + 2, Math.min(gridLayout.height - visualHeight / 2 - labelHeight, position.y))
                 };
             }
