@@ -417,7 +417,11 @@
         .wardrobe-category-stack.left { grid-area: left; }
         .wardrobe-category-stack.right { grid-area: right; }
         .wardrobe-category-box { min-width: 0; overflow: hidden; border: 1px solid #383d32; border-radius: 9px; background: linear-gradient(150deg, #242720, #191b18); }
-        .wardrobe-category-heading { display: flex; align-items: center; justify-content: space-between; gap: 5px; padding: 8px 9px; border-bottom: 1px solid #35382f; color: #dce6cc; font-size: 10px; font-weight: 700; }
+        .wardrobe-category-heading { display: flex; align-items: center; justify-content: space-between; gap: 5px; padding: 8px 9px; color: #dce6cc; font-size: 10px; font-weight: 700; cursor: pointer; list-style: none; }
+        .wardrobe-category-heading::-webkit-details-marker { display: none; }
+        .wardrobe-category-heading::after { color: #a8c879; content: "+"; font-size: 14px; line-height: 1; }
+        .wardrobe-category-box[open] > .wardrobe-category-heading { border-bottom: 1px solid #35382f; }
+        .wardrobe-category-box[open] > .wardrobe-category-heading::after { content: "−"; }
         .wardrobe-category-count { color: #a8c879; font-size: 9px; font-weight: 600; }
         .wardrobe-category-items { display: grid; gap: 5px; max-height: 180px; overflow-y: auto; padding: 6px; }
         .wardrobe-category-empty { margin: 0; padding: 4px; color: #85887c; font-size: 9px; }
@@ -2112,6 +2116,7 @@
             const wardrobeStatus = document.getElementById('wardrobe-status');
             let wardrobeItems = [];
             let wardrobeLevel = 1;
+            const collapsedWardrobeCategories = new Set();
             const adminPanel = document.getElementById('admin-panel');
             const adminSectionSelect = document.getElementById('admin-section-select');
             const adminWelcomeView = document.getElementById('admin-welcome-view');
@@ -4078,10 +4083,11 @@
                     right_hand: 'Højre hånd', accessory: 'Tilbehør'
                 };
                 const createCategoryBox = (category) => {
-                    const box = document.createElement('section');
+                    const box = document.createElement('details');
                     box.className = 'wardrobe-category-box';
+                    box.open = !collapsedWardrobeCategories.has(category);
                     const categoryItems = wardrobeItems.filter((item) => item.category === category);
-                    const heading = document.createElement('h3');
+                    const heading = document.createElement('summary');
                     heading.className = 'wardrobe-category-heading';
                     const title = document.createElement('span');
                     title.textContent = categoryNames[category];
@@ -4089,6 +4095,10 @@
                     count.className = 'wardrobe-category-count';
                     count.textContent = `${categoryItems.filter((item) => item.equipped).length}/${categoryItems.length} på`;
                     heading.append(title, count);
+                    box.addEventListener('toggle', () => {
+                        if (box.open) collapsedWardrobeCategories.delete(category);
+                        else collapsedWardrobeCategories.add(category);
+                    });
                     const list = document.createElement('div');
                     list.className = 'wardrobe-category-items';
                     list.setAttribute('role', 'list');
