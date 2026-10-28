@@ -485,10 +485,12 @@ async function startServer() {
             socket_id TEXT PRIMARY KEY,
             user_id BIGINT NOT NULL REFERENCES chat_users(id) ON DELETE CASCADE,
             ip_hash TEXT,
+            tab_id TEXT,
             last_accounted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
     `);
     await pool.query('ALTER TABLE chat_online_sessions ADD COLUMN IF NOT EXISTS ip_hash TEXT');
+    await pool.query('ALTER TABLE chat_online_sessions ADD COLUMN IF NOT EXISTS tab_id TEXT');
     await pool.query('CREATE INDEX IF NOT EXISTS chat_online_sessions_user_id_idx ON chat_online_sessions (user_id)');
     await pool.query('CREATE INDEX IF NOT EXISTS chat_online_sessions_ip_hash_idx ON chat_online_sessions (ip_hash) WHERE ip_hash IS NOT NULL');
     await pool.query(`
@@ -665,7 +667,50 @@ async function startServer() {
         }
     }
 
-    async function startOnlineSession(socketId, userId, ipHash) {
+    async function replaceSameTabOnlineSession(socket) {
+        const { rows: [existingSession] } = await pool.query(
+            'SELECT socket_id, tab_id FROM chat_online_sessions WHERE user_id = $1 LIMIT 1',
+            [socket.data.user.id]
+        );
+        if (!existingSession || existingSession.socket_id === socket.id) return;
+
+        const [existingSocket] = await io.in(existingSession.socket_id).fetchSockets();
+        const sameTab = existingSession.tab_id === socket.data.tabId
+            || (existingSocket?.data.tabId === socket.data.tabId
+                && existingSocket?.data.sessionId === socket.data.sessionId)
+            // Older sessions created before tab IDs were stored can be reclaimed
+            // only after their socket has disappeared.
+            || (!existingSocket && !existingSession.tab_id);
+        if (!sameTab) return;
+
+        const oldSocketId = existingSession.socket_id;
+        const roomIds = await getAllRoomIds();
+        let roomId = existingSocket?.data.roomId || activeSocketRooms.get(oldSocketId) || null;
+        if (!roomId) {
+            for (const candidateRoomId of roomIds) {
+                if (await redis.hExists(roomKeys(candidateRoomId).players, oldSocketId)) {
+                    roomId = candidateRoomId;
+                    break;
+                }
+            }
+        }
+
+        if (roomId) {
+            const keys = roomKeys(roomId);
+            const removed = await redis.eval(REMOVE_PLAYER_SCRIPT, {
+                keys: [keys.players, keys.cells],
+                arguments: [oldSocketId]
+            });
+            if (removed) io.to(roomChannel(roomId)).emit('playerDisconnected', oldSocketId);
+        }
+        activeSocketIds.delete(oldSocketId);
+        activeSocketRooms.delete(oldSocketId);
+        activeSocketUsers.delete(oldSocketId);
+        await accountOnlineSession(oldSocketId, true);
+        io.in(oldSocketId).disconnectSockets(true);
+    }
+
+    async function startOnlineSession(socketId, userId, ipHash, tabId) {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
@@ -690,9 +735,9 @@ async function startServer() {
                 throw error;
             }
             await client.query(`
-                INSERT INTO chat_online_sessions (socket_id, user_id, ip_hash, last_accounted_at)
-                VALUES ($1, $2, $3, NOW())
-            `, [socketId, userId, ipHash]);
+                INSERT INTO chat_online_sessions (socket_id, user_id, ip_hash, tab_id, last_accounted_at)
+                VALUES ($1, $2, $3, $4, NOW())
+            `, [socketId, userId, ipHash, tabId]);
             await client.query('COMMIT');
         } catch (error) {
             await client.query('ROLLBACK');
@@ -2886,6 +2931,7 @@ async function startServer() {
                 const initialRoomKeys = roomKeys(initialRoomId);
                 const apartmentTiles = await loadApartmentTiles(initialRoomId);
                 await cleanupStalePlayers();
+                await replaceSameTabOnlineSession(socket);
                 const { rows: mutedUsers } = await pool.query(`
                     SELECT target.username
                     FROM chat_profile_mutes mute
@@ -2916,7 +2962,7 @@ async function startServer() {
                 }
 
                 try {
-                    await startOnlineSession(socket.id, socket.data.user.id, socket.data.ipHash);
+                    await startOnlineSession(socket.id, socket.data.user.id, socket.data.ipHash, socket.data.tabId);
                 } catch (error) {
                     await redis.eval(REMOVE_PLAYER_SCRIPT, {
                         keys: [initialRoomKeys.players, initialRoomKeys.cells],
