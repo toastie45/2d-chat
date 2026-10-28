@@ -525,6 +525,13 @@
         .profile-security-actions { display: flex; gap: 7px; margin: 0 20px 10px; }
         .profile-password-panel { display: grid; gap: 10px; margin: 0 20px 14px; padding: 12px; border: 1px solid #353732; border-radius: 7px; background: #191a18; }
         .profile-password-panel[hidden] { display: none; }
+        .profile-security-form, #password-change-form, .profile-delete-account { display: grid; gap: 9px; }
+        .profile-security-form h3, .profile-delete-account h3 { margin: 0; font-size: 13px; }
+        .profile-security-form + #password-change-form, #password-change-form + .profile-delete-account { padding-top: 10px; border-top: 1px solid #353732; }
+        .profile-delete-account p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+        .profile-save.danger { background: #8e3e3e; color: #fff; }
+        .profile-save.danger:hover { background: #a34a4a; }
+        #registration-email-field[hidden] { display: none; }
         .room-welcome { margin: 0 3px 14px; padding: 15px; border: 1px solid #353732; border-radius: 7px; background: #1a1b19; }
         .room-welcome h3 { margin: 0 0 7px; color: #eef0e9; font-size: 14px; }
         .room-welcome p { margin: 0; color: #c4c6bd; font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -1200,6 +1207,7 @@
                 <p id="auth-description">Log ind for at møde andre på gulvet og fortsætte, hvor du slap.</p>
                 <form class="login-form" id="login-form">
                     <input id="username-input" maxlength="18" minlength="3" autocomplete="username" placeholder="Brugernavn" aria-label="Brugernavn" required>
+                    <label class="profile-field" id="registration-email-field" for="registration-email" hidden>Mailadresse<input id="registration-email" type="email" maxlength="254" autocomplete="email" placeholder="navn@eksempel.dk" aria-label="Mailadresse" required><small>Mailadressen er privat og vises ikke på din profil.</small></label>
                     <input id="password-input" type="password" maxlength="72" minlength="8" autocomplete="current-password" placeholder="Adgangskode (mindst 8 tegn)" aria-label="Adgangskode" required>
                     <button class="primary-button" id="join-button" type="submit">Log ind</button>
                 </form>
@@ -1402,17 +1410,34 @@
                         <section class="side-panel profile-panel" id="profile-editor-panel" aria-labelledby="profile-editor-title" hidden>
                             <h2 class="side-title" id="profile-editor-title">Min profil</h2>
                             <div class="profile-security-actions">
-                                <button class="toolbar-button" id="profile-password-toggle" type="button" aria-expanded="false" aria-controls="profile-password-panel" aria-label="Skift adgangskode" title="Skift adgangskode">
+                                <button class="toolbar-button" id="profile-password-toggle" type="button" aria-expanded="false" aria-controls="profile-password-panel" aria-label="Kontosikkerhed" title="Mail, adgangskode og slet bruger">
                                     <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"></path></svg>
                                 </button>
                             </div>
-                            <form class="profile-password-panel" id="profile-password-panel" hidden>
-                                <label class="profile-field" for="profile-current-password">Nuværende adgangskode<input id="profile-current-password" type="password" autocomplete="current-password" required></label>
-                                <label class="profile-field" for="profile-new-password">Ny adgangskode<input id="profile-new-password" type="password" minlength="8" maxlength="72" autocomplete="new-password" required></label>
-                                <label class="profile-field" for="profile-confirm-password">Gentag ny adgangskode<input id="profile-confirm-password" type="password" minlength="8" maxlength="72" autocomplete="new-password" required></label>
-                                <button class="profile-save" id="profile-password-save" type="submit">Skift adgangskode</button>
-                                <p class="profile-status" id="profile-password-status" aria-live="polite"></p>
-                            </form>
+                            <div class="profile-password-panel" id="profile-password-panel" hidden>
+                                <form class="profile-security-form" id="profile-email-form">
+                                    <h3>Skift mailadresse</h3>
+                                    <label class="profile-field" for="profile-email">Ny mailadresse<input id="profile-email" type="email" maxlength="254" autocomplete="email" required></label>
+                                    <label class="profile-field" for="profile-email-password">Nuværende adgangskode<input id="profile-email-password" type="password" autocomplete="current-password" required></label>
+                                    <button class="profile-save" id="profile-email-save" type="submit">Skift mailadresse</button>
+                                    <p class="profile-status" id="profile-email-status" aria-live="polite"></p>
+                                </form>
+                                <form id="password-change-form">
+                                    <label class="profile-field" for="profile-current-password">Nuværende adgangskode<input id="profile-current-password" type="password" autocomplete="current-password" required></label>
+                                    <label class="profile-field" for="profile-new-password">Ny adgangskode<input id="profile-new-password" type="password" minlength="8" maxlength="72" autocomplete="new-password" required></label>
+                                    <label class="profile-field" for="profile-confirm-password">Gentag ny adgangskode<input id="profile-confirm-password" type="password" minlength="8" maxlength="72" autocomplete="new-password" required></label>
+                                    <button class="profile-save" id="profile-password-save" type="submit">Skift adgangskode</button>
+                                    <p class="profile-status" id="profile-password-status" aria-live="polite"></p>
+                                </form>
+                                <form class="profile-delete-account" id="delete-account-form" aria-labelledby="delete-account-title">
+                                    <h3 id="delete-account-title">Slet egen bruger</h3>
+                                    <p>Sletningen fjerner din konto, lejlighed, private post, chatbeskeder, hilsner og profiloplysninger permanent.</p>
+                                    <label class="profile-field" for="delete-account-password">Nuværende adgangskode<input id="delete-account-password" type="password" autocomplete="current-password" required></label>
+                                    <label class="profile-field" for="delete-account-username">Skriv dit brugernavn for at bekræfte<input id="delete-account-username" autocomplete="username" required></label>
+                                    <button class="profile-save danger" id="delete-account-button" type="submit">Slet min bruger permanent</button>
+                                    <p class="profile-status" id="delete-account-status" aria-live="polite"></p>
+                                </form>
+                            </div>
                             <p class="profile-section-title">Profiloplysninger · <span id="profile-avatar-name"></span></p>
                             <div class="profile-details">
                                 <form class="profile-form" id="profile-form">
@@ -1620,6 +1645,8 @@
             const loginSection = document.getElementById('login-section');
             const gameSection = document.getElementById('game-section');
             const usernameInput = document.getElementById('username-input');
+            const registrationEmailField = document.getElementById('registration-email-field');
+            const registrationEmailInput = document.getElementById('registration-email');
             const passwordInput = document.getElementById('password-input');
             const joinButton = document.getElementById('join-button');
             const loginError = document.getElementById('login-error');
@@ -1728,6 +1755,17 @@
             const profileForm = document.getElementById('profile-form');
             const profilePasswordToggle = document.getElementById('profile-password-toggle');
             const profilePasswordForm = document.getElementById('profile-password-panel');
+            const passwordChangeForm = document.getElementById('password-change-form');
+            const profileEmailForm = document.getElementById('profile-email-form');
+            const profileEmailInput = document.getElementById('profile-email');
+            const profileEmailPassword = document.getElementById('profile-email-password');
+            const profileEmailSave = document.getElementById('profile-email-save');
+            const profileEmailStatus = document.getElementById('profile-email-status');
+            const deleteAccountForm = document.getElementById('delete-account-form');
+            const deleteAccountPassword = document.getElementById('delete-account-password');
+            const deleteAccountUsername = document.getElementById('delete-account-username');
+            const deleteAccountButton = document.getElementById('delete-account-button');
+            const deleteAccountStatus = document.getElementById('delete-account-status');
             const profilePasswordCurrent = document.getElementById('profile-current-password');
             const profilePasswordNew = document.getElementById('profile-new-password');
             const profilePasswordConfirm = document.getElementById('profile-confirm-password');
@@ -1953,6 +1991,7 @@
             }
 
             function applyOwnProfile(result) {
+                profileEmailInput.value = result.email || '';
                 profileRealName.value = result.realName;
                 profileSteamName.value = result.steamName;
                 profileDiscordName.value = result.discordName;
@@ -2103,10 +2142,13 @@
                 const isRegistering = authMode === 'register';
                 authTitle.textContent = isRegistering ? 'Opret din konto.' : 'Log ind og find din plads.';
                 authDescription.textContent = isRegistering
-                    ? 'Vælg et brugernavn og en adgangskode for at komme ind på gulvet.'
+                    ? 'Vælg brugernavn, mailadresse og adgangskode for at komme ind på gulvet.'
                     : 'Log ind for at møde andre på gulvet og fortsætte, hvor du slap.';
                 joinButton.textContent = isRegistering ? 'Opret konto' : 'Log ind';
                 passwordInput.autocomplete = isRegistering ? 'new-password' : 'current-password';
+                registrationEmailField.hidden = !isRegistering;
+                registrationEmailInput.required = isRegistering;
+                registrationEmailInput.disabled = !isRegistering;
                 authSwitch.hidden = Boolean(currentUser);
                 authSwitchButton.textContent = isRegistering ? 'Log ind' : 'Opret konto';
                 authSwitch.firstChild.textContent = isRegistering ? 'Har du allerede en bruger? ' : 'Har du ikke en bruger? ';
@@ -3467,7 +3509,8 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             username: usernameInput.value,
-                            password: passwordInput.value
+                            password: passwordInput.value,
+                            ...(authMode === 'register' ? { email: registrationEmailInput.value } : {})
                         })
                     });
                     const result = await response.json();
@@ -3780,7 +3823,7 @@
                 toggleProfileSettingsPanel();
             });
 
-            profilePasswordForm.addEventListener('submit', async (event) => {
+            passwordChangeForm.addEventListener('submit', async (event) => {
                 event.preventDefault();
                 profilePasswordStatus.textContent = '';
                 if (profilePasswordNew.value !== profilePasswordConfirm.value) {
@@ -3801,12 +3844,83 @@
                     });
                     const result = await response.json();
                     if (!response.ok) throw new Error(result.error || 'Adgangskoden kunne ikke ændres.');
-                    profilePasswordForm.reset();
+                    passwordChangeForm.reset();
                     profilePasswordStatus.textContent = 'Adgangskoden er ændret.';
                 } catch (error) {
                     profilePasswordStatus.textContent = error.message || 'Adgangskoden kunne ikke ændres. Prøv igen.';
                 } finally {
                     profilePasswordSave.disabled = false;
+                }
+            });
+
+            profileEmailForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                profileEmailStatus.textContent = '';
+                profileEmailSave.disabled = true;
+                profileEmailStatus.textContent = 'Skifter mailadresse…';
+                try {
+                    const response = await authFetch('/api/profile/email', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            email: profileEmailInput.value,
+                            currentPassword: profileEmailPassword.value
+                        })
+                    });
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.error || 'Mailadressen kunne ikke ændres.');
+                    profileEmailInput.value = result.email;
+                    profileEmailPassword.value = '';
+                    profileEmailStatus.textContent = 'Mailadressen er ændret.';
+                } catch (error) {
+                    profileEmailStatus.textContent = error.message || 'Mailadressen kunne ikke ændres. Prøv igen.';
+                } finally {
+                    profileEmailSave.disabled = false;
+                }
+            });
+
+            deleteAccountForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                deleteAccountStatus.textContent = '';
+                if (!window.confirm('Er du sikker på, at du vil slette din bruger permanent?')) return;
+                deleteAccountButton.disabled = true;
+                deleteAccountStatus.textContent = 'Sletter brugeren…';
+                try {
+                    const response = await authFetch('/api/profile/account', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            currentPassword: deleteAccountPassword.value,
+                            confirmationUsername: deleteAccountUsername.value
+                        })
+                    });
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.error || 'Brugeren kunne ikke slettes.');
+                    currentUser = null;
+                    myId = null;
+                    players = {};
+                    socket.disconnect();
+                    updateOnlineList();
+                    loginSection.classList.remove('hidden');
+                    gameSection.classList.add('hidden');
+                    updateAccountActions();
+                    usernameInput.disabled = false;
+                    passwordInput.disabled = false;
+                    usernameInput.value = '';
+                    passwordInput.value = '';
+                    registrationEmailInput.value = '';
+                    authMode = 'login';
+                    showAuthMode();
+                    loginError.textContent = 'Din bruger og tilknyttede oplysninger er slettet.';
+                    selectSidePanel('members');
+                    resetPendingAuthentication();
+                    setRoomNotice('');
+                    updateDraftText('');
+                    resetUserSearch();
+                } catch (error) {
+                    deleteAccountStatus.textContent = error.message || 'Brugeren kunne ikke slettes. Prøv igen.';
+                } finally {
+                    deleteAccountButton.disabled = false;
                 }
             });
 

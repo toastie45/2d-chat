@@ -438,6 +438,9 @@ async function startServer() {
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS discord_name VARCHAR(64)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS interests VARCHAR(160)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS registration_ip_hash TEXT');
+    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS email VARCHAR(254)');
+    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS email_normalized VARCHAR(254)');
+    await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS chat_users_email_normalized_idx ON chat_users (email_normalized) WHERE email_normalized IS NOT NULL');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS total_online_ms BIGINT NOT NULL DEFAULT 0');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS steam_name VARCHAR(256)');
     await pool.query('ALTER TABLE chat_users ALTER COLUMN steam_name TYPE VARCHAR(256)');
@@ -716,10 +719,25 @@ async function startServer() {
         response.json({ user: request.session.user });
     });
 
-    const OWN_PROFILE_COLUMNS = 'real_name, profile_text, welcome_message, discord_name, interests, steam_name, birth_date::text AS birth_date, region';
+    const OWN_PROFILE_COLUMNS = 'email, real_name, profile_text, welcome_message, discord_name, interests, steam_name, birth_date::text AS birth_date, region';
+
+    function normalizeEmail(value) {
+        if (typeof value !== 'string') return null;
+        const email = value.trim();
+        if (email.length < 5 || email.length > 254 || /[\s\u0000-\u001f\u007f]/.test(email)) return null;
+        const at = email.lastIndexOf('@');
+        if (at < 1 || at === email.length - 1 || email.indexOf('@') !== at) return null;
+        const local = email.slice(0, at);
+        const domain = email.slice(at + 1);
+        if (local.length > 64 || !/^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+$/.test(local)) return null;
+        if (domain.length > 253 || !domain.includes('.') || domain.split('.').some((label) =>
+            !label || label.length > 63 || !/^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/.test(label))) return null;
+        return { email, normalized: email.toLocaleLowerCase('en-US') };
+    }
 
     function serializeOwnProfile(row) {
         return {
+            email: row.email || '',
             realName: row.real_name || '',
             profileText: row.profile_text || '',
             welcomeMessage: row.welcome_message || '',
@@ -756,6 +774,118 @@ async function startServer() {
             });
         } catch (error) {
             next(error);
+        }
+    });
+
+    app.put('/api/profile/email', async (request, response, next) => {
+        if (!isAuthorizedTabSession(request.session, getRequestTabId(request))) {
+            response.status(401).json({ error: 'Log ind for at fortsætte.' });
+            return;
+        }
+        const email = normalizeEmail(request.body && request.body.email);
+        const currentPassword = request.body && request.body.currentPassword;
+        if (!email) {
+            response.status(400).json({ error: 'Skriv en gyldig mailadresse.' });
+            return;
+        }
+        if (!isValidPassword(currentPassword)) {
+            response.status(400).json({ error: 'Skriv din nuværende adgangskode.' });
+            return;
+        }
+        try {
+            const { rows: [account] } = await pool.query(
+                'SELECT password_hash FROM chat_users WHERE id = $1', [request.session.user.id]
+            );
+            if (!account || !(await bcrypt.compare(currentPassword, account.password_hash))) {
+                response.status(400).json({ error: 'Den nuværende adgangskode er forkert.' });
+                return;
+            }
+            const { rows: [updated] } = await pool.query(
+                'UPDATE chat_users SET email = $1, email_normalized = $2 WHERE id = $3 RETURNING email',
+                [email.email, email.normalized, request.session.user.id]
+            );
+            if (!updated) {
+                response.status(404).json({ error: 'Brugeren blev ikke fundet.' });
+                return;
+            }
+            response.json({ success: true, email: updated.email });
+        } catch (error) {
+            if (error.code === '23505' && error.constraint === 'chat_users_email_normalized_idx') {
+                response.status(409).json({ error: 'Mailadressen er allerede knyttet til en bruger.' });
+                return;
+            }
+            next(error);
+        }
+    });
+
+    app.delete('/api/profile/account', async (request, response, next) => {
+        if (!isAuthorizedTabSession(request.session, getRequestTabId(request))) {
+            response.status(401).json({ error: 'Log ind for at fortsætte.' });
+            return;
+        }
+        const currentPassword = request.body && request.body.currentPassword;
+        const confirmationUsername = request.body && request.body.confirmationUsername;
+        if (!isValidPassword(currentPassword) || typeof confirmationUsername !== 'string') {
+            response.status(400).json({ error: 'Udfyld adgangskode og bekræft dit brugernavn.' });
+            return;
+        }
+        const userId = String(request.session.user.id);
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            const { rows: [account] } = await client.query(
+                'SELECT username, password_hash FROM chat_users WHERE id = $1 FOR UPDATE', [userId]
+            );
+            if (!account || !(await bcrypt.compare(currentPassword, account.password_hash))) {
+                await client.query('ROLLBACK');
+                response.status(400).json({ error: 'Den nuværende adgangskode er forkert.' });
+                return;
+            }
+            if (confirmationUsername.trim().toLocaleLowerCase('en-US') !== account.username.toLocaleLowerCase('en-US')) {
+                await client.query('ROLLBACK');
+                response.status(400).json({ error: 'Skriv dit brugernavn præcis for at bekræfte sletningen.' });
+                return;
+            }
+            const { rows: onlineSockets } = await client.query(
+                'SELECT socket_id FROM chat_online_sessions WHERE user_id = $1', [userId]
+            );
+            const { rows: userSessions } = await client.query(
+                `SELECT sid FROM "session" WHERE sess->'user'->>'id' = $1`, [userId]
+            );
+            await client.query(`DELETE FROM "session" WHERE sess->'user'->>'id' = $1`, [userId]);
+            await client.query('DELETE FROM chat_users WHERE id = $1', [userId]);
+            await client.query('COMMIT');
+
+            for (const { socket_id: socketId } of onlineSockets) {
+                activeSocketIds.delete(socketId);
+                activeSocketRooms.delete(socketId);
+                activeSocketUsers.delete(socketId);
+                try {
+                    for (const roomId of await getAllRoomIds()) {
+                        const keys = roomKeys(roomId);
+                        const removed = await redis.eval(REMOVE_PLAYER_SCRIPT, {
+                            keys: [keys.players, keys.cells], arguments: [socketId]
+                        });
+                        if (removed) io.to(roomChannel(roomId)).emit('playerDisconnected', socketId);
+                    }
+                } catch (cleanupError) {
+                    console.error('Could not fully clean up deleted account presence:', getSafeErrorCode(cleanupError));
+                }
+                io.in(socketId).disconnectSockets(true);
+            }
+            for (const { sid } of userSessions) io.in(`session:${sid}`).disconnectSockets(true);
+            io.emit('navigator-refresh');
+            response.clearCookie('chat.sid', {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'lax'
+            });
+            response.json({ success: true });
+        } catch (error) {
+            await client.query('ROLLBACK').catch(() => {});
+            next(error);
+        } finally {
+            client.release();
         }
     });
 
@@ -878,6 +1008,7 @@ async function startServer() {
         if (!tabId) return;
         const account = normalizeUsername(request.body && request.body.username);
         const password = request.body && request.body.password;
+        const email = normalizeEmail(request.body && request.body.email);
         if (!account) {
             response.status(400).json({ error: 'Brugernavnet skal være 3–18 tegn: bogstaver, tal, punktum, bindestreg eller underscore.' });
             return;
@@ -888,6 +1019,10 @@ async function startServer() {
         }
         if (!isValidPassword(password)) {
             response.status(400).json({ error: 'Adgangskoden skal være 8–72 UTF-8-bytes.' });
+            return;
+        }
+        if (!email) {
+            response.status(400).json({ error: 'Skriv en gyldig mailadresse.' });
             return;
         }
         if (account.username !== request.body.username.trim()) {
@@ -918,8 +1053,8 @@ async function startServer() {
                     return;
                 }
                 const result = await client.query(
-                    'INSERT INTO chat_users (username, username_normalized, password_hash, registration_ip_hash, last_login_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING id, username',
-                    [account.username, account.normalized, passwordHash, registrationIpHash]
+                    'INSERT INTO chat_users (username, username_normalized, password_hash, email, email_normalized, registration_ip_hash, last_login_at) VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING id, username',
+                    [account.username, account.normalized, passwordHash, email.email, email.normalized, registrationIpHash]
                 );
                 await client.query('COMMIT');
                 user = { id: result.rows[0].id, username: result.rows[0].username };
@@ -932,6 +1067,10 @@ async function startServer() {
             await saveAuthenticatedSession(request, user, tabId);
             response.status(201).json({ user });
         } catch (error) {
+            if (error.code === '23505' && error.constraint === 'chat_users_email_normalized_idx') {
+                response.status(409).json({ error: 'Mailadressen er allerede knyttet til en bruger.' });
+                return;
+            }
             if (error.code === '23505') {
                 response.status(409).json({ error: 'Brugernavnet er allerede i brug.' });
                 return;
