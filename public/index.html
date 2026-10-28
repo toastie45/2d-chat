@@ -833,6 +833,9 @@
             position: fixed;
             z-index: 10;
             width: 166px;
+            max-width: calc(100vw - 16px);
+            max-height: calc(100vh - 16px);
+            overflow-y: auto;
             padding: 5px;
             border: 1px solid #383a33;
             border-radius: 9px;
@@ -2488,6 +2491,21 @@
                 }
             }
 
+            function positionAvatarContextMenu(x, y) {
+                const bounds = canvas.getBoundingClientRect();
+                const inset = 8;
+                const availableWidth = Math.max(0, bounds.width - inset * 2);
+                const availableHeight = Math.max(0, bounds.height - inset * 2);
+                avatarContextMenu.style.width = `${Math.min(166, availableWidth)}px`;
+                avatarContextMenu.style.maxHeight = `${availableHeight}px`;
+                const minLeft = bounds.left + inset;
+                const minTop = bounds.top + inset;
+                const maxLeft = Math.max(minLeft, bounds.right - avatarContextMenu.offsetWidth - inset);
+                const maxTop = Math.max(minTop, bounds.bottom - avatarContextMenu.offsetHeight - inset);
+                avatarContextMenu.style.left = `${Math.min(Math.max(x, minLeft), maxLeft)}px`;
+                avatarContextMenu.style.top = `${Math.min(Math.max(y, minTop), maxTop)}px`;
+            }
+
             function receiveWhisper(entry) {
                 const speakerId = entry.own ? myId : entry.playerId;
                 if (typeof speakerId !== 'string') return;
@@ -3519,10 +3537,7 @@
                 const expanded = avatarContextStatus.getAttribute('aria-expanded') !== 'true';
                 avatarContextStatus.setAttribute('aria-expanded', String(expanded));
                 updateAvatarContextMute();
-                const top = Number.parseFloat(avatarContextMenu.style.top) || 8;
-                if (top + avatarContextMenu.offsetHeight > window.innerHeight - 8) {
-                    avatarContextMenu.style.top = `${Math.max(8, window.innerHeight - avatarContextMenu.offsetHeight - 8)}px`;
-                }
+                positionAvatarContextMenu(Number.parseFloat(avatarContextMenu.style.left) || 0, Number.parseFloat(avatarContextMenu.style.top) || 0);
             });
             [avatarContextMoodGlad, avatarContextMoodMobset, avatarContextMoodKed, avatarContextMoodBlappet, avatarContextMoodBoevet].forEach((button) => {
                 button.addEventListener('click', () => {
@@ -3824,8 +3839,7 @@
                 if (target.id !== myId) socket.emit('apartment-info-request', { playerId: target.id });
                 socket.emit('apartment-kick-option-request', { targetPlayerId: target.id });
                 avatarContextMenu.classList.remove('hidden');
-                avatarContextMenu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - avatarContextMenu.offsetWidth - 8))}px`;
-                avatarContextMenu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - avatarContextMenu.offsetHeight - 8))}px`;
+                positionAvatarContextMenu(event.clientX, event.clientY);
             });
 
             canvas.addEventListener('pointermove', (event) => {
@@ -4173,11 +4187,15 @@
                     : 'Ingen lejlighed';
                 if (apartmentId) avatarContextApartment.dataset.apartmentId = apartmentId;
                 else delete avatarContextApartment.dataset.apartmentId;
+                if (!avatarContextMenu.classList.contains('hidden')) {
+                    positionAvatarContextMenu(Number.parseFloat(avatarContextMenu.style.left) || 0, Number.parseFloat(avatarContextMenu.style.top) || 0);
+                }
             });
 
             socket.on('apartment-kick-option', ({ targetPlayerId, roomId } = {}) => {
                 if (targetPlayerId !== contextPlayerId || activeRoom !== roomId || avatarContextMenu.classList.contains('hidden')) return;
                 avatarContextKick.hidden = false;
+                positionAvatarContextMenu(Number.parseFloat(avatarContextMenu.style.left) || 0, Number.parseFloat(avatarContextMenu.style.top) || 0);
             });
 
             socket.on('apartment-kick-result', ({ message } = {}) => {
