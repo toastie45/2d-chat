@@ -839,7 +839,9 @@
         .admin-room-edit { display: grid; grid-template-columns: minmax(0, 1fr) 82px; gap: 6px; }
         .admin-room-meta { margin-bottom: 5px; color: var(--muted); font-size: 10px; }
         .admin-room-details { display: grid; grid-template-columns: 104px minmax(0, 1fr); align-items: center; gap: 9px; }
-        .admin-room-preview { display: block; width: 104px; height: 64px; border: 1px solid #3b3e36; border-radius: 6px; object-fit: cover; }
+        .admin-room-preview-stack { position: relative; width: 96px; height: 64px; overflow: hidden; border: 1px solid #3b3e36; border-radius: 6px; background: #080a08; }
+        .admin-room-preview { display: block; width: 100%; height: 100%; object-fit: fill; }
+        .admin-room-preview-overlay { position: absolute; top: 50%; left: 50%; width: 100%; height: 100%; object-fit: fill; transform-origin: center; pointer-events: none; }
         .admin-room-bg-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
         .admin-room-overlay-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; padding-top: 7px; border-top: 1px solid #353732; }
         .admin-room-overlay-transform { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; align-items: end; gap: 6px; flex: 1 0 100%; }
@@ -1326,7 +1328,7 @@
             .admin-room-row { grid-template-columns: minmax(0, 1fr); }
             .admin-room-row .admin-row-actions { justify-content: flex-end; }
             .admin-room-details { grid-template-columns: 82px minmax(0, 1fr); }
-            .admin-room-preview { width: 82px; height: 54px; }
+            .admin-room-preview-stack { width: 81px; height: 54px; }
             .admin-room-overlay-transform { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
     </style>
@@ -3459,10 +3461,20 @@
                     const meta = document.createElement('div');
                     meta.className = 'admin-room-meta';
                     meta.textContent = `#${room.roomNumber} · ${room.count} online${room.isSystem ? ' · fast rum' : ''}`;
-                    const preview = document.createElement('img');
-                    preview.className = 'admin-room-preview';
-                    preview.src = room.backgroundUrl || '/images/test-room-background.png';
-                    preview.alt = `Baggrund for ${room.name}`;
+                    const preview = document.createElement('div');
+                    preview.className = 'admin-room-preview-stack';
+                    preview.setAttribute('role', 'img');
+                    preview.setAttribute('aria-label', `Forhåndsvisning af baggrund og overlay for ${room.name}`);
+                    const previewBackground = document.createElement('img');
+                    previewBackground.className = 'admin-room-preview';
+                    previewBackground.src = room.backgroundUrl || '/images/test-room-background.png';
+                    previewBackground.alt = '';
+                    const previewOverlay = document.createElement('img');
+                    previewOverlay.className = 'admin-room-preview-overlay';
+                    previewOverlay.alt = '';
+                    previewOverlay.hidden = !room.overlayUrl;
+                    if (room.overlayUrl) previewOverlay.src = room.overlayUrl;
+                    preview.append(previewBackground, previewOverlay);
                     const editFields = document.createElement('div');
                     editFields.append(meta, form);
                     details.append(preview, editFields);
@@ -3530,6 +3542,18 @@
                         overlayTools.append(removeOverlay);
                     }
                     const overlayTransform = room.overlayTransform || { x: 0, y: 0, rotation: 0, scale: 1 };
+                    const updateOverlayPreview = () => {
+                        const transform = {
+                            x: Number(overlayTransformFields.x.value),
+                            y: Number(overlayTransformFields.y.value),
+                            rotation: Number(overlayTransformFields.rotation.value),
+                            scale: Number(overlayTransformFields.scale.value) / 100
+                        };
+                        previewOverlay.style.left = `${50 + transform.x / 540 * 100}%`;
+                        previewOverlay.style.top = `${50 + transform.y / 360 * 100}%`;
+                        previewOverlay.style.transform = `translate(-50%, -50%) rotate(${transform.rotation}deg) scale(${transform.scale})`;
+                        if (activeRoom === room.id) setRoomOverlay(room.overlayUrl, transform);
+                    };
                     const transformForm = document.createElement('form');
                     transformForm.className = 'admin-room-overlay-transform';
                     const overlayTransformFields = {};
@@ -3552,13 +3576,28 @@
                     addOverlayTransformField('y', 'Y (px)', -180, 180, 1, overlayTransform.y ?? 0);
                     addOverlayTransformField('rotation', 'Rotation (°)', -180, 180, 1, overlayTransform.rotation ?? 0);
                     addOverlayTransformField('scale', 'Størrelse (%)', 25, 300, 1, Math.round((overlayTransform.scale ?? 1) * 100));
+                    for (const input of Object.values(overlayTransformFields)) input.addEventListener('input', updateOverlayPreview);
                     const saveTransform = document.createElement('button');
                     saveTransform.className = 'admin-row-button';
                     saveTransform.type = 'submit';
                     saveTransform.textContent = 'Gem placering';
                     transformForm.append(saveTransform);
+                    const restoreTransform = document.createElement('button');
+                    restoreTransform.className = 'admin-row-button';
+                    restoreTransform.type = 'button';
+                    restoreTransform.textContent = 'Gendan gemt';
+                    restoreTransform.addEventListener('click', () => {
+                        overlayTransformFields.x.value = String(overlayTransform.x ?? 0);
+                        overlayTransformFields.y.value = String(overlayTransform.y ?? 0);
+                        overlayTransformFields.rotation.value = String(overlayTransform.rotation ?? 0);
+                        overlayTransformFields.scale.value = String(Math.round((overlayTransform.scale ?? 1) * 100));
+                        updateOverlayPreview();
+                        overlayStatus.textContent = 'Den gemte placering vises igen.';
+                    });
+                    transformForm.append(restoreTransform);
                     transformForm.addEventListener('submit', (event) => {
                         event.preventDefault();
+                        updateOverlayPreview();
                         overlayStatus.textContent = 'Gemmer overlayets placering…';
                         socket.emit('admin-public-room-overlay-transform-set', {
                             id: room.id,
@@ -3570,8 +3609,9 @@
                     });
                     const transformHint = document.createElement('p');
                     transformHint.className = 'admin-room-overlay-hint';
-                    transformHint.textContent = 'X/Y måles fra midten af rummet (+X højre, +Y ned). Rotation er i grader; størrelse er i procent.';
+                    transformHint.textContent = 'Preview opdateres live. Gem placering offentliggør ændringen. X/Y måles fra midten (+X højre, +Y ned).';
                     overlayTools.append(transformForm, transformHint);
+                    updateOverlayPreview();
                     overlayTools.append(overlayStatus);
                     editFields.append(overlayTools);
                     const actions = document.createElement('div');
