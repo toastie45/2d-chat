@@ -855,6 +855,7 @@
             cursor: pointer;
         }
         .avatar-context-action:hover { background: #292b26; color: #fff; }
+        .avatar-context-subaction { width: calc(100% - 12px); margin-left: 12px; color: var(--muted); }
         .avatar-context-action.danger:hover { background: #382725; color: #f0b4a9; }
         .avatar-context-action[hidden] { display: none; }
         .avatar-context-action:disabled { cursor: not-allowed; }
@@ -1503,6 +1504,9 @@
             <button class="avatar-context-action" id="avatar-context-mute" type="button" role="menuitem" hidden></button>
             <button class="avatar-context-action danger" id="avatar-context-kick" type="button" role="menuitem" hidden>Kyl ud</button>
             <button class="avatar-context-action" id="avatar-context-highlight" type="button" role="menuitem" aria-pressed="false">Fremhæv</button>
+            <button class="avatar-context-action" id="avatar-context-status" type="button" role="menuitem" aria-expanded="false" hidden>Humør</button>
+            <button class="avatar-context-action avatar-context-subaction" id="avatar-context-mood-glad" type="button" role="menuitemradio" data-avatar-mood="glad" aria-checked="true" hidden>Glad</button>
+            <button class="avatar-context-action avatar-context-subaction" id="avatar-context-mood-mobset" type="button" role="menuitemradio" data-avatar-mood="mobset" aria-checked="false" hidden>Mobset</button>
         </div>
         <dialog class="level-overview-dialog" id="level-overview-dialog" aria-labelledby="level-overview-title">
             <div class="level-overview-header">
@@ -1546,14 +1550,21 @@
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'high';
             const avatarImage = new Image();
+            const mobsetAvatarImage = new Image();
             const avatarWidth = 54;
             const avatarHeight = 75;
             let avatarImageLoaded = false;
+            let mobsetAvatarImageLoaded = false;
             avatarImage.addEventListener('load', () => {
                 avatarImageLoaded = true;
                 requestBoardRender();
             });
             avatarImage.src = '/images/mand.png';
+            mobsetAvatarImage.addEventListener('load', () => {
+                mobsetAvatarImageLoaded = true;
+                requestBoardRender();
+            });
+            mobsetAvatarImage.src = '/images/sur.png';
             const loginSection = document.getElementById('login-section');
             const gameSection = document.getElementById('game-section');
             const usernameInput = document.getElementById('username-input');
@@ -1718,6 +1729,9 @@
             const avatarContextMute = document.getElementById('avatar-context-mute');
             const avatarContextKick = document.getElementById('avatar-context-kick');
             const avatarContextEditApartment = document.getElementById('avatar-context-edit-apartment');
+            const avatarContextStatus = document.getElementById('avatar-context-status');
+            const avatarContextMoodGlad = document.getElementById('avatar-context-mood-glad');
+            const avatarContextMoodMobset = document.getElementById('avatar-context-mood-mobset');
             const roomNotice = document.getElementById('room-notice');
             const logoutButton = document.getElementById('logout-button');
             const chatLog = document.getElementById('chat-log');
@@ -2403,6 +2417,12 @@
                 const player = contextPlayerId ? players[contextPlayerId] : null;
                 const isSelf = contextPlayerId === myId;
                 avatarContextEditApartment.hidden = !player || !isSelf || !canEditCurrentApartment;
+                avatarContextStatus.hidden = !player || !isSelf;
+                const moodExpanded = avatarContextStatus.getAttribute('aria-expanded') === 'true';
+                avatarContextMoodGlad.hidden = !isSelf || !moodExpanded;
+                avatarContextMoodMobset.hidden = !isSelf || !moodExpanded;
+                avatarContextMoodGlad.setAttribute('aria-checked', String(player?.mood !== 'mobset'));
+                avatarContextMoodMobset.setAttribute('aria-checked', String(player?.mood === 'mobset'));
                 const whisperInRange = Boolean(player && !isSelf && canWhisperTo(contextPlayerId));
                 avatarContextWhisper.hidden = !whisperInRange;
                 avatarContextWhisper.disabled = false;
@@ -3059,6 +3079,9 @@
                 for (const player of avatarDrawOrder) {
                     const position = player.position || player.target || positionFor(player);
                     if (!position) continue;
+                    const playerAvatarImage = player.mood === 'mobset'
+                        ? (mobsetAvatarImageLoaded ? mobsetAvatarImage : avatarImageLoaded ? avatarImage : null)
+                        : avatarImageLoaded ? avatarImage : null;
                     const muted = isMutedPlayer(player);
                     const visualHeight = avatarImageLoaded ? avatarHeight : avatarRadius * 2;
                     const visualWidth = avatarImageLoaded ? avatarWidth : avatarRadius * 2;
@@ -3072,9 +3095,9 @@
                     ctx.fill();
                     ctx.restore();
 
-                    if (avatarImageLoaded) {
+                    if (playerAvatarImage) {
                         ctx.drawImage(
-                            avatarImage,
+                            playerAvatarImage,
                             position.x - visualWidth / 2,
                             avatarY - visualHeight / 2,
                             visualWidth,
@@ -3439,6 +3462,24 @@
             avatarContextProfile.addEventListener('click', () => {
                 if (contextPlayerId) showPublicProfile(contextPlayerId);
             });
+            avatarContextStatus.addEventListener('click', () => {
+                if (contextPlayerId !== myId) return;
+                const expanded = avatarContextStatus.getAttribute('aria-expanded') !== 'true';
+                avatarContextStatus.setAttribute('aria-expanded', String(expanded));
+                updateAvatarContextMute();
+                const top = Number.parseFloat(avatarContextMenu.style.top) || 8;
+                if (top + avatarContextMenu.offsetHeight > window.innerHeight - 8) {
+                    avatarContextMenu.style.top = `${Math.max(8, window.innerHeight - avatarContextMenu.offsetHeight - 8)}px`;
+                }
+            });
+            [avatarContextMoodGlad, avatarContextMoodMobset].forEach((button) => {
+                button.addEventListener('click', () => {
+                    const mood = button.dataset.avatarMood;
+                    if (contextPlayerId !== myId || !['glad', 'mobset'].includes(mood)) return;
+                    socket.emit('player-mood-set', { mood });
+                    closeAvatarContextMenu();
+                });
+            });
             profileTeleportButton.addEventListener('click', () => {
                 if (!viewingProfileUserId || viewingOwnProfile || profileTeleportButton.hidden) return;
                 socket.emit('profile-teleport', { userId: viewingProfileUserId });
@@ -3725,6 +3766,7 @@
                 }
                 contextPlayerId = target.id;
                 avatarContextName.textContent = target.name;
+                avatarContextStatus.setAttribute('aria-expanded', 'false');
                 avatarContextKick.hidden = true;
                 updateAvatarContextMute();
                 socket.emit('apartment-info-request', { playerId: target.id });
@@ -4143,6 +4185,13 @@
                 cancelWhisperIfOutOfRange();
                 requestBoardRender();
                 if (contextPlayerId) updateAvatarContextMute();
+            });
+
+            socket.on('playerMoodChanged', ({ id, mood } = {}) => {
+                if (typeof id !== 'string' || !players[id] || !['glad', 'mobset'].includes(mood)) return;
+                players[id].mood = mood;
+                requestBoardRender();
+                if (contextPlayerId === id) updateAvatarContextMute();
             });
 
             socket.on('private-whisper-message', (entry = {}) => {

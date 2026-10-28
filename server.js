@@ -130,6 +130,7 @@ local function tryJoin(cell)
             name = ARGV[2],
             col = tonumber(col),
             row = tonumber(row),
+            mood = 'glad',
             text = '',
             messageTime = 0,
             lastSeen = tonumber(ARGV[3]),
@@ -312,6 +313,7 @@ function publicPlayer(player) {
         name: player.name,
         col: player.col,
         row: player.row,
+        mood: player.mood === 'mobset' ? 'mobset' : 'glad',
         text: player.text,
         messageTime: player.messageTime
     };
@@ -2815,6 +2817,23 @@ async function startServer() {
                 socket.emit('room-error', { code: error.code, message });
             } finally {
                 socket.data.joining = false;
+            }
+        });
+
+        socket.on('player-mood-set', async ({ mood } = {}) => {
+            if (!activeSocketIds.has(socket.id) || !['glad', 'mobset'].includes(mood)) return;
+            const roomId = activeSocketRooms.get(socket.id);
+            if (!roomId) return;
+            try {
+                const keys = roomKeys(roomId);
+                const encodedPlayer = await redis.hGet(keys.players, socket.id);
+                if (!encodedPlayer) return;
+                const player = JSON.parse(encodedPlayer);
+                player.mood = mood;
+                await redis.hSet(keys.players, socket.id, JSON.stringify(player));
+                io.to(roomChannel(roomId)).emit('playerMoodChanged', { id: socket.id, mood });
+            } catch (error) {
+                console.error('Could not change chat participant mood:', getSafeErrorCode(error));
             }
         });
 
