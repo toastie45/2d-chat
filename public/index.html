@@ -573,7 +573,9 @@
         .profile-facts-view {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
-            grid-auto-rows: min-content;
+            grid-template-rows: repeat(5, max-content);
+            height: max-content;
+            min-height: 0;
             align-content: start;
             overflow: hidden;
             border: 1px solid #292b26;
