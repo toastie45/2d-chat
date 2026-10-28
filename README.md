@@ -16,6 +16,9 @@ Set these environment variables before starting the server:
 | `PORT` | Optional HTTP port; defaults to `3000` |
 | `PGSSLMODE` | Set to `require` when PostgreSQL requires TLS, including Supabase |
 | `PGSSLROOTCERT` | Optional path to a trusted PostgreSQL root CA certificate |
+| `RESEND_API_KEY` | Resend API key; keep it in Render environment variables, never in source control |
+| `RESEND_FROM_EMAIL` | Sender address on a domain verified in Resend, for example `Chat <chat@example.dk>` |
+| `APP_BASE_URL` | Public HTTPS base URL used to create email verification links, for example `https://min-chat-0fli.onrender.com` |
 
 Generate a session secret locally with:
 
@@ -45,6 +48,8 @@ Login is bound to the browser tab: refreshing the page keeps the session, but op
 Use Supabase PostgreSQL for account, session, and chat-message storage, and Render Key Value for live presence and Socket.IO event sharing. For a persistent Render server, use the Supabase **Session pooler** connection string as `DATABASE_URL`. Set `PGSSLMODE=require` to require TLS. To verify Supabase's database certificate, add its root certificate as a Render Secret File named `supabase-root.crt` and set `PGSSLROOTCERT=/etc/secrets/supabase-root.crt`. Create the Supabase project in a region close to the Render service where possible.
 
 Add the Supabase connection string to the Render web service as `DATABASE_URL`, and the Render Key Value connection string as `REDIS_URL`. Also set `PGSSLMODE=require`, `PGSSLROOTCERT=/etc/secrets/supabase-root.crt`, `NODE_ENV=production`, and a newly generated `SESSION_SECRET` using the command above. Keep connection strings and secrets in Render's settings; never commit or paste them into chat. Choose plans that fit the project's cost and data-retention needs.
+
+For email, verify a sending domain in Resend, then add `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, and `APP_BASE_URL` to Render's environment settings. New accounts must confirm their address before logging in. A changed address becomes active only after confirmation; the old address remains active until then. The login page can send password-reset links to the account's verified address; reset links expire after 24 hours and signing out all account sessions is part of the reset. Existing accounts are kept verified during the migration. If an API key was pasted into chat or another public place, revoke it in Resend and create a replacement before adding it to Render.
 
 Deploy the web service from the repository root with:
 
