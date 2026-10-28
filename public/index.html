@@ -940,6 +940,8 @@
             text-align: center;
         }
 
+        .mobile-chat-compose { display: none; }
+
         .chat-entry { margin: 0 0 8px; overflow-wrap: anywhere; }
         .chat-entry strong { color: #f2f0e9; font-weight: 600; }
         .chat-mention { padding: 1px 3px; border-radius: 3px; background: #303b25; color: #a5c576; font-weight: 650; }
@@ -966,6 +968,37 @@
             .side-card { min-height: 0; }
             .chat-section { min-height: 170px; }
             .chat-log { max-height: 110px; }
+            .mobile-chat-compose {
+                display: flex;
+                gap: 8px;
+                margin-top: auto;
+                padding-top: 10px;
+            }
+            .mobile-chat-compose input {
+                flex: 1;
+                min-width: 0;
+                min-height: 42px;
+                padding: 10px 12px;
+                border: 1px solid #3b3e36;
+                border-radius: 8px;
+                background: #151613;
+                color: #f2f0e9;
+                font: inherit;
+                font-size: 16px;
+            }
+            .mobile-chat-compose input:focus { outline: 2px solid #9fc65f; outline-offset: 1px; }
+            .mobile-chat-compose button {
+                min-width: 68px;
+                min-height: 42px;
+                padding: 0 14px;
+                border: 0;
+                border-radius: 8px;
+                background: #a8c879;
+                color: #151710;
+                font: inherit;
+                font-weight: 700;
+                touch-action: manipulation;
+            }
             .member-list { max-height: 130px; }
             .room-strip { min-height: 40px; gap: 7px; padding: 0 11px; }
             .room-strip-tagline { display: none; }
@@ -1393,6 +1426,10 @@
                             <div class="chat-log" id="chat-log" role="log" aria-live="polite" aria-relevant="additions">
                                 <p class="chat-empty" id="chat-empty">Samtalen begynder her.</p>
                             </div>
+                            <form class="mobile-chat-compose" id="mobile-chat-compose" autocomplete="off">
+                                <input id="mobile-chat-input" type="text" maxlength="100" enterkeyhint="send" inputmode="text" placeholder="Skriv en besked..." aria-label="Skriv en besked">
+                                <button type="submit">Send</button>
+                            </form>
                         </section>
                         <section class="side-panel" id="apartment-editor-panel" aria-labelledby="apartment-editor-title" hidden>
                             <h2 class="side-title" id="apartment-editor-title">Indret din lejlighed / Velkomst info</h2>
@@ -1846,6 +1883,8 @@
             const logoutButton = document.getElementById('logout-button');
             const chatLog = document.getElementById('chat-log');
             const chatEmpty = document.getElementById('chat-empty');
+            const mobileChatCompose = document.getElementById('mobile-chat-compose');
+            const mobileChatInput = document.getElementById('mobile-chat-input');
             const { cellSize, cells: gridCells } = gridLayout;
             const gridCellKeys = new Set(gridCells.map((cell) => `${cell.col}:${cell.row}`));
             const avatarRadius = 19;
@@ -1899,6 +1938,36 @@
             function updateDraftText(text) {
                 draftText = text.slice(0, maxMessageLength);
                 requestBoardRender();
+            }
+
+            function sendChatDraft(text) {
+                const message = text.trim();
+                if (!message || !myId || !players[myId]) return false;
+                const teleportUserCommand = /^\/tb(.*)$/i.exec(message);
+                if (teleportUserCommand) {
+                    socket.emit('profile-teleport', { mode: 'user', target: teleportUserCommand[1].trim() });
+                    return true;
+                }
+                const teleportRoomCommand = /^\/tr(?:\s+(.+))?$/i.exec(message);
+                if (teleportRoomCommand) {
+                    socket.emit('profile-teleport', { mode: 'room', target: teleportRoomCommand[1]?.trim() || '' });
+                    return true;
+                }
+                if (activeWhisperPlayerId) {
+                    if (whisperSending) return false;
+                    if (!canWhisperTo(activeWhisperPlayerId)) {
+                        setWhisperModeNotice('I skal st\u00e5 ved siden af hinanden for at hviske. Esc annullerer.');
+                        return false;
+                    }
+                    whisperSending = true;
+                    socket.emit('private-whisper-send', {
+                        playerId: activeWhisperPlayerId,
+                        message: hideSensitiveData(message)
+                    });
+                    return true;
+                }
+                socket.emit('chat-message', hideSensitiveData(message));
+                return true;
             }
 
             function getAvatarDrawY(position) {
@@ -4047,6 +4116,17 @@
                 const currentMoodIndex = moods.indexOf(players[myId].mood || 'glad');
                 const direction = event.key === 'ArrowDown' ? 1 : -1;
                 setOwnMood(moods[(currentMoodIndex + direction + moods.length) % moods.length]);
+            });
+
+            mobileChatInput.addEventListener('input', () => {
+                updateDraftText(mobileChatInput.value);
+            });
+            mobileChatCompose.addEventListener('submit', (event) => {
+                event.preventDefault();
+                if (!sendChatDraft(mobileChatInput.value)) return;
+                mobileChatInput.value = '';
+                updateDraftText('');
+                mobileChatInput.focus({ preventScroll: true });
             });
 
             window.addEventListener('resize', () => {
