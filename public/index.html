@@ -2155,6 +2155,8 @@
                 authSwitch.firstChild.textContent = isRegistering ? 'Har du allerede en bruger? ' : 'Har du ikke en bruger? ';
             }
 
+            showAuthMode();
+
             function updateAccountActions() {
                 const isAuthenticated = Boolean(currentUser);
                 authSwitch.hidden = isAuthenticated;
