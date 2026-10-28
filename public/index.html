@@ -586,6 +586,10 @@
         .profile-fact:nth-child(odd) { border-right: 1px solid #292b26; }
         .profile-fact dt { margin-bottom: 4px; color: #96988f; font-size: 10px; font-weight: 650; }
         .profile-fact dd { margin: 0; color: #f2f0e9; font-size: 11px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .profile-apartment-fact { padding: 6px 11px; }
+        .profile-apartment-fact dd { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+        .profile-apartment-fact .apartment-inline-action { min-height: 24px; margin: 0; padding: 2px 8px; }
+        .profile-apartment-fact .apartment-status { margin: 0; }
         .profile-fact dd a { color: #c1f078; text-decoration: underline; overflow-wrap: anywhere; }
         .profile-fact dd a:hover { color: #d2ff96; }
         .profile-fact-wide { grid-column: 1 / -1; border-right: 0 !important; }
@@ -1483,7 +1487,7 @@
                                 <p class="profile-facts-title"><span>Facts:</span></p>
                                 <dl class="profile-facts-view">
                                     <div class="profile-fact"><dt>Alias:</dt><dd id="view-profile-real-name"></dd></div>
-                                    <div class="profile-fact"><dt>Lejlighed:</dt><dd>
+                                    <div class="profile-fact profile-apartment-fact"><dt>Lejlighed:</dt><dd>
                                         <span id="view-profile-apartment-value">Ingen endnu</span>
                                         <button class="apartment-enter-button" id="view-profile-apartment-link" type="button" hidden></button>
                                         <button class="profile-save apartment-inline-action" id="apartment-create-button" type="button" hidden>Få din lejlighed</button>
@@ -2154,8 +2158,15 @@
                 profileViewPanel.hidden = panel !== 'profile-view';
                 roomLayout.classList.add('panel-content-contained');
                 roomLayout.style.removeProperty('--room-side-card-height');
-                roomLayout.style.setProperty('--room-side-card-height', `${boardCard.offsetHeight}px`);
+                syncRoomSideCardHeight();
                 updateToolbarState();
+            }
+
+            function syncRoomSideCardHeight() {
+                roomLayout.style.removeProperty('--room-side-card-height');
+                if (gameSection.classList.contains('hidden')) return;
+                const height = boardCard.getBoundingClientRect().height;
+                if (height > 0) roomLayout.style.setProperty('--room-side-card-height', `${height}px`);
             }
 
             function toggleProfileSettingsPanel() {
@@ -3907,8 +3918,7 @@
 
             window.addEventListener('resize', () => {
                 closeAvatarContextMenu();
-                roomLayout.style.removeProperty('--room-side-card-height');
-                roomLayout.style.setProperty('--room-side-card-height', `${boardCard.offsetHeight}px`);
+                syncRoomSideCardHeight();
             });
 
             canvas.addEventListener('keydown', (event) => {
@@ -4105,6 +4115,7 @@
                 updateToolbarState();
                 loginSection.classList.add('hidden');
                 gameSection.classList.remove('hidden');
+                requestAnimationFrame(syncRoomSideCardHeight);
                 updateAccountActions();
                 loginError.textContent = '';
                 setRoomNotice('');
