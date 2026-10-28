@@ -2184,9 +2184,14 @@ async function startServer() {
             }
         });
 
-        socket.on('wardrobe-item-equip', async ({ id, equipped } = {}) => {
-            if (!activeSocketIds.has(socket.id) || typeof id !== 'string'
-                || !/^[1-9]\d{0,18}$/.test(id) || typeof equipped !== 'boolean') return;
+        socket.on('wardrobe-save', async ({ equippedItemIds } = {}) => {
+            if (!activeSocketIds.has(socket.id) || !Array.isArray(equippedItemIds) || equippedItemIds.length > 200
+                || equippedItemIds.some((id) => typeof id !== 'string' || !/^[1-9]\d{0,18}$/.test(id))) return;
+            const selectedIds = [...new Set(equippedItemIds)];
+            if (selectedIds.length !== equippedItemIds.length) {
+                socket.emit('wardrobe-action-result', { success: false, message: 'Outfittet indeholder dubletter.' });
+                return;
+            }
             let client;
             try {
                 const [totalOnlineMs, { rows: [progress] }] = await Promise.all([
@@ -2197,53 +2202,66 @@ async function startServer() {
                 client = await pool.connect();
                 await client.query('BEGIN');
                 await client.query('SELECT id FROM chat_users WHERE id = $1 FOR UPDATE', [socket.data.user.id]);
-                const { rows: [item] } = await client.query(`
-                    SELECT item.id, item.name, item.category, item.required_level
-                    FROM chat_clothing_catalog item
-                    JOIN chat_clothing_assignments assignment ON assignment.clothing_item_id = item.id
-                    WHERE item.id = $1 AND assignment.target_user_id = $2 FOR UPDATE OF assignment
-                `, [id, socket.data.user.id]);
-                if (!item) {
+                const { rows: ownedItems } = await client.query(`
+                    SELECT item.id::text AS id, item.name, item.category, item.required_level
+                    FROM chat_clothing_assignments assignment
+                    JOIN chat_clothing_catalog item ON item.id = assignment.clothing_item_id
+                    WHERE assignment.target_user_id = $1
+                    FOR UPDATE OF assignment
+                `, [socket.data.user.id]);
+                const ownedById = new Map(ownedItems.map((item) => [item.id, item]));
+                const missing = selectedIds.find((id) => !ownedById.has(id));
+                if (missing) {
                     await client.query('ROLLBACK');
-                    socket.emit('wardrobe-action-result', { success: false, message: 'Tøjdelen findes ikke i dit skab.' });
+                    socket.emit('wardrobe-action-result', { success: false, message: 'En t\u00f8jdel findes ikke l\u00e6ngere i dit skab. Opdater og pr\u00f8v igen.' });
                     return;
                 }
-                if (equipped && Number(item.required_level) > level) {
+                const selectedItems = selectedIds.map((id) => ownedById.get(id));
+                const lockedItem = selectedItems.find((item) => Number(item.required_level) > level);
+                if (lockedItem) {
                     await client.query('ROLLBACK');
                     socket.emit('wardrobe-action-result', {
                         success: false,
-                        message: `Du skal nå level ${item.required_level} for at tage ${item.name} på.`
+                        message: 'Du skal v\u00e6re level ' + lockedItem.required_level + ' for at tage ' + lockedItem.name + ' p\u00e5.'
                     });
                     return;
                 }
-                if (equipped && item.category !== 'accessory') {
-                    await client.query(`
-                        UPDATE chat_clothing_assignments assignment SET is_equipped = FALSE
-                        FROM chat_clothing_catalog item
-                        WHERE assignment.clothing_item_id = item.id AND assignment.target_user_id = $1
-                          AND item.category = $2 AND item.id <> $3
-                    `, [socket.data.user.id, item.category, id]);
+                const exclusiveCategories = new Set();
+                const duplicateCategory = selectedItems.find((item) => {
+                    if (item.category === 'accessory') return false;
+                    if (exclusiveCategories.has(item.category)) return true;
+                    exclusiveCategories.add(item.category);
+                    return false;
+                });
+                if (duplicateCategory) {
+                    await client.query('ROLLBACK');
+                    socket.emit('wardrobe-action-result', { success: false, message: 'V\u00e6lg kun en del per kategori.' });
+                    return;
                 }
                 await client.query(`
-                    UPDATE chat_clothing_assignments SET is_equipped = $3
-                    WHERE clothing_item_id = $1 AND target_user_id = $2
-                `, [id, socket.data.user.id, equipped]);
+                    UPDATE chat_clothing_assignments
+                    SET is_equipped = clothing_item_id = ANY($2::bigint[])
+                    WHERE target_user_id = $1
+                `, [socket.data.user.id, selectedIds]);
                 await client.query('COMMIT');
                 await refreshOnlineUserClothing(socket.data.user.id);
                 await sendUserWardrobe();
-                socket.emit('wardrobe-action-result', {
-                    success: true,
-                    message: equipped ? `${item.name} er taget på.` : `${item.name} er lagt i tøjskabet.`
-                });
+                socket.emit('wardrobe-action-result', { success: true, message: 'Outfittet er gemt og vises nu i chatten.' });
             } catch (error) {
                 if (client) {
                     try { await client.query('ROLLBACK'); } catch {}
                 }
-                console.error('Could not update equipped clothing:', getSafeErrorCode(error));
-                socket.emit('wardrobe-action-result', { success: false, message: 'Tøjdelen kunne ikke opdateres.' });
+                console.error('Could not save wardrobe outfit:', getSafeErrorCode(error));
+                socket.emit('wardrobe-action-result', { success: false, message: 'Outfittet kunne ikke gemmes.' });
             } finally {
                 client?.release();
             }
+        });
+
+        socket.on('wardrobe-item-equip', async () => {
+            if (!activeSocketIds.has(socket.id)) return;
+            socket.emit('wardrobe-action-result', { success: false, message: 'Opdater siden for at bruge den gemte outfitfunktion.' });
+            await sendUserWardrobe();
         });
 
         socket.on('admin-public-rooms-request', async () => {

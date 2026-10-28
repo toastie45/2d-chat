@@ -439,6 +439,8 @@
         .wardrobe-avatar-preview { display: block; width: 100%; height: 100%; object-fit: contain; }
         .wardrobe-preview-level { color: #a8c879; font-size: 9px; font-weight: 650; }
         .wardrobe-status { min-height: 16px; margin: 8px 0; color: var(--muted); font-size: 10px; }
+        .wardrobe-actions { display: flex; gap: 8px; margin-top: 12px; }
+        .wardrobe-actions button { flex: 1; min-height: 36px; }
         .wardrobe-empty { color: var(--muted); font-size: 11px; }
         @media (max-width: 700px) {
             .wardrobe-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "preview preview" "left right"; gap: 9px; }
@@ -1540,6 +1542,10 @@
                                 </div>
                                 <div class="wardrobe-category-stack right" id="wardrobe-right-categories"></div>
                             </div>
+                            <div class="wardrobe-actions">
+                                <button class="admin-row-button" id="wardrobe-discard-button" type="button" disabled>Fortryd</button>
+                                <button class="primary-button" id="wardrobe-save-button" type="button" disabled>Gem outfit</button>
+                            </div>
                             <p class="wardrobe-empty" id="wardrobe-empty" hidden></p>
                         </section>
                         <section class="side-panel" id="members-panel" aria-labelledby="members-title" hidden>
@@ -2119,7 +2125,11 @@
             const wardrobePreviewLevel = document.getElementById('wardrobe-preview-level');
             const wardrobeEmpty = document.getElementById('wardrobe-empty');
             const wardrobeStatus = document.getElementById('wardrobe-status');
+            const wardrobeSaveButton = document.getElementById('wardrobe-save-button');
+            const wardrobeDiscardButton = document.getElementById('wardrobe-discard-button');
             let wardrobeItems = [];
+            let wardrobeSavedIds = new Set();
+            let wardrobeDraftIds = new Set();
             let wardrobeLevel = 1;
             const collapsedWardrobeCategories = new Set();
             const adminPanel = document.getElementById('admin-panel');
@@ -4057,7 +4067,7 @@
                     context.drawImage(moodImage, 0, 0, width, height);
                     context.restore();
                 }
-                const equipped = wardrobeItems.filter((item) => item.equipped).sort((first, second) =>
+                const equipped = wardrobeItems.filter((item) => wardrobeDraftIds.has(String(item.id))).sort((first, second) =>
                     (clothingCategoryOrder[first.category] ?? 2) - (clothingCategoryOrder[second.category] ?? 2)
                 );
                 for (const item of equipped) {
@@ -4076,11 +4086,15 @@
                 }
             }
 
-            function renderWardrobeItems(items = [], level = 1) {
+            function renderWardrobeItems(items = [], level = 1, preserveDraft = false) {
                 wardrobeItems = items.map((item) => ({
                     ...item,
                     imageUrl: item.imageUrl || `/api/clothing-items/${encodeURIComponent(item.id)}/image`
                 }));
+                if (!preserveDraft) {
+                    wardrobeSavedIds = new Set(wardrobeItems.filter((item) => item.equipped).map((item) => String(item.id)));
+                    wardrobeDraftIds = new Set(wardrobeSavedIds);
+                }
                 wardrobeLevel = Math.max(1, Number(level) || 1);
                 wardrobeEmpty.hidden = true;
                 wardrobePreviewLevel.textContent = `Level ${wardrobeLevel}`;
@@ -4099,7 +4113,7 @@
                     title.textContent = categoryNames[category];
                     const count = document.createElement('span');
                     count.className = 'wardrobe-category-count';
-                    count.textContent = `${categoryItems.filter((item) => item.equipped).length}/${categoryItems.length} på`;
+                    count.textContent = `${categoryItems.filter((item) => wardrobeDraftIds.has(String(item.id))).length}/${categoryItems.length} valgt`;
                     heading.append(title, count);
                     box.addEventListener('toggle', () => {
                         if (box.open) collapsedWardrobeCategories.delete(category);
@@ -4119,8 +4133,9 @@
                         button.className = 'wardrobe-item';
                         button.type = 'button';
                         button.setAttribute('role', 'listitem');
-                        button.setAttribute('aria-pressed', String(item.equipped));
-                        const locked = !item.equipped && Number(item.requiredLevel) > wardrobeLevel;
+                        const selected = wardrobeDraftIds.has(String(item.id));
+                        button.setAttribute('aria-pressed', String(selected));
+                        const locked = !selected && Number(item.requiredLevel) > wardrobeLevel;
                         button.disabled = locked;
                         button.title = locked ? `Kræver level ${item.requiredLevel}. Du er level ${wardrobeLevel}.` : item.description || '';
                         const image = document.createElement('img');
@@ -4132,13 +4147,20 @@
                         const name = document.createElement('strong');
                         name.textContent = item.name;
                         const meta = document.createElement('span');
-                        meta.textContent = item.equipped ? 'På · klik for at tage af' : locked ? `Level ${item.requiredLevel}` : `${Number(item.price).toLocaleString('da-DK')} mønter`;
+                        meta.textContent = selected ? 'Valgt - klik for at tage af' : locked ? `Level ${item.requiredLevel}` : `${Number(item.price).toLocaleString('da-DK')} m\u00f8nter`;
                         details.append(name, meta);
                         button.append(image, details);
                         button.addEventListener('click', () => {
-                            button.disabled = true;
-                            wardrobeStatus.textContent = item.equipped ? 'Lægger tøjdelen i skabet…' : 'Tager tøjdelen på…';
-                            socket.emit('wardrobe-item-equip', { id: item.id, equipped: !item.equipped });
+                            const itemId = String(item.id);
+                            if (wardrobeDraftIds.has(itemId)) wardrobeDraftIds.delete(itemId);
+                            else {
+                                if (item.category !== 'accessory') {
+                                    for (const other of categoryItems) wardrobeDraftIds.delete(String(other.id));
+                                }
+                                wardrobeDraftIds.add(itemId);
+                            }
+                            wardrobeStatus.textContent = 'Outfit ikke gemt endnu. Det vises f\u00f8rst i chatten, n\u00e5r du gemmer.';
+                            renderWardrobeItems(wardrobeItems, wardrobeLevel, true);
                         });
                         list.append(button);
                     }
@@ -4147,6 +4169,12 @@
                 };
                 wardrobeLeftCategories.replaceChildren(createCategoryBox('headwear'), createCategoryBox('clothing'));
                 wardrobeRightCategories.replaceChildren(createCategoryBox('left_hand'), createCategoryBox('right_hand'), createCategoryBox('accessory'));
+                const isDirty = wardrobeDraftIds.size !== wardrobeSavedIds.size || [...wardrobeDraftIds].some((id) => !wardrobeSavedIds.has(id));
+                wardrobeSaveButton.disabled = !isDirty;
+                wardrobeDiscardButton.disabled = !isDirty;
+                if (!isDirty && wardrobeStatus.textContent.startsWith('Outfit ikke gemt endnu')) {
+                    wardrobeStatus.textContent = 'Dit gemte outfit vises i chatten.';
+                }
                 drawWardrobeAvatarPreview();
             }
 
@@ -5024,6 +5052,19 @@
                 selectSidePanel('wardrobe');
                 wardrobeStatus.textContent = 'Henter dit tøjskab…';
                 socket.emit('wardrobe-request');
+            });
+            wardrobeSaveButton.addEventListener('click', () => {
+                if (!socket.connected || wardrobeSaveButton.disabled) return;
+                wardrobeSaveButton.disabled = true;
+                wardrobeDiscardButton.disabled = true;
+                wardrobeStatus.textContent = 'Gemmer dit outfit...';
+                socket.emit('wardrobe-save', { equippedItemIds: [...wardrobeDraftIds] });
+            });
+            wardrobeDiscardButton.addEventListener('click', () => {
+                if (wardrobeDiscardButton.disabled) return;
+                wardrobeDraftIds = new Set(wardrobeSavedIds);
+                wardrobeStatus.textContent = 'Dine \u00e6ndringer er fortrudt.';
+                renderWardrobeItems(wardrobeItems, wardrobeLevel, true);
             });
             adminNavButton.addEventListener('click', () => {
                 if (!isAdminUser) return;
