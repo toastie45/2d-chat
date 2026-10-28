@@ -1841,6 +1841,7 @@
 
             let players = {};
             let onlineUsers = [];
+            let chatOnlineCount = null;
             let myId = null;
             let ownApartment = null;
             let hoveredCell = null;
@@ -2861,12 +2862,16 @@
             }
 
             function updateOnlineList() {
-                const roomPlayers = Object.values(players);
-                const roomCountLabel = `${roomPlayers.length} ${roomPlayers.length === 1 ? 'person' : 'personer'}`;
-                roomStripCount.textContent = `${roomCountLabel} online`;
+                renderChatOnlineCount();
                 renderFriendMenu();
                 renderUserSearchResults();
                 if (!membersPanel.hidden) socket.emit('online-users-request');
+            }
+
+            function renderChatOnlineCount() {
+                const count = Number.isInteger(chatOnlineCount) ? chatOnlineCount : Object.keys(players).length;
+                const countLabel = `${count} ${count === 1 ? 'person' : 'personer'}`;
+                roomStripCount.textContent = `${countLabel} online`;
             }
 
             function renderOnlineUsers(users = []) {
@@ -4361,6 +4366,12 @@
             });
 
             socket.on('online-users', ({ users = [] } = {}) => renderOnlineUsers(users));
+
+            socket.on('chat-online-count', ({ count } = {}) => {
+                if (!Number.isInteger(count) || count < 0) return;
+                chatOnlineCount = count;
+                renderChatOnlineCount();
+            });
 
             socket.on('apartment-info', ({ playerId, apartmentId, apartmentNumber } = {}) => {
                 if (playerId !== contextPlayerId) return;

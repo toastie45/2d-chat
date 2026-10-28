@@ -421,6 +421,21 @@ async function startServer() {
         const { rows } = await pool.query('SELECT id FROM chat_apartments');
         return ['common', 'disco', ...rows.map((row) => `apartment:${row.id}`)];
     }
+    async function getChatOnlineCount() {
+        const roomIds = await getAllRoomIds();
+        const counts = await Promise.all(roomIds.map((roomId) => redis.hLen(roomKeys(roomId).players)));
+        return counts.reduce((total, count) => total + count, 0);
+    }
+    async function broadcastChatOnlineCount() {
+        try {
+            const count = await getChatOnlineCount();
+            io.emit('chat-online-count', { count });
+            return count;
+        } catch (error) {
+            console.error('Could not count online chat participants:', getSafeErrorCode(error));
+            return null;
+        }
+    }
 
     await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_users (
@@ -1188,6 +1203,7 @@ async function startServer() {
 
     async function cleanupStalePlayers(roomId = null) {
         const roomIds = roomId ? [roomId] : await getAllRoomIds();
+        let removedAnyPlayers = false;
         for (const currentRoomId of roomIds) {
             const keys = roomKeys(currentRoomId);
             const removedIds = await redis.eval(CLEAN_STALE_PLAYERS_SCRIPT, {
@@ -1195,6 +1211,7 @@ async function startServer() {
                 arguments: [String(Date.now() - PRESENCE_EXPIRY)]
             });
             for (const id of removedIds) {
+                removedAnyPlayers = true;
                 activeSocketIds.delete(id);
                 activeSocketRooms.delete(id);
                 activeSocketUsers.delete(id);
@@ -1208,6 +1225,7 @@ async function startServer() {
             if (removedIds.length > 0) io.emit('navigator-refresh');
         }
         await cleanupOrphanedOnlineSessions();
+        if (removedAnyPlayers) await broadcastChatOnlineCount();
     }
 
     async function cleanupOrphanedOnlineSessions() {
@@ -1245,6 +1263,7 @@ async function startServer() {
     }
 
     async function kickIdlePlayers() {
+        let removedAnyPlayers = false;
         for (const roomId of await getAllRoomIds()) {
             const keys = roomKeys(roomId);
             const removedIds = await redis.eval(KICK_IDLE_PLAYERS_SCRIPT, {
@@ -1252,25 +1271,27 @@ async function startServer() {
                 arguments: [String(Date.now() - PLAYER_IDLE_TIMEOUT)]
             });
             for (const id of removedIds) {
-            activeSocketIds.delete(id);
-            activeSocketRooms.delete(id);
-            activeSocketUsers.delete(id);
-            try {
-                await accountOnlineSession(id, true);
-            } catch (error) {
-                console.error('Could not account for inactive chat session:', getSafeErrorCode(error));
-            }
-            try {
-                await invalidateSocketSession(id);
-            } catch (error) {
-                console.error('Could not invalidate inactive participant session:', getSafeErrorCode(error));
-            }
-            io.to(id).emit('session-kicked', { message: 'Du blev fjernet fra rummet efter 20 minutters inaktivitet.' });
-            io.to(roomChannel(roomId)).emit('playerDisconnected', id);
-            io.emit('navigator-refresh');
-            setTimeout(() => io.in(id).disconnectSockets(true), 100);
+                removedAnyPlayers = true;
+                activeSocketIds.delete(id);
+                activeSocketRooms.delete(id);
+                activeSocketUsers.delete(id);
+                try {
+                    await accountOnlineSession(id, true);
+                } catch (error) {
+                    console.error('Could not account for inactive chat session:', getSafeErrorCode(error));
+                }
+                try {
+                    await invalidateSocketSession(id);
+                } catch (error) {
+                    console.error('Could not invalidate inactive participant session:', getSafeErrorCode(error));
+                }
+                io.to(id).emit('session-kicked', { message: 'Du blev fjernet fra rummet efter 20 minutters inaktivitet.' });
+                io.to(roomChannel(roomId)).emit('playerDisconnected', id);
+                io.emit('navigator-refresh');
+                setTimeout(() => io.in(id).disconnectSockets(true), 100);
             }
         }
+        if (removedAnyPlayers) await broadcastChatOnlineCount();
     }
 
     async function kickPlayer(socketId, message) {
@@ -1287,6 +1308,7 @@ async function startServer() {
             if (removed) {
                 io.to(roomChannel(roomId)).emit('playerDisconnected', socketId);
                 io.emit('navigator-refresh');
+                await broadcastChatOnlineCount();
             }
         } catch (error) {
             console.error('Could not remove kicked chat participant:', getSafeErrorCode(error));
@@ -1438,6 +1460,7 @@ async function startServer() {
         socket.emit('room-changed', { roomId, roomName, players, apartmentTiles, canEditApartment, ...welcome });
         socket.to(roomChannel(roomId)).emit('newPlayer', publicPlayer(JSON.parse(joined)));
         io.emit('navigator-refresh');
+        await broadcastChatOnlineCount();
         return publicPlayer(JSON.parse(joined));
     }
 
@@ -2948,6 +2971,7 @@ async function startServer() {
                 });
                 socket.to(roomChannel(initialRoomId)).emit('newPlayer', player);
                 io.emit('navigator-refresh');
+                await broadcastChatOnlineCount();
             } catch (error) {
                 console.error('Could not add chat participant:', getSafeErrorCode(error));
                 const message = error.code === 'CHAT_ACCOUNT_ALREADY_ONLINE'
@@ -3190,6 +3214,7 @@ async function startServer() {
                 });
                 if (removed) io.to(roomChannel(roomId)).emit('playerDisconnected', socket.id);
                 if (removed) io.emit('navigator-refresh');
+                if (removed) await broadcastChatOnlineCount();
             } catch (error) {
                 console.error('Could not remove chat participant:', getSafeErrorCode(error));
             }
@@ -3206,6 +3231,7 @@ async function startServer() {
         if (heartbeatRunning || activeSocketIds.size === 0) return;
         heartbeatRunning = true;
         try {
+            let removedAnyPlayers = false;
             for (const roomId of await getAllRoomIds()) {
                 const roomSocketIds = [...activeSocketIds].filter((id) => activeSocketRooms.get(id) === roomId);
                 if (!roomSocketIds.length) continue;
@@ -3215,6 +3241,7 @@ async function startServer() {
                 });
                 for (const id of missingIds) {
                     if (!activeSocketIds.delete(id)) continue;
+                    removedAnyPlayers = true;
                     activeSocketRooms.delete(id);
                     activeSocketUsers.delete(id);
                     io.to(roomChannel(roomId)).emit('playerDisconnected', id);
@@ -3224,6 +3251,7 @@ async function startServer() {
                     io.in(id).disconnectSockets(true);
                 }
             }
+            if (removedAnyPlayers) await broadcastChatOnlineCount();
         } catch (error) {
             console.error('Could not refresh chat presence:', getSafeErrorCode(error));
         }
