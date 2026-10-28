@@ -990,7 +990,7 @@
             .side-card { min-height: 0; }
             .chat-section { min-height: 170px; }
             .chat-log { max-height: 110px; }
-            .mobile-chat-compose {
+            .mobile-chat-compose.is-open {
                 display: flex;
                 gap: 8px;
                 margin-top: auto;
@@ -1933,6 +1933,8 @@
             let activeRoom = 'common';
             let activeSidePanel = null;
             const sidePanelHistory = [];
+            let pendingCanvasTapTimer = null;
+            let pendingCanvasTap = null;
             let canEditCurrentApartment = false;
             let apartmentTiles = {};
             let apartmentDraftTiles = {};
@@ -1996,6 +1998,12 @@
                 }
                 socket.emit('chat-message', hideSensitiveData(message));
                 return true;
+            }
+
+            function openMobileChatComposer() {
+                selectSidePanel('chat');
+                mobileChatCompose.classList.add('is-open');
+                requestAnimationFrame(() => mobileChatInput.focus());
             }
 
             function getAvatarDrawY(position) {
@@ -2297,6 +2305,7 @@
             }
 
             function selectSidePanel(panel, { remember = true } = {}) {
+                if (panel !== 'chat') mobileChatCompose.classList.remove('is-open');
                 if (activeSidePanel && activeSidePanel !== panel && remember) {
                     sidePanelHistory.push(activeSidePanel);
                 }
@@ -3705,7 +3714,10 @@
                     selectNavigatorCategory(event.key === 'ArrowRight' ? 'apartments' : 'public', true);
                 });
             });
-            chatNavButton.addEventListener('click', () => selectSidePanel('chat'));
+            chatNavButton.addEventListener('click', () => {
+                if (window.matchMedia('(max-width: 700px)').matches) openMobileChatComposer();
+                else selectSidePanel('chat');
+            });
             roomStripName.addEventListener('click', () => selectSidePanel('welcome'));
             profileNavButton.addEventListener('click', openProfileEditor);
             searchNavButton.addEventListener('click', openUserSearch);
@@ -4080,9 +4092,8 @@
                 }
             });
 
-            canvas.addEventListener('click', (event) => {
+            const processCanvasCellClick = (cell) => {
                 closeAvatarContextMenu();
-                const cell = getCellFromPointer(event);
                 if (!cell) return;
                 canvas.focus({ preventScroll: true });
                 const tileState = parseApartmentTileState(apartmentTiles[`${cell.col}:${cell.row}`]);
@@ -4091,6 +4102,38 @@
                     return;
                 }
                 moveToCell(cell.col, cell.row);
+            };
+
+            canvas.addEventListener('click', (event) => {
+                const cell = getCellFromPointer(event);
+                if (!window.matchMedia('(max-width: 700px)').matches) {
+                    processCanvasCellClick(cell);
+                    return;
+                }
+
+                const now = Date.now();
+                const closeTap = pendingCanvasTap && now - pendingCanvasTap.time <= 360
+                    && Math.hypot(event.clientX - pendingCanvasTap.x, event.clientY - pendingCanvasTap.y) <= 34;
+                if (closeTap) {
+                    clearTimeout(pendingCanvasTapTimer);
+                    pendingCanvasTapTimer = null;
+                    pendingCanvasTap = null;
+                    closeAvatarContextMenu();
+                    openMobileChatComposer();
+                    return;
+                }
+
+                if (pendingCanvasTap) {
+                    clearTimeout(pendingCanvasTapTimer);
+                    processCanvasCellClick(pendingCanvasTap.cell);
+                }
+                pendingCanvasTap = { time: now, x: event.clientX, y: event.clientY, cell };
+                pendingCanvasTapTimer = setTimeout(() => {
+                    const tap = pendingCanvasTap;
+                    pendingCanvasTap = null;
+                    pendingCanvasTapTimer = null;
+                    if (tap) processCanvasCellClick(tap.cell);
+                }, 260);
             });
 
             canvas.addEventListener('contextmenu', (event) => {
