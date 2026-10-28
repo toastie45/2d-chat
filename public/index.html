@@ -3178,7 +3178,9 @@
                 const visualHeight = avatarImageLoaded ? avatarHeight : avatarRadius * 2;
                 const labelHeight = 24;
                 const lowerRow = position.y > gridLayout.height / 2;
-                const horizontalScale = lowerRow ? 1.04 : 0.96;
+                // Keep players on their own fixed visual lanes: upper rows sit a bit
+                // closer shoulder-to-shoulder, while lower rows retain extra space.
+                const horizontalScale = lowerRow ? 1.12 : 0.88;
                 const displayX = gridLayout.width / 2 + (position.x - gridLayout.width / 2) * horizontalScale;
                 return {
                     x: Math.max(visualWidth / 2 + 2, Math.min(gridLayout.width - visualWidth / 2 - 2, displayX)),
