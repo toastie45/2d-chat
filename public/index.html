@@ -272,8 +272,10 @@
             gap: 18px;
             align-items: stretch;
         }
-        .room.profile-editor-active { align-items: start; }
-        .room.profile-editor-active > .side-card { height: var(--profile-editor-card-height); min-height: 0; }
+        .room.panel-content-contained { align-items: start; }
+        .room.panel-content-contained > .side-card { height: var(--room-side-card-height); min-height: 0; }
+        .room.panel-content-contained > .side-card > .side-panel { overflow-y: auto; }
+        .room.panel-content-contained > .side-card > .side-panel.chat-section { overflow: hidden; }
 
         .board-card, .side-card {
             overflow: hidden;
@@ -2146,11 +2148,9 @@
                 privateMailPanel.hidden = panel !== 'private-mail';
                 profileEditorPanel.hidden = panel !== 'profile-editor';
                 profileViewPanel.hidden = panel !== 'profile-view';
-                roomLayout.classList.toggle('profile-editor-active', panel === 'profile-editor');
-                roomLayout.style.removeProperty('--profile-editor-card-height');
-                if (panel === 'profile-editor') {
-                    roomLayout.style.setProperty('--profile-editor-card-height', `${boardCard.offsetHeight}px`);
-                }
+                roomLayout.classList.add('panel-content-contained');
+                roomLayout.style.removeProperty('--room-side-card-height');
+                roomLayout.style.setProperty('--room-side-card-height', `${boardCard.offsetHeight}px`);
                 updateToolbarState();
             }
 
@@ -3903,9 +3903,8 @@
 
             window.addEventListener('resize', () => {
                 closeAvatarContextMenu();
-                if (profileEditorPanel.hidden) return;
-                roomLayout.style.removeProperty('--profile-editor-card-height');
-                roomLayout.style.setProperty('--profile-editor-card-height', `${boardCard.offsetHeight}px`);
+                roomLayout.style.removeProperty('--room-side-card-height');
+                roomLayout.style.setProperty('--room-side-card-height', `${boardCard.offsetHeight}px`);
             });
 
             canvas.addEventListener('keydown', (event) => {
