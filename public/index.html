@@ -1773,6 +1773,7 @@
             let players = {};
             let onlineUsers = [];
             let myId = null;
+            let ownApartment = null;
             let hoveredCell = null;
             let animationFrame = null;
             let boardRenderTimer = null;
@@ -2466,9 +2467,14 @@
                 avatarContextWhisper.hidden = !whisperInRange;
                 avatarContextWhisper.disabled = false;
                 avatarContextWhisper.title = 'Start en privat hvisken';
-                avatarContextApartment.hidden = !player;
-                avatarContextApartment.disabled = true;
-                avatarContextApartment.textContent = 'Henter lejlighed…';
+                const apartment = isSelf ? ownApartment : null;
+                avatarContextApartment.hidden = !player || (isSelf && !apartment);
+                avatarContextApartment.disabled = !isSelf || !apartment;
+                avatarContextApartment.textContent = apartment
+                    ? `Gå til lejlighed (#${apartment.number})`
+                    : isSelf ? '' : 'Henter lejlighed…';
+                if (apartment) avatarContextApartment.dataset.apartmentId = apartment.id;
+                else delete avatarContextApartment.dataset.apartmentId;
                 const highlighted = Boolean(player && highlightedSpeechBubblePlayers.has(contextPlayerId));
                 avatarContextHighlight.hidden = !player || isSelf;
                 avatarContextHighlight.disabled = !player || isSelf;
@@ -2654,6 +2660,7 @@
             function resetPendingAuthentication() {
                 stopGameLoop();
                 currentUser = null;
+                ownApartment = null;
                 resetTopbarProgress();
                 whisperBubbles.clear();
                 highlightedSpeechBubblePlayers.clear();
@@ -3814,7 +3821,7 @@
                 avatarContextStatus.setAttribute('aria-expanded', 'false');
                 avatarContextKick.hidden = true;
                 updateAvatarContextMute();
-                socket.emit('apartment-info-request', { playerId: target.id });
+                if (target.id !== myId) socket.emit('apartment-info-request', { playerId: target.id });
                 socket.emit('apartment-kick-option-request', { targetPlayerId: target.id });
                 avatarContextMenu.classList.remove('hidden');
                 avatarContextMenu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - avatarContextMenu.offsetWidth - 8))}px`;
@@ -4022,9 +4029,12 @@
                 socket.disconnect();
             });
 
-            socket.on('join-success', ({ players: serverPlayers, mutedUsernames: initialMutedUsernames = [], roomId = 'common', roomName, welcomeTitle, welcomeText, apartmentTiles, canEditApartment }) => {
+            socket.on('join-success', ({ players: serverPlayers, mutedUsernames: initialMutedUsernames = [], roomId = 'common', roomName, welcomeTitle, welcomeText, apartmentTiles, canEditApartment, ownApartmentId, ownApartmentNumber }) => {
                 players = {};
                 myId = socket.id;
+                ownApartment = ownApartmentId
+                    ? { id: String(ownApartmentId), number: Number(ownApartmentNumber) }
+                    : null;
                 activeRoom = roomId;
                 roomStripName.textContent = roomName;
                 roomStripName.setAttribute('aria-label', `Vis velkomst for ${roomName}`);
@@ -4191,6 +4201,7 @@
                     return;
                 }
                 if (!viewingOwnProfile || String(viewingProfileUserId) !== String(currentUser?.id)) return;
+                ownApartment = { id: String(apartmentId), number: Number(apartmentNumber) };
                 apartmentStatus.textContent = `Lejlighed #${apartmentNumber} er oprettet.`;
                 apartmentCreateButton.hidden = true;
                 viewProfileApartmentValue.hidden = true;

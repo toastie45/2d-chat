@@ -2790,6 +2790,8 @@ async function startServer() {
                     mutedUsernames: mutedUsers.map((mutedUser) => mutedUser.username),
                     roomId: initialRoomId,
                     roomName: roomName,
+                    ownApartmentId: apartment ? String(apartment.id) : null,
+                    ownApartmentNumber: apartment ? Number(apartment.apartment_number) : null,
                     apartmentTiles,
                     canEditApartment,
                     ...welcome
