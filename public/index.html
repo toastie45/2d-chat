@@ -823,6 +823,13 @@
         .admin-row-button.ban { border-color: #8c554d; color: #ffc0b5; }
         .admin-row-button.unban { border-color: #778e53; color: #c1f078; }
         .admin-row-button:disabled { opacity: .45; cursor: not-allowed; }
+        .admin-floor-heading { margin: 14px 0 7px; color: #b8d981; font-size: 12px; font-weight: 700; }
+        .admin-room-create { display: grid; grid-template-columns: minmax(0, 1fr) 110px auto; gap: 8px; margin: 12px 0; }
+        .admin-room-create input, .admin-room-edit input { min-width: 0; min-height: 34px; padding: 7px 9px; border: 1px solid #3b3e36; border-radius: 7px; background: #151613; color: #f2f0e9; font: inherit; font-size: 11px; }
+        .admin-room-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 9px; border: 1px solid #393b33; border-radius: 8px; background: #20211d; }
+        .admin-room-edit { display: grid; grid-template-columns: minmax(0, 1fr) 82px; gap: 6px; }
+        .admin-room-meta { margin-bottom: 5px; color: var(--muted); font-size: 10px; }
+        .navigator-floor-heading { margin: 14px 0 2px; color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
         .admin-refresh { margin: 0 0 10px; }
         .admin-status { min-height: 16px; margin: 8px 0; color: var(--muted); font-size: 10px; }
         .admin-ban-dialog { width: min(430px, calc(100vw - 32px)); max-height: 88vh; overflow-y: auto; padding: 20px; border: 1px solid #44483b; border-radius: 12px; background: #171914; color: #f2f0e9; box-shadow: 0 24px 90px #000a; }
@@ -1295,6 +1302,10 @@
             #level-message-progress { width: 96px; }
             .level-topbar-total { font-size: 9px; }
             .room-strip-user { max-width: 86px; }
+            .admin-room-create { grid-template-columns: minmax(0, 1fr) 72px; }
+            .admin-room-create button { grid-column: 1 / -1; }
+            .admin-room-row { grid-template-columns: minmax(0, 1fr); }
+            .admin-room-row .admin-row-actions { justify-content: flex-end; }
         }
     </style>
 </head>
@@ -1651,6 +1662,7 @@
                             <select class="profile-page-select" id="admin-section-select">
                                 <option value="" selected>Vælg adminfunktion:</option>
                                 <option value="users">Brugerkontrol</option>
+                                <option value="rooms">Navigator - etager og rum</option>
                             </select>
                             <section class="admin-welcome" id="admin-welcome-view" aria-labelledby="admin-welcome-title">
                                 <h3 id="admin-welcome-title">Velkommen til adminpanelet</h3>
@@ -1670,6 +1682,17 @@
                                         <div class="admin-list" id="admin-ip-bans" role="list"></div>
                                     </section>
                                 </div>
+                            </section>
+                            <section class="admin-section" id="admin-rooms-view" aria-labelledby="admin-rooms-title" hidden>
+                                <h3 class="visually-hidden" id="admin-rooms-title">Navigator - etager og rum</h3>
+                                <p class="admin-status">Opret rum på en etage, eller rediger/slet eksisterende rum. Fællesrum og Diskoteket er faste rum.</p>
+                                <form class="admin-room-create" id="admin-room-create-form">
+                                    <input id="admin-room-name" type="text" maxlength="60" placeholder="Nyt rumnavn" aria-label="Nyt rumnavn" required>
+                                    <input id="admin-room-floor" type="number" min="1" max="100" value="1" aria-label="Etagenummer" required>
+                                    <button class="admin-row-button" type="submit">Tilføj rum</button>
+                                </form>
+                                <p class="admin-status" id="admin-rooms-status" aria-live="polite"></p>
+                                <div class="admin-list" id="admin-public-rooms" role="list"></div>
                             </section>
                         </section>
                     </aside>
@@ -1844,6 +1867,12 @@
             const adminWelcomeView = document.getElementById('admin-welcome-view');
             const adminWelcomeTitle = document.getElementById('admin-welcome-title');
             const adminUsersView = document.getElementById('admin-users-view');
+            const adminRoomsView = document.getElementById('admin-rooms-view');
+            const adminRoomsStatus = document.getElementById('admin-rooms-status');
+            const adminPublicRooms = document.getElementById('admin-public-rooms');
+            const adminRoomCreateForm = document.getElementById('admin-room-create-form');
+            const adminRoomName = document.getElementById('admin-room-name');
+            const adminRoomFloor = document.getElementById('admin-room-floor');
             const adminUserSearch = document.getElementById('admin-user-search');
             const adminUsersRefresh = document.getElementById('admin-users-refresh');
             const adminBansRefresh = document.getElementById('admin-bans-refresh');
@@ -2485,7 +2514,7 @@
                 if (base === 'open') return { kind: 'floor', color: color.toLowerCase() };
                 if (base === 'closed') return { kind: 'closed', color: color.toLowerCase() };
                 if (base === 'door') return { kind: 'door', destination: 'common', color: color.toLowerCase() };
-                const door = /^door:(common|disco|apartment:[1-9]\d{0,18})$/.exec(base);
+                const door = /^door:(common|disco|public:[1-9]\d{0,18}|apartment:[1-9]\d{0,18})$/.exec(base);
                 if (door) return { kind: 'door', destination: door[1], color: color.toLowerCase() };
                 return { kind: 'floor', color: '' };
             }
@@ -2579,7 +2608,15 @@
                 navigatorApartmentRoomList.replaceChildren();
                 const apartmentRooms = rooms.filter((room) => room.type === 'apartment');
                 navigatorApartmentEmpty.hidden = apartmentRooms.length > 0;
+                let previousFloor = null;
                 rooms.forEach((room) => {
+                    if (room.type === 'public' && Number.isInteger(Number(room.floorNumber)) && previousFloor !== Number(room.floorNumber)) {
+                        previousFloor = Number(room.floorNumber);
+                        const heading = document.createElement('h3');
+                        heading.className = 'navigator-floor-heading';
+                        heading.textContent = `Etage ${previousFloor}`;
+                        navigatorPublicRoomList.append(heading);
+                    }
                     const button = document.createElement('button');
                     button.className = 'navigator-room-button';
                     button.type = 'button';
@@ -3158,11 +3195,69 @@
 
             function selectAdminSection() {
                 const showUsers = adminSectionSelect.value === 'users';
-                adminWelcomeView.hidden = showUsers;
+                const showRooms = adminSectionSelect.value === 'rooms';
+                adminWelcomeView.hidden = showUsers || showRooms;
                 adminUsersView.hidden = !showUsers;
+                adminRoomsView.hidden = !showRooms;
                 if (showUsers) {
                     requestAdminUserList();
                     socket.emit('admin-ip-bans-request');
+                }
+                if (showRooms) socket.emit('admin-public-rooms-request');
+            }
+
+            function renderAdminPublicRooms(rooms = []) {
+                adminPublicRooms.replaceChildren();
+                if (!rooms.length) {
+                    adminRoomsStatus.textContent = 'Der er ingen rum.';
+                    return;
+                }
+                adminRoomsStatus.textContent = `${rooms.length} rum. Etager vises i navigatoren, når de indeholder rum.`;
+                let currentFloor = null;
+                for (const room of rooms) {
+                    if (currentFloor !== room.floorNumber) {
+                        currentFloor = room.floorNumber;
+                        const heading = document.createElement('h4');
+                        heading.className = 'admin-floor-heading';
+                        heading.textContent = `Etage ${currentFloor}`;
+                        adminPublicRooms.append(heading);
+                    }
+                    const row = document.createElement('div');
+                    row.className = 'admin-room-row';
+                    row.setAttribute('role', 'listitem');
+                    const form = document.createElement('form');
+                    form.className = 'admin-room-edit';
+                    const name = document.createElement('input');
+                    name.type = 'text'; name.maxLength = 60; name.required = true; name.value = room.name;
+                    name.setAttribute('aria-label', `Navn på rum #${room.roomNumber}`);
+                    const floor = document.createElement('input');
+                    floor.type = 'number'; floor.min = '1'; floor.max = '100'; floor.required = true; floor.value = String(room.floorNumber);
+                    floor.setAttribute('aria-label', `Etage for rum #${room.roomNumber}`);
+                    const details = document.createElement('div');
+                    const meta = document.createElement('div');
+                    meta.className = 'admin-room-meta';
+                    meta.textContent = `#${room.roomNumber} · ${room.count} online${room.isSystem ? ' · fast rum' : ''}`;
+                    details.append(meta, form);
+                    const actions = document.createElement('div');
+                    actions.className = 'admin-row-actions';
+                    const save = document.createElement('button');
+                    save.className = 'admin-row-button'; save.type = 'submit'; save.textContent = 'Gem';
+                    const remove = document.createElement('button');
+                    remove.className = 'admin-row-button ban'; remove.type = 'button'; remove.textContent = 'Fjern';
+                    remove.disabled = room.isSystem || room.count > 0;
+                    remove.title = room.isSystem ? 'Faste systemrum kan ikke slettes' : room.count ? 'Rummet skal være tomt før det kan slettes' : 'Fjern rum';
+                    form.append(name, floor);
+                    actions.append(save, remove);
+                    row.append(details, actions);
+                    form.addEventListener('submit', (event) => {
+                        event.preventDefault();
+                        socket.emit('admin-public-room-update', { id: room.id, name: name.value, floorNumber: Number(floor.value) });
+                    });
+                    save.addEventListener('click', () => form.requestSubmit());
+                    remove.addEventListener('click', () => {
+                        if (confirm(`Vil du slette #${room.roomNumber} ${room.name}?`)) socket.emit('admin-public-room-delete', { id: room.id });
+                    });
+                    adminPublicRooms.append(row);
                 }
             }
 
@@ -3942,8 +4037,17 @@
                     : 'Velkommen til adminpanelet';
                 adminWelcomeView.hidden = false;
                 adminUsersView.hidden = true;
+                adminRoomsView.hidden = true;
             });
             adminSectionSelect.addEventListener('change', selectAdminSection);
+            adminRoomCreateForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                adminRoomsStatus.textContent = 'Opretter rum…';
+                socket.emit('admin-public-room-create', {
+                    name: adminRoomName.value,
+                    floorNumber: Number(adminRoomFloor.value)
+                });
+            });
             adminUsersRefresh.addEventListener('click', requestAdminUserList);
             adminUserSearch.addEventListener('input', () => {
                 clearTimeout(adminUserSearchTimer);
@@ -4705,6 +4809,12 @@
                 updateRoomWelcome(welcomeTitle, welcomeText);
             });
 
+            socket.on('public-room-metadata', ({ roomId, roomName, welcomeTitle, welcomeText } = {}) => {
+                if (roomId !== activeRoom) return;
+                updateApartmentRoomTitle(roomName, welcomeTitle);
+                updateRoomWelcome(welcomeTitle, welcomeText);
+            });
+
             socket.on('apartment-layout-data', ({ roomId, tiles, name, welcomeMessage, roomName } = {}) => {
                 if (roomId !== activeRoom || !canEditCurrentApartment) return;
                 applyApartmentRoomState(tiles, true);
@@ -4739,7 +4849,7 @@
             });
 
             socket.on('apartment-door-destination', ({ roomId } = {}) => {
-                if (roomId === 'common' || roomId === 'disco') socket.emit('room-switch', { roomId });
+                if (roomId === 'common' || roomId === 'disco' || (typeof roomId === 'string' && roomId.startsWith('public:'))) socket.emit('room-switch', { roomId });
                 else if (typeof roomId === 'string' && roomId.startsWith('apartment:')) {
                     socket.emit('apartment-visit', { apartmentId: roomId.slice('apartment:'.length) });
                 }
@@ -4790,6 +4900,16 @@
                 if (query !== currentQuery) return;
                 renderAdminOnlineUsers(Array.isArray(users) ? users : [], query, Number.isInteger(totalCount) ? totalCount : users.length);
             });
+            socket.on('admin-public-rooms', ({ rooms = [] } = {}) => {
+                if (isAdminUser) renderAdminPublicRooms(Array.isArray(rooms) ? rooms : []);
+            });
+            socket.on('admin-room-action-result', ({ success, message } = {}) => {
+                adminRoomsStatus.textContent = message || (success ? 'Ændringer gemt.' : 'Handlingen mislykkedes.');
+                if (success) {
+                    if (message && message.startsWith('Rum #')) adminRoomName.value = '';
+                    if (adminSectionSelect.value === 'rooms') socket.emit('admin-public-rooms-request');
+                }
+            });
             socket.on('admin-ip-bans', ({ bans = [] } = {}) => {
                 if (isAdminUser) renderAdminIpBans(Array.isArray(bans) ? bans : []);
             });
@@ -4814,6 +4934,7 @@
             socket.on('navigator-refresh', () => {
                 if (!navigatorPanel.hidden) socket.emit('navigator-request');
                 if (!membersPanel.hidden) socket.emit('online-users-request');
+                if (!adminPanel.hidden && adminSectionSelect.value === 'rooms') socket.emit('admin-public-rooms-request');
                 if (!adminPanel.hidden && adminSectionSelect.value === 'users') {
                     requestAdminUserList();
                     socket.emit('admin-ip-bans-request');

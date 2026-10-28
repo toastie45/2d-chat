@@ -79,7 +79,7 @@ function parseApartmentTileState(value) {
     if (base === 'open') return { kind: 'floor', color: color ? color.toLowerCase() : '' };
     if (base === 'closed') return { kind: 'closed', color: color ? color.toLowerCase() : '' };
     if (base === 'door') return { kind: 'door', destination: 'common', color: color ? color.toLowerCase() : '' };
-    const door = /^door:(common|disco|apartment:[1-9]\d{0,18})$/.exec(base);
+    const door = /^door:(common|disco|public:[1-9]\d{0,18}|apartment:[1-9]\d{0,18})$/.exec(base);
     if (door) return { kind: 'door', destination: door[1], color: color ? color.toLowerCase() : '' };
     return null;
 }
@@ -472,8 +472,18 @@ async function startServer() {
         tiles: `chat:${roomId}:tiles`
     });
     async function getAllRoomIds() {
-        const { rows } = await pool.query('SELECT id FROM chat_apartments');
-        return ['common', 'disco', ...rows.map((row) => `apartment:${row.id}`)];
+        const [{ rows: publicRooms }, { rows: apartments }] = await Promise.all([
+            pool.query('SELECT id FROM chat_public_rooms ORDER BY room_number'),
+            pool.query('SELECT id FROM chat_apartments')
+        ]);
+        return [...publicRooms.map((row) => row.id), ...apartments.map((row) => `apartment:${row.id}`)];
+    }
+    async function getPublicRooms() {
+        const { rows } = await pool.query('SELECT id, room_number, floor_number, name, is_system FROM chat_public_rooms ORDER BY floor_number, room_number');
+        return rows;
+    }
+    function formatPublicRoomName(room) {
+        return `#${room.room_number} ${room.name}`;
     }
     async function getChatOnlineCount() {
         const roomIds = await getAllRoomIds();
@@ -530,6 +540,22 @@ async function startServer() {
     await pool.query("ALTER TABLE chat_apartments ADD COLUMN IF NOT EXISTS room_type VARCHAR(16) NOT NULL DEFAULT 'apartment'");
     await pool.query("ALTER TABLE chat_apartments ADD COLUMN IF NOT EXISTS layout_json JSONB NOT NULL DEFAULT '{}'::jsonb");
     await pool.query('ALTER TABLE chat_apartments ADD COLUMN IF NOT EXISTS apartment_name VARCHAR(60)');
+    await pool.query(`CREATE SEQUENCE IF NOT EXISTS chat_public_room_number_seq START WITH 3`);
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS chat_public_rooms (
+            id TEXT PRIMARY KEY,
+            room_number BIGINT NOT NULL UNIQUE,
+            floor_number INTEGER NOT NULL DEFAULT 1 CHECK (floor_number BETWEEN 1 AND 100),
+            name VARCHAR(60) NOT NULL,
+            is_system BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await pool.query(`
+        INSERT INTO chat_public_rooms (id, room_number, floor_number, name, is_system)
+        VALUES ('common', 1, 1, 'Fællesrum', TRUE), ('disco', 2, 1, 'Diskoteket', TRUE)
+        ON CONFLICT (id) DO NOTHING
+    `);
     await pool.query('CREATE INDEX IF NOT EXISTS chat_users_registration_ip_hash_idx ON chat_users (registration_ip_hash) WHERE registration_ip_hash IS NOT NULL');
     await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_online_sessions (
@@ -1480,6 +1506,11 @@ async function startServer() {
     }
 
     async function isValidRoomId(roomId) {
+        const publicMatch = /^public:([1-9]\d{0,18})$/.exec(String(roomId || ''));
+        if (publicMatch) {
+            const { rowCount } = await pool.query('SELECT 1 FROM chat_public_rooms WHERE id = $1', [roomId]);
+            return rowCount > 0;
+        }
         if (roomId === 'common' || roomId === 'disco') return true;
         const match = /^apartment:([1-9]\d{0,18})$/.exec(String(roomId || ''));
         if (!match) return false;
@@ -1533,7 +1564,8 @@ async function startServer() {
                 };
             }
         }
-        const roomName = PUBLIC_ROOM_NAMES[roomId] || 'chatten';
+        const { rows: [publicRoom] = [] } = await pool.query('SELECT room_number, name FROM chat_public_rooms WHERE id = $1', [roomId]);
+        const roomName = publicRoom ? formatPublicRoomName(publicRoom) : PUBLIC_ROOM_NAMES[roomId] || 'chatten';
         return {
             welcomeTitle: `Velkommen i ${roomName}`,
             welcomeText: 'Her kan du møde andre og chatte sammen. God fornøjelse!'
@@ -1565,7 +1597,14 @@ async function startServer() {
             player.messageTime = 0;
         }
         let roomName = PUBLIC_ROOM_NAMES[roomId] || 'Lejlighed';
-        if (roomId.startsWith('apartment:')) {
+        if (['common', 'disco'].includes(roomId) || /^public:[1-9]\d{0,18}$/.test(roomId)) {
+            const { rows: [publicRoom] = [] } = await pool.query('SELECT room_number, name FROM chat_public_rooms WHERE id = $1', [roomId]);
+            if (!publicRoom) {
+                await redis.eval(REMOVE_PLAYER_SCRIPT, { keys: [keys.players, keys.cells], arguments: [socket.id] });
+                return null;
+            }
+            roomName = formatPublicRoomName(publicRoom);
+        } else if (roomId.startsWith('apartment:')) {
             const { rows: [apartment] } = await pool.query(`
                 SELECT u.username, a.apartment_number, a.apartment_name FROM chat_apartments a
                 JOIN chat_users u ON u.id = a.owner_id WHERE a.id = $1
@@ -1616,6 +1655,156 @@ async function startServer() {
         socket.join(`session:${socket.request.sessionID}`);
         socket.emit('admin-status', { isAdmin: Boolean(socket.data.isAdmin) });
 
+        async function sendAdminPublicRooms() {
+            const rooms = await getPublicRooms();
+            const result = await Promise.all(rooms.map(async (room) => ({
+                id: room.id,
+                roomNumber: Number(room.room_number),
+                floorNumber: Number(room.floor_number),
+                name: room.name,
+                isSystem: room.is_system,
+                count: await redis.hLen(roomKeys(room.id).players)
+            })));
+            socket.emit('admin-public-rooms', { rooms: result });
+        }
+
+        socket.on('admin-public-rooms-request', async () => {
+            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            try { await sendAdminPublicRooms(); }
+            catch (error) {
+                console.error('Could not list public rooms for admin:', getSafeErrorCode(error));
+                socket.emit('admin-room-action-result', { success: false, message: 'Rumlisten kunne ikke hentes.' });
+            }
+        });
+
+        socket.on('admin-public-room-create', async ({ name, floorNumber } = {}) => {
+            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            const cleanName = typeof name === 'string' ? name.normalize('NFKC').trim() : '';
+            const floor = Number(floorNumber);
+            if (!cleanName || cleanName.length > 60 || /[\u0000-\u001f\u007f]/.test(cleanName)
+                || !Number.isInteger(floor) || floor < 1 || floor > 100) {
+                socket.emit('admin-room-action-result', { success: false, message: 'Angiv et rumnavn og en etage fra 1 til 100.' });
+                return;
+            }
+            try {
+                const { rows: [numberRow] } = await pool.query("SELECT nextval('chat_public_room_number_seq') AS room_number");
+                const roomNumber = numberRow.room_number;
+                const id = `public:${roomNumber}`;
+                await pool.query('INSERT INTO chat_public_rooms (id, room_number, floor_number, name) VALUES ($1, $2, $3, $4)', [id, roomNumber, floor, cleanName]);
+                socket.emit('admin-room-action-result', { success: true, message: `Rum #${roomNumber} blev oprettet på etage ${floor}.` });
+                await sendAdminPublicRooms();
+                io.emit('navigator-refresh');
+            } catch (error) {
+                console.error('Could not create public room:', getSafeErrorCode(error));
+                socket.emit('admin-room-action-result', { success: false, message: 'Rummet kunne ikke oprettes.' });
+            }
+        });
+
+        socket.on('admin-public-room-update', async ({ id, name, floorNumber } = {}) => {
+            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            const cleanName = typeof name === 'string' ? name.normalize('NFKC').trim() : '';
+            const floor = Number(floorNumber);
+            if (typeof id !== 'string' || cleanName.length < 1 || cleanName.length > 60
+                || /[\u0000-\u001f\u007f]/.test(cleanName) || !Number.isInteger(floor) || floor < 1 || floor > 100) {
+                socket.emit('admin-room-action-result', { success: false, message: 'Kontrollér rumnavn og etagenummer (1–100).' });
+                return;
+            }
+            try {
+                const { rowCount } = await pool.query('UPDATE chat_public_rooms SET name = $2, floor_number = $3 WHERE id = $1', [id, cleanName, floor]);
+                if (!rowCount) {
+                    socket.emit('admin-room-action-result', { success: false, message: 'Rummet findes ikke længere.' });
+                    return;
+                }
+                const { rows: [updatedRoom] } = await pool.query('SELECT id, room_number, name FROM chat_public_rooms WHERE id = $1', [id]);
+                const roomName = formatPublicRoomName(updatedRoom);
+                io.to(roomChannel(id)).emit('public-room-metadata', {
+                    roomId: id,
+                    roomName,
+                    welcomeTitle: `Velkommen i ${roomName}`,
+                    welcomeText: 'Her kan du møde andre og chatte sammen. God fornøjelse!'
+                });
+                socket.emit('admin-room-action-result', { success: true, message: 'Rummets navn og etage er gemt.' });
+                await sendAdminPublicRooms();
+                io.emit('navigator-refresh');
+            } catch (error) {
+                console.error('Could not update public room:', getSafeErrorCode(error));
+                socket.emit('admin-room-action-result', { success: false, message: 'Rummets oplysninger kunne ikke gemmes.' });
+            }
+        });
+
+        socket.on('admin-public-room-delete', async ({ id } = {}) => {
+            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            if (typeof id !== 'string' || !/^public:[1-9]\d{0,18}$/.test(id)) {
+                socket.emit('admin-room-action-result', { success: false, message: 'Fællesrum og Diskoteket er faste systemrum og kan ikke slettes.' });
+                return;
+            }
+            try {
+                await cleanupStalePlayers();
+                const occupantCount = await redis.hLen(roomKeys(id).players);
+                if (occupantCount > 0) {
+                    socket.emit('admin-room-action-result', { success: false, message: 'Rummet kan ikke slettes, mens der er brugere i det.' });
+                    return;
+                }
+                const client = await pool.connect();
+                try {
+                    await client.query('BEGIN');
+                    const { rowCount } = await client.query('DELETE FROM chat_public_rooms WHERE id = $1', [id]);
+                    if (!rowCount) {
+                        await client.query('ROLLBACK');
+                        socket.emit('admin-room-action-result', { success: false, message: 'Rummet findes ikke længere.' });
+                        return;
+                    }
+                    const { rows: apartments } = await client.query(`
+                        SELECT a.id, a.layout_json, a.apartment_name, a.apartment_number, u.username, u.welcome_message
+                        FROM chat_apartments a JOIN chat_users u ON u.id = a.owner_id
+                    `);
+                    const apartmentUpdates = [];
+                    for (const apartment of apartments) {
+                        const layout = apartment.layout_json && typeof apartment.layout_json === 'object' ? apartment.layout_json : {};
+                        let changed = false;
+                        for (const [cell, value] of Object.entries(layout)) {
+                            if (typeof value !== 'string') continue;
+                            const [base, color] = value.split('|', 2);
+                            if (base === `door:${id}`) {
+                                layout[cell] = `door:common${color ? `|${color}` : ''}`;
+                                changed = true;
+                            }
+                        }
+                        if (changed) {
+                            await client.query('UPDATE chat_apartments SET layout_json = $2::jsonb WHERE id = $1', [apartment.id, JSON.stringify(layout)]);
+                            const apartmentRoomId = `apartment:${apartment.id}`;
+                            await redis.del(roomKeys(apartmentRoomId).tiles);
+                            if (Object.keys(layout).length) await redis.hSet(roomKeys(apartmentRoomId).tiles, layout);
+                            apartmentUpdates.push({ apartmentRoomId, apartment, tiles: normalizeApartmentTiles(layout) });
+                        }
+                    }
+                    await client.query('COMMIT');
+                    for (const { apartmentRoomId, apartment, tiles } of apartmentUpdates) {
+                        const roomName = getApartmentRoomName(apartment);
+                        io.to(roomChannel(apartmentRoomId)).emit('apartment-layout-updated', {
+                            roomId: apartmentRoomId,
+                            tiles,
+                            name: apartment.apartment_name || '',
+                            welcomeMessage: apartment.welcome_message || '',
+                            roomName,
+                            welcomeTitle: `Velkommen i ${roomName}`,
+                            welcomeText: apartment.welcome_message || `${apartment.username} har ikke skrevet en velkomst endnu.`
+                        });
+                    }
+                } catch (error) {
+                    await client.query('ROLLBACK');
+                    throw error;
+                } finally { client.release(); }
+                await redis.del(...Object.values(roomKeys(id)));
+                socket.emit('admin-room-action-result', { success: true, message: 'Rummet er slettet. Eventuelle døre fører nu til Fællesrummet.' });
+                await sendAdminPublicRooms();
+                io.emit('navigator-refresh');
+            } catch (error) {
+                console.error('Could not delete public room:', getSafeErrorCode(error));
+                socket.emit('admin-room-action-result', { success: false, message: 'Rummet kunne ikke slettes.' });
+            }
+        });
+
         socket.on('admin-online-users-request', async (payload = {}) => {
             if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
             try {
@@ -1626,9 +1815,9 @@ async function startServer() {
                     SELECT a.id, a.apartment_number, a.apartment_name, u.username
                     FROM chat_apartments a JOIN chat_users u ON u.id = a.owner_id
                 `);
+                const publicRooms = await getPublicRooms();
                 const roomNames = new Map([
-                    ['common', PUBLIC_ROOM_NAMES.common],
-                    ['disco', PUBLIC_ROOM_NAMES.disco],
+                    ...publicRooms.map((room) => [room.id, formatPublicRoomName(room)]),
                     ...apartments.map((apartment) => [
                         `apartment:${apartment.id}`,
                         getApartmentRoomName(apartment)
@@ -1947,12 +2136,13 @@ async function startServer() {
 
                 targetSocket.data.switchingRoom = true;
                 try {
-                    const publicRooms = ['common', 'disco'];
-                    if (crypto.randomInt(2) === 1) publicRooms.reverse();
+                    const publicRooms = await getPublicRooms();
                     let destination = '';
-                    for (const publicRoomId of publicRooms) {
-                        if (await placeSocketInRoom(targetSocket, publicRoomId)) {
-                            destination = PUBLIC_ROOM_NAMES[publicRoomId];
+                    const startIndex = publicRooms.length ? crypto.randomInt(publicRooms.length) : 0;
+                    for (let offset = 0; offset < publicRooms.length; offset += 1) {
+                        const publicRoom = publicRooms[(startIndex + offset) % publicRooms.length];
+                        if (await placeSocketInRoom(targetSocket, publicRoom.id)) {
+                            destination = formatPublicRoomName(publicRoom);
                             break;
                         }
                     }
@@ -2002,11 +2192,16 @@ async function startServer() {
             if (!activeSocketIds.has(socket.id)) return;
             const roomId = activeSocketRooms.get(socket.id);
             if (!await canEditApartmentRoom(socket.data.user.id, roomId)) return;
+            const [publicRooms, { rows: apartments }] = await Promise.all([
+                getPublicRooms(),
+                pool.query(`SELECT a.id, a.apartment_number, a.apartment_name, u.username
+                    FROM chat_apartments a JOIN chat_users u ON u.id = a.owner_id ORDER BY a.apartment_number`)
+            ]);
             socket.emit('apartment-door-options', {
                 roomId,
                 rooms: [
-                    { id: 'common', name: PUBLIC_ROOM_NAMES.common },
-                    { id: 'disco', name: PUBLIC_ROOM_NAMES.disco }
+                    ...publicRooms.map((room) => ({ id: room.id, name: formatPublicRoomName(room) })),
+                    ...apartments.map((apartment) => ({ id: `apartment:${apartment.id}`, name: getApartmentRoomName(apartment) }))
                 ]
             });
         });
@@ -2019,11 +2214,16 @@ async function startServer() {
                 const state = await redis.hGet(roomKeys(roomId).tiles, `${col}:${row}`);
                 const tile = parseApartmentTileState(state);
                 const destination = tile?.kind === 'door' ? tile.destination : '';
-                if (!['common', 'disco'].includes(destination) && !/^apartment:[1-9]\d{0,18}$/.test(destination)) {
+                if (!/^(common|disco|public:[1-9]\d{0,18}|apartment:[1-9]\d{0,18})$/.test(destination)) {
                     socket.emit('room-error', { message: 'Der er ingen dør på det felt.' });
                     return;
                 }
-                if (destination.startsWith('apartment:')) {
+                if (destination.startsWith('public:') || ['common', 'disco'].includes(destination)) {
+                    if (!await isValidRoomId(destination)) {
+                        socket.emit('room-error', { message: 'Døren fører ikke længere til et eksisterende rum.' });
+                        return;
+                    }
+                } else if (destination.startsWith('apartment:')) {
                     const apartmentId = destination.slice('apartment:'.length);
                     const { rowCount } = await pool.query('SELECT 1 FROM chat_apartments WHERE id = $1', [apartmentId]);
                     if (!rowCount) {
@@ -2088,6 +2288,20 @@ async function startServer() {
                     .map(parseApartmentTileState)
                     .filter((tile) => tile?.kind === 'door' && tile.destination.startsWith('apartment:'))
                     .map((tile) => tile.destination.slice('apartment:'.length)))];
+                const doorPublicRoomIds = [...new Set(Object.values(nextTiles)
+                    .map(parseApartmentTileState)
+                    .filter((tile) => tile?.kind === 'door' && (tile.destination === 'common' || tile.destination === 'disco' || tile.destination.startsWith('public:')))
+                    .map((tile) => tile.destination))];
+                if (doorPublicRoomIds.length) {
+                    const { rows: destinations } = await pool.query(
+                        'SELECT id FROM chat_public_rooms WHERE id = ANY($1::text[])',
+                        [doorPublicRoomIds]
+                    );
+                    if (destinations.length !== doorPublicRoomIds.length) {
+                        socket.emit('apartment-layout-result', { success: false, message: 'En dør peger på et offentligt rum, der ikke findes.' });
+                        return;
+                    }
+                }
                 if (doorApartmentIds.length) {
                     const { rows: destinations } = await pool.query(
                         'SELECT id FROM chat_apartments WHERE id = ANY($1::bigint[]) AND id <> $2',
@@ -2163,10 +2377,14 @@ async function startServer() {
             if (!activeSocketIds.has(socket.id)) return;
             try {
                 await cleanupStalePlayers();
-                const rooms = [
-                    { id: 'common', name: PUBLIC_ROOM_NAMES.common, type: 'public' },
-                    { id: 'disco', name: PUBLIC_ROOM_NAMES.disco, type: 'public' }
-                ];
+                const publicRooms = await getPublicRooms();
+                const rooms = publicRooms.map((room) => ({
+                    id: room.id,
+                    name: formatPublicRoomName(room),
+                    type: 'public',
+                    roomNumber: Number(room.room_number),
+                    floorNumber: Number(room.floor_number)
+                }));
                 const { rows: apartments } = await pool.query(`
                     SELECT DISTINCT a.id, a.apartment_number, a.apartment_name, u.username
                     FROM chat_apartments a
@@ -2205,9 +2423,9 @@ async function startServer() {
                         JOIN chat_users u ON u.id = a.owner_id
                     `)
                 ]);
+                const publicRooms = await getPublicRooms();
                 const roomNames = new Map([
-                    ['common', PUBLIC_ROOM_NAMES.common],
-                    ['disco', PUBLIC_ROOM_NAMES.disco],
+                    ...publicRooms.map((room) => [room.id, formatPublicRoomName(room)]),
                     ...apartments.map((apartment) => [
                         `apartment:${apartment.id}`,
                         getApartmentRoomName(apartment)
