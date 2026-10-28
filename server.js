@@ -546,9 +546,8 @@ async function startServer() {
         };
     }
     async function getChatOnlineCount() {
-        const roomIds = await getAllRoomIds();
-        const counts = await Promise.all(roomIds.map((roomId) => redis.hLen(roomKeys(roomId).players)));
-        return counts.reduce((total, count) => total + count, 0);
+        const { rows: [result] } = await pool.query('SELECT COUNT(*)::int AS count FROM chat_online_sessions');
+        return Number(result?.count || 0);
     }
     async function broadcastChatOnlineCount() {
         try {
@@ -718,6 +717,7 @@ async function startServer() {
     `);
     await pool.query('ALTER TABLE chat_online_sessions ADD COLUMN IF NOT EXISTS ip_hash TEXT');
     await pool.query('ALTER TABLE chat_online_sessions ADD COLUMN IF NOT EXISTS tab_id TEXT');
+    await pool.query('ALTER TABLE chat_online_sessions ADD COLUMN IF NOT EXISTS room_id TEXT');
     await pool.query('CREATE INDEX IF NOT EXISTS chat_online_sessions_user_id_idx ON chat_online_sessions (user_id)');
     await pool.query('CREATE INDEX IF NOT EXISTS chat_online_sessions_ip_hash_idx ON chat_online_sessions (ip_hash) WHERE ip_hash IS NOT NULL');
     await pool.query(`
@@ -1031,7 +1031,7 @@ async function startServer() {
         io.in(oldSocketId).disconnectSockets(true);
     }
 
-    async function startOnlineSession(socketId, userId, ipHash, tabId) {
+    async function startOnlineSession(socketId, userId, ipHash, tabId, roomId) {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
@@ -1056,9 +1056,9 @@ async function startServer() {
                 throw error;
             }
             await client.query(`
-                INSERT INTO chat_online_sessions (socket_id, user_id, ip_hash, tab_id, last_accounted_at)
-                VALUES ($1, $2, $3, $4, NOW())
-            `, [socketId, userId, ipHash, tabId]);
+                INSERT INTO chat_online_sessions (socket_id, user_id, ip_hash, tab_id, room_id, last_accounted_at)
+                VALUES ($1, $2, $3, $4, $5, NOW())
+            `, [socketId, userId, ipHash, tabId, roomId]);
             await client.query('COMMIT');
         } catch (error) {
             await client.query('ROLLBACK');
@@ -1676,7 +1676,6 @@ async function startServer() {
             if (removed) {
                 io.to(roomChannel(roomId)).emit('playerDisconnected', socketId);
                 io.emit('navigator-refresh');
-                await broadcastChatOnlineCount();
             }
         } catch (error) {
             console.error('Could not remove kicked chat participant:', getSafeErrorCode(error));
@@ -1686,6 +1685,7 @@ async function startServer() {
         } catch (error) {
             console.error('Could not account for kicked chat session:', getSafeErrorCode(error));
         }
+        await broadcastChatOnlineCount();
         try {
             await invalidateSocketSession(socketId);
         } catch (error) {
@@ -1900,6 +1900,7 @@ async function startServer() {
         }
         activeSocketRooms.set(socket.id, roomId);
         socket.data.roomId = roomId;
+        await pool.query('UPDATE chat_online_sessions SET room_id = $2 WHERE socket_id = $1', [socket.id, roomId]);
         await socket.join(roomChannel(roomId));
         const players = await getPlayers(roomId);
         for (const player of Object.values(players)) {
@@ -3406,41 +3407,40 @@ async function startServer() {
         socket.on('online-users-request', async () => {
             if (!activeSocketIds.has(socket.id)) return;
             try {
-                await cleanupStalePlayers();
-                const [roomIds, { rows: apartments }] = await Promise.all([
+                const [roomIds, { rows: apartments }, publicRooms, { rows: sessions }] = await Promise.all([
                     getAllRoomIds(),
-                    pool.query(`
-                        SELECT a.id, a.apartment_number, a.apartment_name, u.username
-                        FROM chat_apartments a
-                        JOIN chat_users u ON u.id = a.owner_id
-                    `)
+                    pool.query('SELECT a.id, a.apartment_number, a.apartment_name, u.username FROM chat_apartments a JOIN chat_users u ON u.id = a.owner_id'),
+                    getPublicRooms(),
+                    pool.query('SELECT s.socket_id, s.user_id::text AS user_id, s.room_id, u.username FROM chat_online_sessions s JOIN chat_users u ON u.id = s.user_id ORDER BY u.username')
                 ]);
-                const publicRooms = await getPublicRooms();
                 const roomNames = new Map([
                     ...publicRooms.map((room) => [room.id, formatPublicRoomName(room)]),
-                    ...apartments.map((apartment) => [
-                        `apartment:${apartment.id}`,
-                        getApartmentRoomName(apartment)
-                    ])
+                    ...apartments.map((apartment) => ['apartment:' + apartment.id, getApartmentRoomName(apartment)])
                 ]);
-                const users = [];
+                const hiddenRoomIds = new Set(publicRooms.filter((room) => room.is_hidden).map((room) => room.id));
+                const roomBySocketId = new Map(sessions.filter((row) => row.room_id).map((row) => [row.socket_id, row.room_id]));
+                const unresolved = new Set(sessions.filter((row) => !row.room_id).map((row) => row.socket_id));
                 for (const roomId of roomIds) {
+                    if (!unresolved.size) break;
                     const players = await redis.hGetAll(roomKeys(roomId).players);
-                    for (const [playerId, encodedPlayer] of Object.entries(players)) {
-                        const player = JSON.parse(encodedPlayer);
-                        users.push({
-                            userId: String(activeSocketUsers.get(playerId) || ''),
-                            name: player.name,
-                            id: playerId,
-                            roomId: hiddenPublicRoomIds.has(roomId) && !socket.data.isAdmin ? null : roomId,
-                            roomName: hiddenPublicRoomIds.has(roomId) && !socket.data.isAdmin
-                                ? 'Privat område'
-                                : roomNames.get(roomId) || 'Ukendt rum',
-                            isSelf: playerId === socket.id
-                        });
+                    for (const playerId of Object.keys(players)) {
+                        if (!unresolved.has(playerId)) continue;
+                        roomBySocketId.set(playerId, roomId);
+                        unresolved.delete(playerId);
                     }
                 }
-                users.sort((first, second) => first.name.localeCompare(second.name, 'da'));
+                const users = sessions.map((session) => {
+                    const roomId = roomBySocketId.get(session.socket_id) || null;
+                    const isPrivate = Boolean(roomId && hiddenRoomIds.has(roomId) && !socket.data.isAdmin);
+                    return {
+                        userId: session.user_id,
+                        name: session.username,
+                        id: session.socket_id,
+                        roomId: isPrivate ? null : roomId,
+                        roomName: isPrivate ? 'Privat omraade' : roomNames.get(roomId) || 'Ukendt rum',
+                        isSelf: session.socket_id === socket.id
+                    };
+                });
                 socket.emit('online-users', { users });
             } catch (error) {
                 console.error('Could not list online users:', getSafeErrorCode(error));
@@ -4510,7 +4510,7 @@ async function startServer() {
                 }
 
                 try {
-                    await startOnlineSession(socket.id, socket.data.user.id, socket.data.ipHash, socket.data.tabId);
+                    await startOnlineSession(socket.id, socket.data.user.id, socket.data.ipHash, socket.data.tabId, initialRoomId);
                 } catch (error) {
                     await redis.eval(REMOVE_PLAYER_SCRIPT, {
                         keys: [initialRoomKeys.players, initialRoomKeys.cells],
@@ -4815,7 +4815,6 @@ async function startServer() {
                 });
                 if (removed) io.to(roomChannel(roomId)).emit('playerDisconnected', socket.id);
                 if (removed) io.emit('navigator-refresh');
-                if (removed) await broadcastChatOnlineCount();
             } catch (error) {
                 console.error('Could not remove chat participant:', getSafeErrorCode(error));
             }
@@ -4824,6 +4823,7 @@ async function startServer() {
             } catch (error) {
                 console.error('Could not account for disconnected chat session:', getSafeErrorCode(error));
             }
+            await broadcastChatOnlineCount();
         });
     });
 
