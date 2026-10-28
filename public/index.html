@@ -901,10 +901,12 @@
         .admin-clothing-form input, .admin-clothing-form select, .admin-clothing-form textarea { width: 100%; min-width: 0; min-height: 32px; padding: 6px 8px; border: 1px solid #3b3e36; border-radius: 6px; background: #151613; color: #f2f0e9; font: inherit; font-size: 11px; }
         .admin-clothing-form textarea { min-height: 54px; resize: vertical; }
         .admin-clothing-form .wide { grid-column: 1 / -1; }
-        .admin-clothing-transform { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+        .admin-clothing-refine { grid-column: 1 / -1; }
+        .admin-clothing-refine summary { width: fit-content; color: var(--muted); font-size: 10px; cursor: pointer; }
+        .admin-clothing-transform { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
         .admin-clothing-transform label { font-size: 9px; }
         .admin-clothing-preview-wrap { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 9px; border: 1px solid #353732; border-radius: 7px; background: #151613; }
-        .admin-clothing-preview { display: block; width: 108px; height: 150px; border: 1px solid #34372f; border-radius: 5px; background: #090a09; image-rendering: auto; }
+        .admin-clothing-preview { display: block; width: 144px; height: 200px; border: 1px solid #586247; border-radius: 5px; background: transparent; image-rendering: auto; touch-action: none; cursor: crosshair; }
         .admin-clothing-preview-note { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
         .admin-clothing-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 8px; border: 1px solid #393b33; border-radius: 7px; background: #20211d; }
         .admin-clothing-thumb { width: 40px; height: 48px; object-fit: contain; border-radius: 4px; background: #10110f; }
@@ -1847,7 +1849,9 @@
                                     <label>Pris (mønter)
                                         <input id="admin-clothing-price" type="number" min="0" max="100000000" value="0" required>
                                     </label>
-                                    <div class="admin-clothing-transform wide">
+                                    <details class="admin-clothing-refine">
+                                        <summary>Finjuster med tal (valgfrit)</summary>
+                                    <div class="admin-clothing-transform">
                                         <label>X (px)<input id="admin-clothing-x" type="number" min="-270" max="270" value="0" step="1"></label>
                                         <label>Y (px)<input id="admin-clothing-y" type="number" min="-180" max="180" value="0" step="1"></label>
                                         <label>Rotation (°)<input id="admin-clothing-rotation" type="number" min="-180" max="180" value="0" step="1"></label>
@@ -1857,9 +1861,10 @@
                                         <label>Skæv X (°)<input id="admin-clothing-skew-x" type="number" min="-45" max="45" value="0" step="1"></label>
                                         <label>Skæv Y (°)<input id="admin-clothing-skew-y" type="number" min="-45" max="45" value="0" step="1"></label>
                                     </div>
+                                    </details>
                                     <div class="admin-clothing-preview-wrap">
                                         <canvas class="admin-clothing-preview" id="admin-clothing-preview" width="216" height="300" aria-label="Live preview af tøjdelen på avataren"></canvas>
-                                        <p class="admin-clothing-preview-note">Flyt, drej, stræk eller skævvrid tøjdelen. Previewet opdateres live, og formen gemmes med genstanden.</p>
+                                        <p class="admin-clothing-preview-note">Træk tøjet for at flytte det. Træk i hjørnerne for at strække, i sidehåndtagene for at skævvride og i håndtaget over tøjet for at dreje.</p>
                                     </div>
                                     <button class="admin-row-button wide" id="admin-clothing-save" type="submit">Gem t&oslash;jdelen</button>
                                     <p class="admin-status wide" id="admin-clothing-status" aria-live="polite"></p>
@@ -3565,8 +3570,6 @@
             function drawAdminClothingPreview() {
                 const context = adminClothingPreview.getContext('2d');
                 context.clearRect(0, 0, adminClothingPreview.width, adminClothingPreview.height);
-                context.fillStyle = '#090a09';
-                context.fillRect(0, 0, adminClothingPreview.width, adminClothingPreview.height);
                 if (adminClothingPreviewAvatar.complete && adminClothingPreviewAvatar.naturalWidth) {
                     context.drawImage(adminClothingPreviewAvatar, 0, 0, adminClothingPreview.width, adminClothingPreview.height);
                 }
@@ -3588,7 +3591,179 @@
                     scale * (Number(adminClothingScaleY.value) || 100) / 100);
                 context.drawImage(adminClothingPreviewImage, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
                 context.restore();
+                const corners = getAdminClothingPreviewCorners(drawWidth, drawHeight);
+                context.beginPath();
+                corners.forEach((point, index) => index ? context.lineTo(point.x, point.y) : context.moveTo(point.x, point.y));
+                context.closePath();
+                context.setLineDash([4, 3]);
+                context.strokeStyle = '#c1f078';
+                context.lineWidth = 1.5;
+                context.stroke();
+                context.setLineDash([]);
+                corners.forEach((point) => drawClothingPreviewHandle(context, point, false));
+                const topMiddle = midpoint(corners[0], corners[1]);
+                const rightMiddle = midpoint(corners[1], corners[2]);
+                drawClothingPreviewHandle(context, topMiddle, true);
+                drawClothingPreviewHandle(context, rightMiddle, true);
+                const rotateHandle = transformClothingPreviewPoint(0, -drawHeight / 2 - 19);
+                drawClothingPreviewHandle(context, rotateHandle, false);
+                context.beginPath();
+                context.moveTo(adminClothingPreview.width / 2 + (Number(adminClothingX.value) || 0) * 4,
+                    adminClothingPreview.height / 2 + (Number(adminClothingY.value) || 0) * 4);
+                context.lineTo(rotateHandle.x, rotateHandle.y);
+                context.strokeStyle = '#c1f078';
+                context.lineWidth = 1;
+                context.stroke();
             }
+
+            function clothingPreviewGeometry() {
+                if (!adminClothingPreviewImage?.naturalWidth) return null;
+                const fit = Math.min(adminClothingPreview.width / adminClothingPreviewImage.naturalWidth,
+                    adminClothingPreview.height / adminClothingPreviewImage.naturalHeight);
+                return { width: adminClothingPreviewImage.naturalWidth * fit, height: adminClothingPreviewImage.naturalHeight * fit };
+            }
+
+            function clothingPreviewCenter() {
+                return { x: adminClothingPreview.width / 2 + (Number(adminClothingX.value) || 0) * 4,
+                    y: adminClothingPreview.height / 2 + (Number(adminClothingY.value) || 0) * 4 };
+            }
+
+            function transformClothingPreviewPoint(x, y) {
+                const center = clothingPreviewCenter();
+                const scale = Math.max(25, Math.min(300, Number(adminClothingScale.value) || 100)) / 100;
+                const scaleX = Math.max(25, Math.min(300, Number(adminClothingScaleX.value) || 100)) / 100;
+                const scaleY = Math.max(25, Math.min(300, Number(adminClothingScaleY.value) || 100)) / 100;
+                const shearX = Math.tan((Number(adminClothingSkewX.value) || 0) * Math.PI / 180);
+                const shearY = Math.tan((Number(adminClothingSkewY.value) || 0) * Math.PI / 180);
+                const angle = (Number(adminClothingRotation.value) || 0) * Math.PI / 180;
+                const sx = x * scale * scaleX, sy = y * scale * scaleY;
+                const tx = sx + shearX * sy, ty = shearY * sx + sy;
+                return { x: center.x + Math.cos(angle) * tx - Math.sin(angle) * ty,
+                    y: center.y + Math.sin(angle) * tx + Math.cos(angle) * ty };
+            }
+
+            function getAdminClothingPreviewCorners(width, height) {
+                return [transformClothingPreviewPoint(-width / 2, -height / 2),
+                    transformClothingPreviewPoint(width / 2, -height / 2),
+                    transformClothingPreviewPoint(width / 2, height / 2),
+                    transformClothingPreviewPoint(-width / 2, height / 2)];
+            }
+
+            function midpoint(a, b) { return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
+
+            function drawClothingPreviewHandle(context, point, diamond) {
+                context.save();
+                context.translate(point.x, point.y);
+                if (diamond) context.rotate(Math.PI / 4);
+                context.fillStyle = '#161914';
+                context.strokeStyle = '#c1f078';
+                context.lineWidth = 1.5;
+                context.beginPath();
+                context.rect(-4, -4, 8, 8);
+                context.fill();
+                context.stroke();
+                context.restore();
+            }
+
+            function clothingPreviewPointer(event) {
+                const rect = adminClothingPreview.getBoundingClientRect();
+                return { x: (event.clientX - rect.left) * adminClothingPreview.width / rect.width,
+                    y: (event.clientY - rect.top) * adminClothingPreview.height / rect.height };
+            }
+
+            function clothingPreviewLocalPoint(point, transform = {}) {
+                const center = clothingPreviewCenter();
+                const dx = point.x - center.x, dy = point.y - center.y;
+                const angle = (transform.rotation ?? Number(adminClothingRotation.value) ?? 0) * Math.PI / 180;
+                const rx = Math.cos(angle) * dx + Math.sin(angle) * dy;
+                const ry = -Math.sin(angle) * dx + Math.cos(angle) * dy;
+                const kx = Math.tan((transform.skewX ?? Number(adminClothingSkewX.value) ?? 0) * Math.PI / 180);
+                const ky = Math.tan((transform.skewY ?? Number(adminClothingSkewY.value) ?? 0) * Math.PI / 180);
+                const determinant = Math.max(0.15, 1 - kx * ky);
+                const scale = (transform.scale ?? Math.max(25, Math.min(300, Number(adminClothingScale.value) || 100))) / 100;
+                const scaleX = (transform.scaleX ?? Number(adminClothingScaleX.value) ?? 100) / 100;
+                const scaleY = (transform.scaleY ?? Number(adminClothingScaleY.value) ?? 100) / 100;
+                return { x: (rx - kx * ry) / determinant / (scale * scaleX),
+                    y: (ry - ky * rx) / determinant / (scale * scaleY) };
+            }
+
+            function clothingPreviewContains(point, polygon) {
+                let inside = false;
+                for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                    const a = polygon[i], b = polygon[j];
+                    if ((a.y > point.y) !== (b.y > point.y)
+                        && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+                }
+                return inside;
+            }
+
+            let clothingPreviewDrag = null;
+            adminClothingPreview.addEventListener('pointerdown', (event) => {
+                const dimensions = clothingPreviewGeometry();
+                if (!dimensions) return;
+                const pointer = clothingPreviewPointer(event);
+                const corners = getAdminClothingPreviewCorners(dimensions.width, dimensions.height);
+                const center = clothingPreviewCenter();
+                const rotate = transformClothingPreviewPoint(0, -dimensions.height / 2 - 19);
+                const handles = [rotate, midpoint(corners[0], corners[1]), midpoint(corners[1], corners[2]), ...corners];
+                let mode = '';
+                if (Math.hypot(pointer.x - handles[0].x, pointer.y - handles[0].y) < 15) mode = 'rotate';
+                else if (Math.hypot(pointer.x - handles[1].x, pointer.y - handles[1].y) < 15) mode = 'skewX';
+                else if (Math.hypot(pointer.x - handles[2].x, pointer.y - handles[2].y) < 15) mode = 'skewY';
+                else {
+                    const corner = corners.findIndex((point) => Math.hypot(pointer.x - point.x, pointer.y - point.y) < 15);
+                    if (corner >= 0) mode = `resize-${corner}`;
+                    else if (clothingPreviewContains(pointer, corners)) mode = 'move';
+                }
+                if (!mode) return;
+                event.preventDefault();
+                clothingPreviewDrag = { mode, pointer, center, local: clothingPreviewLocalPoint(pointer),
+                    angle: Math.atan2(pointer.y - center.y, pointer.x - center.x),
+                    rotation: Number(adminClothingRotation.value) || 0,
+                    skewX: Number(adminClothingSkewX.value) || 0, skewY: Number(adminClothingSkewY.value) || 0,
+                    transform: { rotation: Number(adminClothingRotation.value) || 0,
+                        scale: Number(adminClothingScale.value) || 100,
+                        scaleX: Number(adminClothingScaleX.value) || 100,
+                        scaleY: Number(adminClothingScaleY.value) || 100,
+                        skewX: Number(adminClothingSkewX.value) || 0,
+                        skewY: Number(adminClothingSkewY.value) || 0 } };
+                adminClothingPreview.setPointerCapture(event.pointerId);
+            });
+
+            adminClothingPreview.addEventListener('pointermove', (event) => {
+                if (!clothingPreviewDrag) return;
+                const pointer = clothingPreviewPointer(event);
+                const drag = clothingPreviewDrag;
+                const dimensions = clothingPreviewGeometry();
+                if (drag.mode === 'move') {
+                    adminClothingX.value = String(Math.max(-270, Math.min(270,
+                        Math.round((Number(adminClothingX.value) || 0) + (pointer.x - drag.pointer.x) / 4))));
+                    adminClothingY.value = String(Math.max(-180, Math.min(180,
+                        Math.round((Number(adminClothingY.value) || 0) + (pointer.y - drag.pointer.y) / 4))));
+                    drag.pointer = pointer;
+                } else if (drag.mode === 'rotate') {
+                    const current = Math.atan2(pointer.y - drag.center.y, pointer.x - drag.center.x);
+                    adminClothingRotation.value = String(Math.round(drag.rotation + (current - drag.angle) * 180 / Math.PI));
+                } else {
+                    const local = clothingPreviewLocalPoint(pointer, drag.transform);
+                    const scale = Math.max(25, Math.min(300, Number(adminClothingScale.value) || 100)) / 100;
+                    if (drag.mode === 'skewX') {
+                        const tangent = Math.tan(drag.skewX * Math.PI / 180) + (local.x - drag.local.x) * 2 * drag.transform.scaleX / Math.max(1, dimensions.height * drag.transform.scaleY);
+                        adminClothingSkewX.value = String(Math.round(Math.atan(tangent) * 180 / Math.PI));
+                    } else if (drag.mode === 'skewY') {
+                        const tangent = Math.tan(drag.skewY * Math.PI / 180) + (local.y - drag.local.y) * 2 * drag.transform.scaleY / Math.max(1, dimensions.width * drag.transform.scaleX);
+                        adminClothingSkewY.value = String(Math.round(Math.atan(tangent) * 180 / Math.PI));
+                    } else if (drag.mode.startsWith('resize-')) {
+                        adminClothingScaleX.value = String(Math.round(Math.max(25, Math.min(300, Math.abs(local.x) * 200 / Math.max(1, dimensions.width * scale)))));
+                        adminClothingScaleY.value = String(Math.round(Math.max(25, Math.min(300, Math.abs(local.y) * 200 / Math.max(1, dimensions.height * scale)))));
+                    }
+                }
+                drawAdminClothingPreview();
+            });
+
+            const stopClothingPreviewDrag = () => { clothingPreviewDrag = null; };
+            adminClothingPreview.addEventListener('pointerup', stopClothingPreviewDrag);
+            adminClothingPreview.addEventListener('pointercancel', stopClothingPreviewDrag);
             adminClothingPreviewAvatar.addEventListener('load', drawAdminClothingPreview);
             [adminClothingX, adminClothingY, adminClothingRotation, adminClothingScale,
                 adminClothingScaleX, adminClothingScaleY, adminClothingSkewX, adminClothingSkewY].forEach((input) =>
