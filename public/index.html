@@ -804,9 +804,9 @@
             box-shadow: 0 24px 90px #000a;
         }
         .level-overview-dialog::backdrop { background: #050605c9; }
-        .admin-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
-        .admin-tab { min-height: 34px; padding: 7px 12px; border: 1px solid #393b33; border-radius: 7px; background: #20211d; color: #c6c8bd; font: inherit; font-size: 11px; cursor: pointer; }
-        .admin-tab[aria-selected="true"] { border-color: #8cae53; background: #252a1e; color: #c1f078; }
+        .admin-section { margin-top: 20px; padding-top: 16px; border-top: 1px solid #34362f; }
+        .admin-section:first-of-type { margin-top: 0; padding-top: 0; border-top: 0; }
+        .admin-section-title { margin: 0 0 10px; color: #f2f0e9; font-size: 13px; font-weight: 700; }
         .admin-list { display: grid; gap: 8px; }
         .admin-user-row, .admin-ban-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 11px; border: 1px solid #393b33; border-radius: 8px; background: #20211d; }
         .admin-user-details, .admin-ban-details { display: grid; min-width: 0; gap: 4px; }
@@ -1641,20 +1641,18 @@
                         </section>
                         <section class="side-panel" id="admin-panel" aria-labelledby="admin-title" hidden>
                             <h2 class="side-title" id="admin-title">Admin</h2>
-                            <div class="admin-tabs" role="tablist" aria-label="Adminfunktioner">
-                                <button class="admin-tab" id="admin-users-tab" type="button" role="tab" aria-selected="true" aria-controls="admin-users-view">Brugerkontrol</button>
-                                <button class="admin-tab" id="admin-bans-tab" type="button" role="tab" aria-selected="false" aria-controls="admin-bans-view" tabindex="-1">Bannede brugere</button>
-                            </div>
-                            <div id="admin-users-view" role="tabpanel" aria-labelledby="admin-users-tab">
+                            <section class="admin-section" id="admin-users-view" aria-labelledby="admin-users-title">
+                                <h3 class="admin-section-title" id="admin-users-title">Brugerkontrol</h3>
                                 <button class="admin-row-button admin-refresh" id="admin-users-refresh" type="button">Opdater brugerlisten</button>
                                 <p class="admin-status" id="admin-users-status" aria-live="polite"></p>
                                 <div class="admin-list" id="admin-online-users" role="list"></div>
-                            </div>
-                            <div id="admin-bans-view" role="tabpanel" aria-labelledby="admin-bans-tab" hidden>
+                            </section>
+                            <section class="admin-section" id="admin-bans-view" aria-labelledby="admin-bans-title">
+                                <h3 class="admin-section-title" id="admin-bans-title">Bannede brugere</h3>
                                 <button class="admin-row-button admin-refresh" id="admin-bans-refresh" type="button">Opdater banlisten</button>
                                 <p class="admin-status" id="admin-bans-status" aria-live="polite"></p>
                                 <div class="admin-list" id="admin-ip-bans" role="list"></div>
-                            </div>
+                            </section>
                         </section>
                     </aside>
                 </div>
@@ -1824,10 +1822,6 @@
             const adminNavButton = document.getElementById('admin-nav-button');
             const navigatorPanel = document.getElementById('navigator-panel');
             const adminPanel = document.getElementById('admin-panel');
-            const adminUsersTab = document.getElementById('admin-users-tab');
-            const adminBansTab = document.getElementById('admin-bans-tab');
-            const adminUsersView = document.getElementById('admin-users-view');
-            const adminBansView = document.getElementById('admin-bans-view');
             const adminUsersRefresh = document.getElementById('admin-users-refresh');
             const adminBansRefresh = document.getElementById('admin-bans-refresh');
             const adminUsersStatus = document.getElementById('admin-users-status');
@@ -3133,18 +3127,6 @@
                 }).format(date);
             }
 
-            function selectAdminTab(tab) {
-                const showBans = tab === 'bans';
-                adminUsersView.hidden = showBans;
-                adminBansView.hidden = !showBans;
-                adminUsersTab.setAttribute('aria-selected', String(!showBans));
-                adminBansTab.setAttribute('aria-selected', String(showBans));
-                adminUsersTab.tabIndex = showBans ? -1 : 0;
-                adminBansTab.tabIndex = showBans ? 0 : -1;
-                if (showBans) socket.emit('admin-ip-bans-request');
-                else socket.emit('admin-online-users-request');
-            }
-
             function renderAdminOnlineUsers(users = []) {
                 adminOnlineUsers.replaceChildren();
                 if (!users.length) {
@@ -3907,10 +3889,9 @@
             adminNavButton.addEventListener('click', () => {
                 if (!isAdminUser) return;
                 selectSidePanel('admin');
-                selectAdminTab(adminBansView.hidden ? 'users' : 'bans');
+                socket.emit('admin-online-users-request');
+                socket.emit('admin-ip-bans-request');
             });
-            adminUsersTab.addEventListener('click', () => selectAdminTab('users'));
-            adminBansTab.addEventListener('click', () => selectAdminTab('bans'));
             adminUsersRefresh.addEventListener('click', () => socket.emit('admin-online-users-request'));
             adminBansRefresh.addEventListener('click', () => socket.emit('admin-ip-bans-request'));
             adminBanDuration.addEventListener('change', () => {
@@ -4764,14 +4745,17 @@
                     if (success) adminBanDialog.close();
                 }
                 if (!success || adminPanel.hidden) return;
-                if (adminBansView.hidden) socket.emit('admin-online-users-request');
-                else socket.emit('admin-ip-bans-request');
+                socket.emit('admin-online-users-request');
+                socket.emit('admin-ip-bans-request');
             });
 
             socket.on('navigator-refresh', () => {
                 if (!navigatorPanel.hidden) socket.emit('navigator-request');
                 if (!membersPanel.hidden) socket.emit('online-users-request');
-                if (!adminPanel.hidden && adminBansView.hidden) socket.emit('admin-online-users-request');
+                if (!adminPanel.hidden) {
+                    socket.emit('admin-online-users-request');
+                    socket.emit('admin-ip-bans-request');
+                }
             });
 
             socket.on('online-users', ({ users = [] } = {}) => renderOnlineUsers(users));
