@@ -3359,15 +3359,15 @@
             }
 
             async function uploadAdminRoomOverlay(roomId, file, statusElement) {
-                if (!file || !['image/png', 'image/webp'].includes(file.type)) {
-                    statusElement.textContent = 'Vælg et PNG- eller WebP-billede. Gennemsigtighed anbefales.';
+                if (!file || file.type !== 'image/png') {
+                    statusElement.textContent = 'Vælg et PNG-billede med den ønskede gennemsigtighed og luft omkring motivet.';
                     return;
                 }
                 if (file.size > 20 * 1024 * 1024) {
                     statusElement.textContent = 'Billedfilen må højst være 20 MB før tilpasning.';
                     return;
                 }
-                statusElement.textContent = 'Tilpasser overlayet til rummets 3:2-format…';
+                statusElement.textContent = 'Tilpasser overlayet uden at beskære det…';
                 const objectUrl = URL.createObjectURL(file);
                 try {
                     const source = new Image();
@@ -3378,7 +3378,7 @@
                         return;
                     }
                     let blob = null;
-                    for (const [width, height] of [[1536, 1024], [1280, 853], [1024, 683], [768, 512]]) {
+                    for (const [width, height] of [[1536, 1024], [1280, 853], [1024, 683], [768, 512], [512, 341]]) {
                         const output = document.createElement('canvas');
                         output.width = width;
                         output.height = height;
@@ -3387,10 +3387,10 @@
                         const drawWidth = source.naturalWidth * scale;
                         const drawHeight = source.naturalHeight * scale;
                         context.drawImage(source, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
-                        blob = await new Promise((resolve) => output.toBlob(resolve, 'image/webp', 0.88));
-                        if (blob?.type === 'image/webp' && blob.size <= 850_000) break;
+                        blob = await new Promise((resolve) => output.toBlob(resolve, 'image/png'));
+                        if (blob?.type === 'image/png' && blob.size <= 850_000) break;
                     }
-                    if (!blob || blob.type !== 'image/webp' || blob.size > 850_000) {
+                    if (!blob || blob.type !== 'image/png' || blob.size > 850_000) {
                         statusElement.textContent = 'Overlayet kunne ikke gemmes under 850 KB. Prøv en mindre fil.';
                         return;
                     }
@@ -3486,7 +3486,7 @@
                     const overlayFileInput = document.createElement('input');
                     overlayFileInput.className = 'admin-room-file';
                     overlayFileInput.type = 'file';
-                    overlayFileInput.accept = 'image/png,image/webp';
+                    overlayFileInput.accept = 'image/png';
                     overlayFileInput.setAttribute('aria-label', `Vælg overlay til ${room.name}`);
                     const chooseOverlay = document.createElement('button');
                     chooseOverlay.className = 'admin-row-button';
