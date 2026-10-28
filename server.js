@@ -552,6 +552,17 @@ async function startServer() {
             scale: clamp(value?.scale, 0.25, 3, 1)
         };
     }
+    function normalizeClothingTransform(value = {}) {
+        const finite = (input, fallback) => Number.isFinite(Number(input)) ? Number(input) : fallback;
+        const clamp = (input, min, max, fallback) => Math.min(max, Math.max(min, finite(input, fallback)));
+        return {
+            ...normalizePublicRoomOverlayTransform(value),
+            scaleX: clamp(value?.scaleX, 0.25, 3, 1),
+            scaleY: clamp(value?.scaleY, 0.25, 3, 1),
+            skewX: clamp(value?.skewX, -45, 45, 0),
+            skewY: clamp(value?.skewY, -45, 45, 0)
+        };
+    }
     async function getChatOnlineCount() {
         const { rows: [result] } = await pool.query('SELECT COUNT(*)::int AS count FROM chat_online_sessions');
         return Number(result?.count || 0);
@@ -1718,7 +1729,7 @@ async function startServer() {
             WHERE assignment.target_user_id = $1 AND assignment.is_equipped = TRUE ORDER BY item.id
         `, [userId]);
         return rows.map((item) => {
-            const transform = normalizePublicRoomOverlayTransform(item.transform_json);
+            const transform = normalizeClothingTransform(item.transform_json);
             return {
                 id: String(item.id),
                 name: item.name,
@@ -2028,7 +2039,7 @@ async function startServer() {
             const mapItem = (item) => ({
                 id: String(item.id), name: item.name, description: item.description, category: item.category,
                 requiredLevel: Number(item.required_level), price: Number(item.price),
-                transform: normalizePublicRoomOverlayTransform(item.transform_json)
+                transform: normalizeClothingTransform(item.transform_json)
             });
             socket.emit('admin-clothing-items', {
                 catalog: catalogResult.rows.map((item) => ({ ...mapItem(item), assignmentCount: Number(item.assignment_count) })),
@@ -2055,10 +2066,12 @@ async function startServer() {
             const description = typeof payload.description === 'string' ? payload.description.normalize('NFKC').trim() : '';
             const category = payload.category, requiredLevel=Number(payload.requiredLevel), price=Number(payload.price);
             const x=Number(payload.x), y=Number(payload.y), rotation=Number(payload.rotation), scale=Number(payload.scale);
+            const scaleX=Number(payload.scaleX ?? 1), scaleY=Number(payload.scaleY ?? 1);
+            const skewX=Number(payload.skewX ?? 0), skewY=Number(payload.skewY ?? 0);
             const image=Buffer.isBuffer(payload.image)?payload.image:payload.image instanceof Uint8Array?Buffer.from(payload.image):null;
             const isPng=image&&image.length>=8&&image.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
             const isWebp=image&&image.length>=12&&image.toString('ascii',0,4)==='RIFF'&&image.toString('ascii',8,12)==='WEBP';
-            const validTransform=Number.isFinite(x)&&x>=-270&&x<=270&&Number.isFinite(y)&&y>=-180&&y<=180&&Number.isFinite(rotation)&&rotation>=-180&&rotation<=180&&Number.isFinite(scale)&&scale>=0.25&&scale<=3;
+            const validTransform=Number.isFinite(x)&&x>=-270&&x<=270&&Number.isFinite(y)&&y>=-180&&y<=180&&Number.isFinite(rotation)&&rotation>=-180&&rotation<=180&&Number.isFinite(scale)&&scale>=0.25&&scale<=3&&Number.isFinite(scaleX)&&scaleX>=0.25&&scaleX<=3&&Number.isFinite(scaleY)&&scaleY>=0.25&&scaleY<=3&&Number.isFinite(skewX)&&skewX>=-45&&skewX<=45&&Number.isFinite(skewY)&&skewY>=-45&&skewY<=45;
             if((payload.username!=null&&typeof payload.username!=='string')||(payload.username?.trim()&&!username)||!name||name.length>60||/[\u0000-\u001f\u007f]/.test(name)||description.length>300||/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(description)||!['headwear','clothing','left_hand','right_hand','accessory'].includes(category)||!Number.isInteger(requiredLevel)||requiredLevel<1||requiredLevel>20||!Number.isInteger(price)||price<0||price>100000000||!validTransform||!image||image.length>950000||(!isPng&&!isWebp)){
                 socket.emit('admin-clothing-action-result',{success:false,message:'Kontroll?r brugernavn (valgfrit), navn, kategori, level, pris og placering. Billedet skal v?re PNG/WebP p? h?jst 950 KB.'});return;
             }
@@ -2072,7 +2085,7 @@ async function startServer() {
                     const {rows:[item]}=await client.query(`
                         INSERT INTO chat_clothing_catalog (name,description,category,image,mime_type,required_level,price,transform_json)
                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb) RETURNING id
-                    `,[name,description,category,image,isPng?'image/png':'image/webp',requiredLevel,price,JSON.stringify({x,y,rotation,scale})]);
+                    `,[name,description,category,image,isPng?'image/png':'image/webp',requiredLevel,price,JSON.stringify({x,y,rotation,scale,scaleX,scaleY,skewX,skewY})]);
                     if(target)await client.query('INSERT INTO chat_clothing_assignments (target_user_id,clothing_item_id) VALUES ($1,$2)',[target.id,item.id]);
                     await client.query('COMMIT');
                 }catch(error){try{await client.query('ROLLBACK')}catch{}throw error;}finally{client.release();}
@@ -2187,7 +2200,7 @@ async function startServer() {
                     price: Number(item.price),
                     equipped: item.is_equipped,
                     imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image`,
-                    ...normalizePublicRoomOverlayTransform(item.transform_json)
+                    ...normalizeClothingTransform(item.transform_json)
                 }))
             });
         }

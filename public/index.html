@@ -1852,10 +1852,14 @@
                                         <label>Y (px)<input id="admin-clothing-y" type="number" min="-180" max="180" value="0" step="1"></label>
                                         <label>Rotation (°)<input id="admin-clothing-rotation" type="number" min="-180" max="180" value="0" step="1"></label>
                                         <label>Størrelse (%)<input id="admin-clothing-scale" type="number" min="25" max="300" value="100" step="1"></label>
+                                        <label>Bredde (%)<input id="admin-clothing-scale-x" type="number" min="25" max="300" value="100" step="1"></label>
+                                        <label>Højde (%)<input id="admin-clothing-scale-y" type="number" min="25" max="300" value="100" step="1"></label>
+                                        <label>Skæv X (°)<input id="admin-clothing-skew-x" type="number" min="-45" max="45" value="0" step="1"></label>
+                                        <label>Skæv Y (°)<input id="admin-clothing-skew-y" type="number" min="-45" max="45" value="0" step="1"></label>
                                     </div>
                                     <div class="admin-clothing-preview-wrap">
                                         <canvas class="admin-clothing-preview" id="admin-clothing-preview" width="216" height="300" aria-label="Live preview af tøjdelen på avataren"></canvas>
-                                        <p class="admin-clothing-preview-note">Placeringen opdateres live. Overlayet tegnes oven på avataren og følger den på tværs af rum.</p>
+                                        <p class="admin-clothing-preview-note">Flyt, drej, stræk eller skævvrid tøjdelen. Previewet opdateres live, og formen gemmes med genstanden.</p>
                                     </div>
                                     <button class="admin-row-button wide" id="admin-clothing-save" type="submit">Gem t&oslash;jdelen</button>
                                     <p class="admin-status wide" id="admin-clothing-status" aria-live="polite"></p>
@@ -2151,6 +2155,10 @@
             const adminClothingY = document.getElementById('admin-clothing-y');
             const adminClothingRotation = document.getElementById('admin-clothing-rotation');
             const adminClothingScale = document.getElementById('admin-clothing-scale');
+            const adminClothingScaleX = document.getElementById('admin-clothing-scale-x');
+            const adminClothingScaleY = document.getElementById('admin-clothing-scale-y');
+            const adminClothingSkewX = document.getElementById('admin-clothing-skew-x');
+            const adminClothingSkewY = document.getElementById('admin-clothing-skew-y');
             const adminClothingPreview = document.getElementById('admin-clothing-preview');
             const adminClothingStatus = document.getElementById('admin-clothing-status');
             const adminClothingItems = document.getElementById('admin-clothing-items');
@@ -3574,12 +3582,16 @@
                     adminClothingPreview.height / 2 + (Number(adminClothingY.value) || 0) * 4
                 );
                 context.rotate((Number(adminClothingRotation.value) || 0) * Math.PI / 180);
-                context.scale(scale, scale);
+                context.transform(1, Math.tan(Number(adminClothingSkewY.value || 0) * Math.PI / 180),
+                    Math.tan(Number(adminClothingSkewX.value || 0) * Math.PI / 180), 1, 0, 0);
+                context.scale(scale * (Number(adminClothingScaleX.value) || 100) / 100,
+                    scale * (Number(adminClothingScaleY.value) || 100) / 100);
                 context.drawImage(adminClothingPreviewImage, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
                 context.restore();
             }
             adminClothingPreviewAvatar.addEventListener('load', drawAdminClothingPreview);
-            [adminClothingX, adminClothingY, adminClothingRotation, adminClothingScale].forEach((input) =>
+            [adminClothingX, adminClothingY, adminClothingRotation, adminClothingScale,
+                adminClothingScaleX, adminClothingScaleY, adminClothingSkewX, adminClothingSkewY].forEach((input) =>
                 input.addEventListener('input', drawAdminClothingPreview)
             );
             adminClothingImageInput.addEventListener('change', () => {
@@ -3668,6 +3680,10 @@
                         y: Number(adminClothingY.value),
                         rotation: Number(adminClothingRotation.value),
                         scale: Number(adminClothingScale.value) / 100,
+                        scaleX: Number(adminClothingScaleX.value) / 100,
+                        scaleY: Number(adminClothingScaleY.value) / 100,
+                        skewX: Number(adminClothingSkewX.value),
+                        skewY: Number(adminClothingSkewY.value),
                         mimeType,
                         image: new Uint8Array(await blob.arrayBuffer())
                     });
@@ -4091,7 +4107,10 @@
                     context.save();
                     context.translate(width / 2 + (Number(item.x) || 0) * 4, height / 2 + (Number(item.y) || 0) * 4);
                     context.rotate((Number(item.rotation) || 0) * Math.PI / 180);
-                    context.scale(scale, scale);
+                    context.transform(1, Math.tan((Number(item.skewY) || 0) * Math.PI / 180),
+                        Math.tan((Number(item.skewX) || 0) * Math.PI / 180), 1, 0, 0);
+                    context.scale(scale * Math.max(0.25, Math.min(3, Number(item.scaleX) || 1)),
+                        scale * Math.max(0.25, Math.min(3, Number(item.scaleY) || 1)));
                     context.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
                     context.restore();
                 }
@@ -4766,7 +4785,10 @@
                         ctx.save();
                         ctx.translate(position.x + (Number(item.x) || 0), avatarY + (Number(item.y) || 0));
                         ctx.rotate((Number(item.rotation) || 0) * Math.PI / 180);
-                        ctx.scale(scale, scale);
+                        ctx.transform(1, Math.tan((Number(item.skewY) || 0) * Math.PI / 180),
+                            Math.tan((Number(item.skewX) || 0) * Math.PI / 180), 1, 0, 0);
+                        ctx.scale(scale * Math.max(0.25, Math.min(3, Number(item.scaleX) || 1)),
+                            scale * Math.max(0.25, Math.min(3, Number(item.scaleY) || 1)));
                         const imageScale = Math.min(visualWidth / clothingImage.naturalWidth, visualHeight / clothingImage.naturalHeight);
                         const imageWidth = clothingImage.naturalWidth * imageScale;
                         const imageHeight = clothingImage.naturalHeight * imageScale;
@@ -4830,10 +4852,10 @@
                 const entrance = Math.min(1, elapsed / 180);
                 const easedEntrance = 1 - ((1 - entrance) ** 3);
                 ctx.globalAlpha = easedEntrance * (remaining < 900 ? Math.max(0, remaining / 900) : 1);
-                const lines = wrapText(whisper.message, 210);
-                ctx.font = '13px Inter, system-ui, sans-serif';
-                const bubbleWidth = Math.min(240, Math.max(62, ...lines.map((line) => ctx.measureText(line).width + 22)));
-                const bubbleHeight = lines.length * 18 + 20;
+                const lines = wrapText(whisper.message, 195);
+                ctx.font = '12px Inter, system-ui, sans-serif';
+                const bubbleWidth = Math.min(220, Math.max(58, ...lines.map((line) => ctx.measureText(line).width + 18)));
+                const bubbleHeight = lines.length * 16 + 18;
                 const placement = getBubblePlacement(position, bubbleWidth, bubbleHeight);
                 const bubbleX = placement.x;
                 const bubbleY = placement.y + (placement.direction === 'bottom' ? -1 : 1) * (1 - easedEntrance) * 9;
@@ -4847,7 +4869,7 @@
                 ctx.fillStyle = '#292b27';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                const lineHeight = 18;
+                const lineHeight = 16;
                 const firstLineY = bubbleY + bubbleHeight / 2 - ((lines.length - 1) * lineHeight) / 2;
                 lines.forEach((line, index) => {
                     ctx.fillText(line, bubbleX + bubbleWidth / 2, firstLineY + index * lineHeight, bubbleWidth - 16);
@@ -4870,10 +4892,10 @@
                     ctx.globalAlpha = Math.max(0, remaining / 900);
                 }
 
-                const lines = wrapText(bubbleText, 210);
-                ctx.font = '13px Inter, system-ui, sans-serif';
-                const bubbleWidth = Math.min(240, Math.max(62, ...lines.map((line) => ctx.measureText(line).width + 22)));
-                const bubbleHeight = lines.length * 18 + 20;
+                const lines = wrapText(bubbleText, 195);
+                ctx.font = '12px Inter, system-ui, sans-serif';
+                const bubbleWidth = Math.min(220, Math.max(58, ...lines.map((line) => ctx.measureText(line).width + 18)));
+                const bubbleHeight = lines.length * 16 + 18;
                 const placement = getBubblePlacement(position, bubbleWidth, bubbleHeight);
                 const bubbleX = placement.x;
                 const bubbleY = placement.y;
@@ -4896,7 +4918,7 @@
                 ctx.fillStyle = isTyping ? '#4a4b45' : '#171815';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                const lineHeight = 18;
+                const lineHeight = 16;
                 const firstLineY = bubbleY + bubbleHeight / 2 - ((lines.length - 1) * lineHeight) / 2;
                 lines.forEach((line, index) => {
                     ctx.fillText(line, bubbleX + bubbleWidth / 2, firstLineY + index * lineHeight, bubbleWidth - 16);
