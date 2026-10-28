@@ -412,16 +412,44 @@
         .navigator-section-title { margin: 18px 0 8px; color: #9fa194; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
         .navigator-section-title:first-child { margin-top: 0; }
         .navigator-apartment-empty { margin: 0; color: var(--muted); font-size: 11px; }
-        .wardrobe-list { display: grid; gap: 9px; }
-        .wardrobe-item { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 9px; border: 1px solid #393b33; border-radius: 8px; background: #20211d; }
-        .wardrobe-item-image { width: 48px; height: 58px; object-fit: contain; border-radius: 5px; background: #10110f; }
-        .wardrobe-item-details { display: grid; min-width: 0; gap: 4px; color: var(--muted); font-size: 10px; }
-        .wardrobe-item-details strong { color: #f2f0e9; font-size: 12px; }
-        .wardrobe-item-description { overflow-wrap: anywhere; }
-        .wardrobe-item-button { min-width: 66px; min-height: 30px; padding: 5px 8px; border: 1px solid #778e53; border-radius: 6px; background: #293322; color: #c1f078; font: inherit; font-size: 10px; cursor: pointer; }
-        .wardrobe-item-button:disabled { opacity: .45; cursor: not-allowed; }
+        .wardrobe-layout { display: grid; grid-template-columns: minmax(0, 1fr) 158px minmax(0, 1fr); grid-template-areas: "left preview right"; align-items: start; gap: 10px; }
+        .wardrobe-category-stack { display: grid; gap: 9px; min-width: 0; }
+        .wardrobe-category-stack.left { grid-area: left; }
+        .wardrobe-category-stack.right { grid-area: right; }
+        .wardrobe-category-box { min-width: 0; overflow: hidden; border: 1px solid #383d32; border-radius: 9px; background: linear-gradient(150deg, #242720, #191b18); }
+        .wardrobe-category-heading { display: flex; align-items: center; justify-content: space-between; gap: 5px; padding: 8px 9px; border-bottom: 1px solid #35382f; color: #dce6cc; font-size: 10px; font-weight: 700; }
+        .wardrobe-category-count { color: #a8c879; font-size: 9px; font-weight: 600; }
+        .wardrobe-category-items { display: grid; gap: 5px; max-height: 180px; overflow-y: auto; padding: 6px; }
+        .wardrobe-category-empty { margin: 0; padding: 4px; color: #85887c; font-size: 9px; }
+        .wardrobe-item { display: grid; grid-template-columns: 29px minmax(0, 1fr); align-items: center; gap: 6px; width: 100%; min-width: 0; padding: 5px; border: 1px solid #363a31; border-radius: 6px; background: #1a1c19; color: #d9dacf; font: inherit; text-align: left; cursor: pointer; transition: border-color .16s ease, background .16s ease, transform .16s ease; }
+        .wardrobe-item:hover:not(:disabled) { transform: translateY(-1px); border-color: #829b5a; background: #282d22; }
+        .wardrobe-item[aria-pressed="true"] { border-color: #89a95a; background: #2a3323; }
+        .wardrobe-item:disabled { opacity: .5; cursor: not-allowed; }
+        .wardrobe-item-image { width: 29px; height: 34px; object-fit: contain; border-radius: 4px; background: #10110f; }
+        .wardrobe-item-details { display: grid; min-width: 0; gap: 3px; overflow: hidden; color: #a5a89b; font-size: 8px; }
+        .wardrobe-item-details strong { overflow: hidden; color: #f2f0e9; font-size: 9px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+        .wardrobe-item-description { display: none; }
+        .wardrobe-preview-column { grid-area: preview; display: grid; justify-items: center; gap: 8px; }
+        .wardrobe-preview-label { margin: 0; color: #dce6cc; font-size: 10px; font-weight: 700; }
+        .wardrobe-avatar-stage { display: grid; width: 100%; max-width: 158px; aspect-ratio: 216 / 300; place-items: center; overflow: hidden; border: 1px solid #3d4930; border-radius: 12px; background: radial-gradient(ellipse at 50% 45%, #293120 0%, #181b17 62%, #111310 100%); box-shadow: inset 0 0 24px #0005, 0 8px 24px #0003; }
+        .wardrobe-avatar-preview { display: block; width: 100%; height: 100%; object-fit: contain; }
+        .wardrobe-preview-level { color: #a8c879; font-size: 9px; font-weight: 650; }
         .wardrobe-status { min-height: 16px; margin: 8px 0; color: var(--muted); font-size: 10px; }
         .wardrobe-empty { color: var(--muted); font-size: 11px; }
+        @media (max-width: 700px) {
+            .wardrobe-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "preview preview" "left right"; gap: 9px; }
+            .wardrobe-avatar-stage { width: 158px; }
+        }
+        @media (max-width: 420px) {
+            .wardrobe-layout { gap: 6px; }
+            .wardrobe-category-stack { gap: 6px; }
+            .wardrobe-category-heading { padding: 7px 6px; font-size: 9px; }
+            .wardrobe-category-items { padding: 4px; }
+            .wardrobe-item { grid-template-columns: 24px minmax(0, 1fr); gap: 4px; padding: 4px; }
+            .wardrobe-item-image { width: 24px; height: 30px; }
+            .wardrobe-item-details strong { font-size: 8px; }
+            .wardrobe-avatar-stage { width: 138px; }
+        }
         .navigator-room-button {
             width: 100%;
             padding: 12px 13px;
@@ -1495,8 +1523,18 @@
                         <section class="side-panel" id="wardrobe-panel" aria-labelledby="wardrobe-title" hidden>
                             <h2 class="side-title" id="wardrobe-title">Mit tøjskab</h2>
                             <p class="wardrobe-status" id="wardrobe-status" aria-live="polite">Tøjdele, du får tildelt, lander her.</p>
-                            <div class="wardrobe-list" id="wardrobe-list" role="list" aria-live="polite"></div>
-                            <p class="wardrobe-empty" id="wardrobe-empty" hidden>Dit tøjskab er tomt endnu.</p>
+                            <div class="wardrobe-layout">
+                                <div class="wardrobe-category-stack left" id="wardrobe-left-categories"></div>
+                                <div class="wardrobe-preview-column">
+                                    <p class="wardrobe-preview-label">Din figur</p>
+                                    <div class="wardrobe-avatar-stage">
+                                        <canvas class="wardrobe-avatar-preview" id="wardrobe-avatar-preview" width="216" height="300" aria-label="Preview af din avatar med tøjet på"></canvas>
+                                    </div>
+                                    <span class="wardrobe-preview-level" id="wardrobe-preview-level">Level 1</span>
+                                </div>
+                                <div class="wardrobe-category-stack right" id="wardrobe-right-categories"></div>
+                            </div>
+                            <p class="wardrobe-empty" id="wardrobe-empty" hidden></p>
                         </section>
                         <section class="side-panel" id="members-panel" aria-labelledby="members-title" hidden>
                             <h2 class="side-title" id="members-title">Online på Chatten</h2>
@@ -1987,26 +2025,31 @@
             avatarImage.addEventListener('load', () => {
                 avatarImageLoaded = true;
                 requestBoardRender();
+                drawWardrobeAvatarPreview();
             });
             avatarImage.src = '/images/mand.png';
             mobsetAvatarImage.addEventListener('load', () => {
                 mobsetAvatarImageLoaded = true;
                 requestBoardRender();
+                drawWardrobeAvatarPreview();
             });
             mobsetAvatarImage.src = '/images/sur.png';
             kedAvatarImage.addEventListener('load', () => {
                 kedAvatarImageLoaded = true;
                 requestBoardRender();
+                drawWardrobeAvatarPreview();
             });
             kedAvatarImage.src = '/images/ked.png';
             blappetAvatarImage.addEventListener('load', () => {
                 blappetAvatarImageLoaded = true;
                 requestBoardRender();
+                drawWardrobeAvatarPreview();
             });
             blappetAvatarImage.src = '/images/blappet.png';
             boevetAvatarImage.addEventListener('load', () => {
                 boevetAvatarImageLoaded = true;
                 requestBoardRender();
+                drawWardrobeAvatarPreview();
             });
             boevetAvatarImage.src = '/images/boevet.png';
             function getClothingImage(item) {
@@ -2018,6 +2061,7 @@
                     image.addEventListener('load', () => {
                         image.loaded = true;
                         requestBoardRender();
+                        drawWardrobeAvatarPreview();
                     });
                     image.src = item.imageUrl;
                     clothingImageCache.set(String(item.id), image);
@@ -2060,9 +2104,14 @@
             const adminNavButton = document.getElementById('admin-nav-button');
             const navigatorPanel = document.getElementById('navigator-panel');
             const wardrobePanel = document.getElementById('wardrobe-panel');
-            const wardrobeList = document.getElementById('wardrobe-list');
+            const wardrobeLeftCategories = document.getElementById('wardrobe-left-categories');
+            const wardrobeRightCategories = document.getElementById('wardrobe-right-categories');
+            const wardrobeAvatarPreview = document.getElementById('wardrobe-avatar-preview');
+            const wardrobePreviewLevel = document.getElementById('wardrobe-preview-level');
             const wardrobeEmpty = document.getElementById('wardrobe-empty');
             const wardrobeStatus = document.getElementById('wardrobe-status');
+            let wardrobeItems = [];
+            let wardrobeLevel = 1;
             const adminPanel = document.getElementById('admin-panel');
             const adminSectionSelect = document.getElementById('admin-section-select');
             const adminWelcomeView = document.getElementById('admin-welcome-view');
@@ -3972,49 +4021,117 @@
                 }
             }
 
+            function drawWardrobeAvatarPreview() {
+                const context = wardrobeAvatarPreview.getContext('2d');
+                context.clearRect(0, 0, wardrobeAvatarPreview.width, wardrobeAvatarPreview.height);
+                context.fillStyle = '#11130f';
+                context.fillRect(0, 0, wardrobeAvatarPreview.width, wardrobeAvatarPreview.height);
+                if (!avatarImageLoaded) return;
+                const width = wardrobeAvatarPreview.width;
+                const height = wardrobeAvatarPreview.height;
+                context.drawImage(avatarImage, 0, 0, width, height);
+                const mood = players[myId]?.mood || 'glad';
+                const moodImages = {
+                    mobset: mobsetAvatarImageLoaded ? mobsetAvatarImage : null,
+                    ked: kedAvatarImageLoaded ? kedAvatarImage : null,
+                    blappet: blappetAvatarImageLoaded ? blappetAvatarImage : null,
+                    boevet: boevetAvatarImageLoaded ? boevetAvatarImage : null
+                };
+                const moodImage = moodImages[mood];
+                if (moodImage) {
+                    context.save();
+                    context.beginPath();
+                    context.ellipse(width / 2, height / 2 - height * 0.19, width * 0.275, height * 0.255, 0, 0, Math.PI * 2);
+                    context.clip();
+                    context.drawImage(moodImage, 0, 0, width, height);
+                    context.restore();
+                }
+                const equipped = wardrobeItems.filter((item) => item.equipped).sort((first, second) =>
+                    (clothingCategoryOrder[first.category] ?? 2) - (clothingCategoryOrder[second.category] ?? 2)
+                );
+                for (const item of equipped) {
+                    const image = getClothingImage(item);
+                    if (!image) continue;
+                    const scale = Math.max(0.25, Math.min(3, Number(item.scale) || 1));
+                    const fitScale = Math.min(width / image.naturalWidth, height / image.naturalHeight);
+                    const drawWidth = image.naturalWidth * fitScale;
+                    const drawHeight = image.naturalHeight * fitScale;
+                    context.save();
+                    context.translate(width / 2 + (Number(item.x) || 0) * 4, height / 2 + (Number(item.y) || 0) * 4);
+                    context.rotate((Number(item.rotation) || 0) * Math.PI / 180);
+                    context.scale(scale, scale);
+                    context.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+                    context.restore();
+                }
+            }
+
             function renderWardrobeItems(items = [], level = 1) {
-                wardrobeList.replaceChildren();
-                wardrobeEmpty.hidden = items.length > 0;
-                if (!items.length) return;
+                wardrobeItems = items.map((item) => ({
+                    ...item,
+                    imageUrl: item.imageUrl || `/api/clothing-items/${encodeURIComponent(item.id)}/image`
+                }));
+                wardrobeLevel = Math.max(1, Number(level) || 1);
+                wardrobeEmpty.hidden = true;
+                wardrobePreviewLevel.textContent = `Level ${wardrobeLevel}`;
                 const categoryNames = {
                     headwear: 'Hovedbeklædning', clothing: 'Tøj', left_hand: 'Venstre hånd',
                     right_hand: 'Højre hånd', accessory: 'Tilbehør'
                 };
-                for (const item of items) {
-                    const row = document.createElement('article');
-                    row.className = 'wardrobe-item';
-                    row.setAttribute('role', 'listitem');
-                    const image = document.createElement('img');
-                    image.className = 'wardrobe-item-image';
-                    image.src = `/api/clothing-items/${encodeURIComponent(item.id)}/image`;
-                    image.alt = '';
-                    const details = document.createElement('div');
-                    details.className = 'wardrobe-item-details';
-                    const name = document.createElement('strong');
-                    name.textContent = item.name;
-                    const meta = document.createElement('span');
-                    meta.textContent = `${categoryNames[item.category] || item.category} · Level ${item.requiredLevel} · ${Number(item.price).toLocaleString('da-DK')} mønter`;
-                    details.append(name, meta);
-                    if (item.description) {
-                        const description = document.createElement('span');
-                        description.className = 'wardrobe-item-description';
-                        description.textContent = item.description;
-                        details.append(description);
+                const createCategoryBox = (category) => {
+                    const box = document.createElement('section');
+                    box.className = 'wardrobe-category-box';
+                    const categoryItems = wardrobeItems.filter((item) => item.category === category);
+                    const heading = document.createElement('h3');
+                    heading.className = 'wardrobe-category-heading';
+                    const title = document.createElement('span');
+                    title.textContent = categoryNames[category];
+                    const count = document.createElement('span');
+                    count.className = 'wardrobe-category-count';
+                    count.textContent = `${categoryItems.filter((item) => item.equipped).length}/${categoryItems.length} på`;
+                    heading.append(title, count);
+                    const list = document.createElement('div');
+                    list.className = 'wardrobe-category-items';
+                    list.setAttribute('role', 'list');
+                    if (!categoryItems.length) {
+                        const empty = document.createElement('p');
+                        empty.className = 'wardrobe-category-empty';
+                        empty.textContent = 'Tom';
+                        list.append(empty);
                     }
-                    const button = document.createElement('button');
-                    button.className = 'wardrobe-item-button';
-                    button.type = 'button';
-                    button.textContent = item.equipped ? 'Tag af' : 'Tag på';
-                    button.disabled = !item.equipped && Number(item.requiredLevel) > level;
-                    button.title = button.disabled ? `Kræver level ${item.requiredLevel}. Du er level ${level}.` : '';
-                    button.addEventListener('click', () => {
-                        button.disabled = true;
-                        wardrobeStatus.textContent = item.equipped ? 'Lægger tøjdelen i skabet…' : 'Tager tøjdelen på…';
-                        socket.emit('wardrobe-item-equip', { id: item.id, equipped: !item.equipped });
-                    });
-                    row.append(image, details, button);
-                    wardrobeList.append(row);
-                }
+                    for (const item of categoryItems) {
+                        const button = document.createElement('button');
+                        button.className = 'wardrobe-item';
+                        button.type = 'button';
+                        button.setAttribute('role', 'listitem');
+                        button.setAttribute('aria-pressed', String(item.equipped));
+                        const locked = !item.equipped && Number(item.requiredLevel) > wardrobeLevel;
+                        button.disabled = locked;
+                        button.title = locked ? `Kræver level ${item.requiredLevel}. Du er level ${wardrobeLevel}.` : item.description || '';
+                        const image = document.createElement('img');
+                        image.className = 'wardrobe-item-image';
+                        image.src = item.imageUrl;
+                        image.alt = '';
+                        const details = document.createElement('span');
+                        details.className = 'wardrobe-item-details';
+                        const name = document.createElement('strong');
+                        name.textContent = item.name;
+                        const meta = document.createElement('span');
+                        meta.textContent = item.equipped ? 'På · klik for at tage af' : locked ? `Level ${item.requiredLevel}` : `${Number(item.price).toLocaleString('da-DK')} mønter`;
+                        details.append(name, meta);
+                        button.append(image, details);
+                        button.addEventListener('click', () => {
+                            button.disabled = true;
+                            wardrobeStatus.textContent = item.equipped ? 'Lægger tøjdelen i skabet…' : 'Tager tøjdelen på…';
+                            socket.emit('wardrobe-item-equip', { id: item.id, equipped: !item.equipped });
+                        });
+                        list.append(button);
+                    }
+                    box.append(heading, list);
+                    return box;
+                };
+                wardrobeLeftCategories.replaceChildren(createCategoryBox('headwear'), createCategoryBox('clothing'));
+                wardrobeRightCategories.replaceChildren(createCategoryBox('left_hand'), createCategoryBox('right_hand'), createCategoryBox('accessory'));
+                drawWardrobeAvatarPreview();
             }
 
             function renderAdminClothingItems(items = []) {
@@ -5960,6 +6077,7 @@
                 if (typeof id !== 'string' || !players[id] || !['glad', 'mobset', 'ked', 'blappet', 'boevet'].includes(mood)) return;
                 players[id].mood = mood;
                 requestBoardRender();
+                if (id === myId) drawWardrobeAvatarPreview();
                 if (contextPlayerId === id) updateAvatarContextMute();
             });
 

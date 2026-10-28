@@ -2061,7 +2061,7 @@ async function startServer() {
         async function sendUserWardrobe() {
             const [{ rows }, totalOnlineMs, { rows: [progress] }] = await Promise.all([
                 pool.query(`
-                    SELECT id, name, description, category, required_level, price, is_equipped
+                    SELECT id, name, description, category, required_level, price, is_equipped, transform_json
                     FROM chat_clothing_items WHERE target_user_id = $1 ORDER BY category, id
                 `, [socket.data.user.id]),
                 getTotalOnlineMs(socket.data.user.id),
@@ -2076,7 +2076,9 @@ async function startServer() {
                     category: item.category,
                     requiredLevel: Number(item.required_level),
                     price: Number(item.price),
-                    equipped: item.is_equipped
+                    equipped: item.is_equipped,
+                    imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image`,
+                    ...normalizePublicRoomOverlayTransform(item.transform_json)
                 }))
             });
         }
