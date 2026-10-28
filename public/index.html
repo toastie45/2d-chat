@@ -3009,11 +3009,11 @@
                 ctx.fillStyle = '#000';
                 ctx.fillRect(0, 0, gridLayout.width, gridLayout.height);
 
-                // Saved apartment floor colors remain visible over the black room background.
+                // Preserve saved tile colors over the black room background, including under locks and doors.
                 if (apartmentRoom) {
                     for (const cell of gridCells) {
                         const tile = parseApartmentTileState(apartmentTiles[`${cell.col}:${cell.row}`]);
-                        if (tile.kind !== 'floor' || !tile.color) continue;
+                        if (!tile.color) continue;
                         ctx.beginPath();
                         ctx.moveTo(cell.x, cell.y - cellSize / 2);
                         ctx.lineTo(cell.x + cellSize / 2, cell.y);
