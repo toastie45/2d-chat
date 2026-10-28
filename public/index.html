@@ -412,6 +412,16 @@
         .navigator-section-title { margin: 18px 0 8px; color: #9fa194; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
         .navigator-section-title:first-child { margin-top: 0; }
         .navigator-apartment-empty { margin: 0; color: var(--muted); font-size: 11px; }
+        .wardrobe-list { display: grid; gap: 9px; }
+        .wardrobe-item { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 9px; border: 1px solid #393b33; border-radius: 8px; background: #20211d; }
+        .wardrobe-item-image { width: 48px; height: 58px; object-fit: contain; border-radius: 5px; background: #10110f; }
+        .wardrobe-item-details { display: grid; min-width: 0; gap: 4px; color: var(--muted); font-size: 10px; }
+        .wardrobe-item-details strong { color: #f2f0e9; font-size: 12px; }
+        .wardrobe-item-description { overflow-wrap: anywhere; }
+        .wardrobe-item-button { min-width: 66px; min-height: 30px; padding: 5px 8px; border: 1px solid #778e53; border-radius: 6px; background: #293322; color: #c1f078; font: inherit; font-size: 10px; cursor: pointer; }
+        .wardrobe-item-button:disabled { opacity: .45; cursor: not-allowed; }
+        .wardrobe-status { min-height: 16px; margin: 8px 0; color: var(--muted); font-size: 10px; }
+        .wardrobe-empty { color: var(--muted); font-size: 11px; }
         .navigator-room-button {
             width: 100%;
             padding: 12px 13px;
@@ -1268,8 +1278,10 @@
             .login-card { padding: 28px 22px; }
             .board-card { padding: 9px; }
             .room-strip { padding: 5px 8px; }
-            .bottom-toolbar { gap: 5px; }
-            .toolbar-button { width: 34px; height: 34px; flex-basis: 34px; }
+            .bottom-toolbar { gap: 3px; padding: 6px; }
+            .bottom-toolbar::before, .bottom-toolbar::after { display: none; }
+            .toolbar-button { width: 30px; min-width: 28px; height: 32px; flex: 1 1 30px; max-width: 38px; }
+            .toolbar-button svg { width: 19px; height: 19px; flex-basis: 19px; }
         }
 
         .room-strip {
@@ -1450,6 +1462,9 @@
                             <button class="toolbar-button" id="profile-nav-button" type="button" aria-pressed="false" aria-controls="profile-editor-panel" aria-label="Brugerindstillinger" title="Brugerindstillinger">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 6.5 3-3 3 3-3 3"/><path d="m3 21 4.5-1 11-11-3.5-3.5-11 11L3 21Z"/><path d="m13 8 3.5 3.5"/></svg>
                             </button>
+                            <button class="toolbar-button" id="wardrobe-nav-button" type="button" aria-pressed="false" aria-controls="wardrobe-panel" aria-label="Tøjskab" title="Tøjskab">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v15H4Z"/><path d="M12 3v17M8 8v2M16 8v2M8 20v-5h8v5"/></svg>
+                            </button>
                             <button class="toolbar-button" id="private-mail-nav-button" type="button" aria-pressed="false" aria-controls="private-mail-panel" aria-label="Privat mail" title="Post"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg><span class="mail-unread-badge" id="mail-unread-badge" hidden></span></button>
                             <button class="toolbar-button" id="navigator-nav-button" type="button" aria-pressed="false" aria-controls="navigator-panel" aria-label="Navigator" title="Navigator">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.8 8.2-2.4 5.2-5.2 2.4 2.4-5.2z"/></svg>
@@ -1476,6 +1491,12 @@
                                 <div class="navigator-room-list navigator-apartment-room-list" role="group" aria-label="Aktive lejligheder"></div>
                                 <p class="navigator-apartment-empty" id="navigator-apartment-empty">Ingen aktive lejligheder lige nu.</p>
                             </div>
+                        </section>
+                        <section class="side-panel" id="wardrobe-panel" aria-labelledby="wardrobe-title" hidden>
+                            <h2 class="side-title" id="wardrobe-title">Mit tøjskab</h2>
+                            <p class="wardrobe-status" id="wardrobe-status" aria-live="polite">Tøjdele, du får tildelt, lander her.</p>
+                            <div class="wardrobe-list" id="wardrobe-list" role="list" aria-live="polite"></div>
+                            <p class="wardrobe-empty" id="wardrobe-empty" hidden>Dit tøjskab er tomt endnu.</p>
                         </section>
                         <section class="side-panel" id="members-panel" aria-labelledby="members-title" hidden>
                             <h2 class="side-title" id="members-title">Online på Chatten</h2>
@@ -1747,7 +1768,7 @@
                             </section>
                             <section class="admin-section" id="admin-clothing-view" aria-labelledby="admin-clothing-title" hidden>
                                 <h3 class="visually-hidden" id="admin-clothing-title">Tøj og tilbehør</h3>
-                                <p class="admin-status">Upload en gennemsigtig PNG eller WebP, justér den i previewet, og tildel tøjdelen til en bruger. Level og pris gemmes som genstandsoplysninger.</p>
+                                <p class="admin-status">Upload en gennemsigtig PNG eller WebP, justér den i previewet, og læg tøjdelen i brugerens tøjskab. Brugeren tager den selv på derfra.</p>
                                 <form class="admin-clothing-form" id="admin-clothing-form">
                                     <label>Brugernavn
                                         <input id="admin-clothing-username" type="text" maxlength="18" autocomplete="off" required placeholder="Brugeren der får tøjdelen">
@@ -1786,10 +1807,10 @@
                                         <canvas class="admin-clothing-preview" id="admin-clothing-preview" width="216" height="300" aria-label="Live preview af tøjdelen på avataren"></canvas>
                                         <p class="admin-clothing-preview-note">Placeringen opdateres live. Overlayet tegnes oven på avataren og følger den på tværs af rum.</p>
                                     </div>
-                                    <button class="admin-row-button wide" id="admin-clothing-save" type="submit">Tildel tøjdelen</button>
+                                    <button class="admin-row-button wide" id="admin-clothing-save" type="submit">Læg i tøjskabet</button>
                                     <p class="admin-status wide" id="admin-clothing-status" aria-live="polite"></p>
                                 </form>
-                                <h3 class="admin-subsection-title">Tildelte tøjdele</h3>
+                                <h3 class="admin-subsection-title">Tøjdele i brugernes skabe</h3>
                                 <button class="admin-row-button admin-refresh" id="admin-clothing-refresh" type="button">Opdater tøjlisten</button>
                                 <div class="admin-list" id="admin-clothing-items" role="list"></div>
                             </section>
@@ -2035,8 +2056,13 @@
             const refreshNavButton = document.getElementById('refresh-nav-button');
             const membersNavButton = document.getElementById('members-nav-button');
             const navigatorNavButton = document.getElementById('navigator-nav-button');
+            const wardrobeNavButton = document.getElementById('wardrobe-nav-button');
             const adminNavButton = document.getElementById('admin-nav-button');
             const navigatorPanel = document.getElementById('navigator-panel');
+            const wardrobePanel = document.getElementById('wardrobe-panel');
+            const wardrobeList = document.getElementById('wardrobe-list');
+            const wardrobeEmpty = document.getElementById('wardrobe-empty');
+            const wardrobeStatus = document.getElementById('wardrobe-status');
             const adminPanel = document.getElementById('admin-panel');
             const adminSectionSelect = document.getElementById('admin-section-select');
             const adminWelcomeView = document.getElementById('admin-welcome-view');
@@ -2622,6 +2648,7 @@
             function updateToolbarState() {
                 membersNavButton.setAttribute('aria-pressed', String(!membersPanel.hidden));
                 navigatorNavButton.setAttribute('aria-pressed', String(!navigatorPanel.hidden));
+                wardrobeNavButton.setAttribute('aria-pressed', String(!wardrobePanel.hidden));
                 chatNavButton.setAttribute('aria-pressed', String(!chatPanel.hidden));
                 profileNavButton.setAttribute('aria-pressed', String(!profileEditorPanel.hidden));
                 searchNavButton.setAttribute('aria-pressed', String(!searchPanel.hidden));
@@ -2651,6 +2678,7 @@
                 }
                 membersPanel.hidden = panel !== 'members';
                 navigatorPanel.hidden = panel !== 'navigator';
+                wardrobePanel.hidden = panel !== 'wardrobe';
                 roomWelcomePanel.hidden = panel !== 'welcome';
                 apartmentEditorPanel.hidden = panel !== 'apartment-editor';
                 chatPanel.hidden = panel !== 'chat';
@@ -3944,6 +3972,51 @@
                 }
             }
 
+            function renderWardrobeItems(items = [], level = 1) {
+                wardrobeList.replaceChildren();
+                wardrobeEmpty.hidden = items.length > 0;
+                if (!items.length) return;
+                const categoryNames = {
+                    headwear: 'Hovedbeklædning', clothing: 'Tøj', left_hand: 'Venstre hånd',
+                    right_hand: 'Højre hånd', accessory: 'Tilbehør'
+                };
+                for (const item of items) {
+                    const row = document.createElement('article');
+                    row.className = 'wardrobe-item';
+                    row.setAttribute('role', 'listitem');
+                    const image = document.createElement('img');
+                    image.className = 'wardrobe-item-image';
+                    image.src = `/api/clothing-items/${encodeURIComponent(item.id)}/image`;
+                    image.alt = '';
+                    const details = document.createElement('div');
+                    details.className = 'wardrobe-item-details';
+                    const name = document.createElement('strong');
+                    name.textContent = item.name;
+                    const meta = document.createElement('span');
+                    meta.textContent = `${categoryNames[item.category] || item.category} · Level ${item.requiredLevel} · ${Number(item.price).toLocaleString('da-DK')} mønter`;
+                    details.append(name, meta);
+                    if (item.description) {
+                        const description = document.createElement('span');
+                        description.className = 'wardrobe-item-description';
+                        description.textContent = item.description;
+                        details.append(description);
+                    }
+                    const button = document.createElement('button');
+                    button.className = 'wardrobe-item-button';
+                    button.type = 'button';
+                    button.textContent = item.equipped ? 'Tag af' : 'Tag på';
+                    button.disabled = !item.equipped && Number(item.requiredLevel) > level;
+                    button.title = button.disabled ? `Kræver level ${item.requiredLevel}. Du er level ${level}.` : '';
+                    button.addEventListener('click', () => {
+                        button.disabled = true;
+                        wardrobeStatus.textContent = item.equipped ? 'Lægger tøjdelen i skabet…' : 'Tager tøjdelen på…';
+                        socket.emit('wardrobe-item-equip', { id: item.id, equipped: !item.equipped });
+                    });
+                    row.append(image, details, button);
+                    wardrobeList.append(row);
+                }
+            }
+
             function renderAdminClothingItems(items = []) {
                 adminClothingItems.replaceChildren();
                 if (!items.length) {
@@ -4749,6 +4822,11 @@
             navigatorNavButton.addEventListener('click', () => {
                 selectSidePanel('navigator');
                 socket.emit('navigator-request');
+            });
+            wardrobeNavButton.addEventListener('click', () => {
+                selectSidePanel('wardrobe');
+                wardrobeStatus.textContent = 'Henter dit tøjskab…';
+                socket.emit('wardrobe-request');
             });
             adminNavButton.addEventListener('click', () => {
                 if (!isAdminUser) return;
@@ -5679,6 +5757,13 @@
                 isAdminUser = isAdmin === true;
                 adminNavButton.hidden = !currentUser || !isAdminUser;
             });
+            socket.on('wardrobe-items', ({ items = [], level = 1 } = {}) => {
+                renderWardrobeItems(Array.isArray(items) ? items : [], Math.max(1, Number(level) || 1));
+            });
+            socket.on('wardrobe-action-result', ({ success, message } = {}) => {
+                wardrobeStatus.textContent = message || (success ? 'Tøjskabet er opdateret.' : 'Handlingen mislykkedes.');
+                if (!success) socket.emit('wardrobe-request');
+            });
             socket.on('admin-clothing-items', ({ items = [] } = {}) => {
                 if (isAdminUser) renderAdminClothingItems(Array.isArray(items) ? items : []);
             });
@@ -5858,6 +5943,7 @@
                 if (!players[id]) return;
                 players[id].clothing = Array.isArray(clothing) ? clothing : [];
                 requestBoardRender();
+                if (id === myId && activeSidePanel === 'wardrobe') socket.emit('wardrobe-request');
             });
 
             socket.on('playerMoved', (player) => {

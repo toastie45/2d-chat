@@ -656,9 +656,11 @@ async function startServer() {
             required_level INTEGER NOT NULL DEFAULT 1 CHECK (required_level BETWEEN 1 AND 20),
             price INTEGER NOT NULL DEFAULT 0 CHECK (price BETWEEN 0 AND 100000000),
             transform_json JSONB NOT NULL DEFAULT '{"x":0,"y":0,"rotation":0,"scale":1}'::jsonb,
+            is_equipped BOOLEAN NOT NULL DEFAULT FALSE,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
     `);
+    await pool.query('ALTER TABLE chat_clothing_items ADD COLUMN IF NOT EXISTS is_equipped BOOLEAN NOT NULL DEFAULT FALSE');
     await pool.query('CREATE INDEX IF NOT EXISTS chat_clothing_items_user_idx ON chat_clothing_items (target_user_id, id)');
     await pool.query('CREATE INDEX IF NOT EXISTS chat_users_registration_ip_hash_idx ON chat_users (registration_ip_hash) WHERE registration_ip_hash IS NOT NULL');
     await pool.query(`
@@ -1657,7 +1659,7 @@ async function startServer() {
     async function getUserClothing(userId) {
         const { rows } = await pool.query(`
             SELECT id, name, category, transform_json
-            FROM chat_clothing_items WHERE target_user_id = $1 ORDER BY id
+            FROM chat_clothing_items WHERE target_user_id = $1 AND is_equipped = TRUE ORDER BY id
         `, [userId]);
         return rows.map((item) => {
             const transform = normalizePublicRoomOverlayTransform(item.transform_json);
@@ -2026,7 +2028,7 @@ async function startServer() {
                 await refreshOnlineUserClothing(target.id);
                 socket.emit('admin-clothing-action-result', {
                     success: true,
-                    message: `${name} blev tildelt ${target.username}.`
+                    message: `${name} blev lagt i ${target.username}s tøjskab.`
                 });
                 await sendAdminClothingItems();
             } catch (error) {
@@ -2052,6 +2054,93 @@ async function startServer() {
             } catch (error) {
                 console.error('Could not delete clothing item:', getSafeErrorCode(error));
                 socket.emit('admin-clothing-action-result', { success: false, message: 'Tøjdelen kunne ikke fjernes.' });
+            }
+        });
+
+        async function sendUserWardrobe() {
+            const [{ rows }, totalOnlineMs, { rows: [progress] }] = await Promise.all([
+                pool.query(`
+                    SELECT id, name, description, category, required_level, price, is_equipped
+                    FROM chat_clothing_items WHERE target_user_id = $1 ORDER BY category, id
+                `, [socket.data.user.id]),
+                getTotalOnlineMs(socket.data.user.id),
+                pool.query('SELECT accepted_chat_messages FROM chat_users WHERE id = $1', [socket.data.user.id])
+            ]);
+            socket.emit('wardrobe-items', {
+                level: getUserLevel(totalOnlineMs, Number(progress?.accepted_chat_messages || 0)),
+                items: rows.map((item) => ({
+                    id: String(item.id),
+                    name: item.name,
+                    description: item.description,
+                    category: item.category,
+                    requiredLevel: Number(item.required_level),
+                    price: Number(item.price),
+                    equipped: item.is_equipped
+                }))
+            });
+        }
+
+        socket.on('wardrobe-request', async () => {
+            if (!activeSocketIds.has(socket.id)) return;
+            try { await sendUserWardrobe(); }
+            catch (error) {
+                console.error('Could not load user wardrobe:', getSafeErrorCode(error));
+                socket.emit('wardrobe-action-result', { success: false, message: 'Tøjskabet kunne ikke hentes.' });
+            }
+        });
+
+        socket.on('wardrobe-item-equip', async ({ id, equipped } = {}) => {
+            if (!activeSocketIds.has(socket.id) || typeof id !== 'string'
+                || !/^[1-9]\d{0,18}$/.test(id) || typeof equipped !== 'boolean') return;
+            let client;
+            try {
+                const [totalOnlineMs, { rows: [progress] }] = await Promise.all([
+                    getTotalOnlineMs(socket.data.user.id),
+                    pool.query('SELECT accepted_chat_messages FROM chat_users WHERE id = $1', [socket.data.user.id])
+                ]);
+                const level = getUserLevel(totalOnlineMs, Number(progress?.accepted_chat_messages || 0));
+                client = await pool.connect();
+                await client.query('BEGIN');
+                await client.query('SELECT id FROM chat_users WHERE id = $1 FOR UPDATE', [socket.data.user.id]);
+                const { rows: [item] } = await client.query(`
+                    SELECT id, name, category, required_level
+                    FROM chat_clothing_items WHERE id = $1 AND target_user_id = $2 FOR UPDATE
+                `, [id, socket.data.user.id]);
+                if (!item) {
+                    await client.query('ROLLBACK');
+                    socket.emit('wardrobe-action-result', { success: false, message: 'Tøjdelen findes ikke i dit skab.' });
+                    return;
+                }
+                if (equipped && Number(item.required_level) > level) {
+                    await client.query('ROLLBACK');
+                    socket.emit('wardrobe-action-result', {
+                        success: false,
+                        message: `Du skal nå level ${item.required_level} for at tage ${item.name} på.`
+                    });
+                    return;
+                }
+                if (equipped && item.category !== 'accessory') {
+                    await client.query(`
+                        UPDATE chat_clothing_items SET is_equipped = FALSE
+                        WHERE target_user_id = $1 AND category = $2 AND id <> $3
+                    `, [socket.data.user.id, item.category, id]);
+                }
+                await client.query('UPDATE chat_clothing_items SET is_equipped = $2 WHERE id = $1', [id, equipped]);
+                await client.query('COMMIT');
+                await refreshOnlineUserClothing(socket.data.user.id);
+                await sendUserWardrobe();
+                socket.emit('wardrobe-action-result', {
+                    success: true,
+                    message: equipped ? `${item.name} er taget på.` : `${item.name} er lagt i tøjskabet.`
+                });
+            } catch (error) {
+                if (client) {
+                    try { await client.query('ROLLBACK'); } catch {}
+                }
+                console.error('Could not update equipped clothing:', getSafeErrorCode(error));
+                socket.emit('wardrobe-action-result', { success: false, message: 'Tøjdelen kunne ikke opdateres.' });
+            } finally {
+                client?.release();
             }
         });
 
