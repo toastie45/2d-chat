@@ -1584,9 +1584,11 @@ async function startServer() {
         socket.join(`session:${socket.request.sessionID}`);
         socket.emit('admin-status', { isAdmin: Boolean(socket.data.isAdmin) });
 
-        socket.on('admin-online-users-request', async () => {
+        socket.on('admin-online-users-request', async (payload = {}) => {
             if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
             try {
+                const query = payload && typeof payload === 'object' ? payload.query : '';
+                const searchQuery = typeof query === 'string' ? query.normalize('NFKC').trim().slice(0, 18) : '';
                 await cleanupStalePlayers();
                 const { rows: apartments } = await pool.query(`
                     SELECT a.id, a.apartment_number, a.apartment_name, u.username
@@ -1605,6 +1607,40 @@ async function startServer() {
                     FROM chat_online_sessions s JOIN chat_users u ON u.id = s.user_id
                 `);
                 const onlineBySocket = new Map(onlineSessions.map((session) => [session.socket_id, session]));
+                if (searchQuery) {
+                    const onlineByUserId = new Map(onlineSessions.map((session) => [session.user_id, session]));
+                    const roomBySocket = new Map();
+                    for (const roomId of await getAllRoomIds()) {
+                        const players = await redis.hGetAll(roomKeys(roomId).players);
+                        for (const socketId of Object.keys(players)) {
+                            roomBySocket.set(socketId, roomNames.get(roomId) || 'Ukendt rum');
+                        }
+                    }
+                    const { rows: accounts } = await pool.query(`
+                        SELECT id::text AS user_id, username, COUNT(*) OVER()::int AS match_count
+                        FROM chat_users
+                        WHERE username ILIKE '%' || $1 || '%'
+                        ORDER BY username
+                        LIMIT 100
+                    `, [searchQuery]);
+                    const users = accounts.map((account) => {
+                        const session = onlineByUserId.get(account.user_id);
+                        return {
+                            socketId: session?.socket_id || null,
+                            userId: account.user_id,
+                            username: account.username,
+                            roomName: session ? roomBySocket.get(session.socket_id) || 'Online · rum ikke fundet' : 'Offline',
+                            isOnline: Boolean(session),
+                            isSelf: account.user_id === String(socket.data.user.id)
+                        };
+                    });
+                    socket.emit('admin-online-users', {
+                        users,
+                        query: searchQuery,
+                        totalCount: accounts[0]?.match_count || 0
+                    });
+                    return;
+                }
                 const users = [];
                 for (const roomId of await getAllRoomIds()) {
                     const players = await redis.hGetAll(roomKeys(roomId).players);
@@ -1617,12 +1653,13 @@ async function startServer() {
                             username: onlineSession?.username || player.name,
                             roomId,
                             roomName: roomNames.get(roomId) || 'Ukendt rum',
+                            isOnline: true,
                             isSelf: String(onlineSession?.user_id || activeSocketUsers.get(socketId) || '') === String(socket.data.user.id)
                         });
                     }
                 }
                 users.sort((first, second) => first.username.localeCompare(second.username, 'da'));
-                socket.emit('admin-online-users', { users });
+                socket.emit('admin-online-users', { users, query: '' });
             } catch (error) {
                 console.error('Could not load admin online users:', getSafeErrorCode(error));
                 socket.emit('admin-error', { message: 'Brugerlisten kunne ikke hentes.' });
