@@ -2552,10 +2552,15 @@
                 avatarContextWhisper.hidden = !whisperInRange;
                 avatarContextWhisper.disabled = false;
                 avatarContextWhisper.title = 'Start en privat hvisken';
-                avatarContextApartment.hidden = true;
-                avatarContextApartment.disabled = true;
-                avatarContextApartment.textContent = isSelf ? '' : 'Henter lejlighed…';
-                delete avatarContextApartment.dataset.apartmentId;
+                const isPublicRoom = activeRoom === 'common' || activeRoom === 'disco';
+                const selfApartment = isSelf ? ownApartment : null;
+                avatarContextApartment.hidden = !player || (isSelf ? !selfApartment || !isPublicRoom : true);
+                avatarContextApartment.disabled = !isSelf || !selfApartment || !isPublicRoom;
+                avatarContextApartment.textContent = selfApartment
+                    ? `Gå til lejlighed (#${selfApartment.number})`
+                    : isSelf ? '' : 'Henter lejlighed…';
+                if (selfApartment) avatarContextApartment.dataset.apartmentId = selfApartment.id;
+                else delete avatarContextApartment.dataset.apartmentId;
                 const highlighted = Boolean(player && highlightedSpeechBubblePlayers.has(contextPlayerId));
                 avatarContextHighlight.hidden = !player || isSelf;
                 avatarContextHighlight.disabled = !player || isSelf;
