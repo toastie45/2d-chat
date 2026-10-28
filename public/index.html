@@ -1791,6 +1791,13 @@
             ctx.scale(canvasPixelRatio, canvasPixelRatio);
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'high';
+            const roomBackgroundImage = new Image();
+            let roomBackgroundImageLoaded = false;
+            let roomBackgroundImageRequested = false;
+            roomBackgroundImage.addEventListener('load', () => {
+                roomBackgroundImageLoaded = true;
+                requestBoardRender();
+            });
             const avatarImage = new Image();
             const mobsetAvatarImage = new Image();
             const kedAvatarImage = new Image();
@@ -3578,6 +3585,10 @@
             }
 
             function drawBoard() {
+                if (!roomBackgroundImageRequested) {
+                    roomBackgroundImageRequested = true;
+                    roomBackgroundImage.src = '/images/test-room-background.png';
+                }
                 ctx.clearRect(0, 0, gridLayout.width, gridLayout.height);
                 const discoRoom = activeRoom === 'disco';
                 const apartmentRoom = activeRoom.startsWith('apartment:');
@@ -3630,11 +3641,14 @@
                     ctx.stroke();
                 }
 
-                // Keep the diamond grid active for movement, but hide its visuals for now.
+                // Keep movement on the same diamond grid, with the test room art underneath.
                 ctx.fillStyle = '#000';
                 ctx.fillRect(0, 0, gridLayout.width, gridLayout.height);
+                if (roomBackgroundImageLoaded) {
+                    ctx.drawImage(roomBackgroundImage, 0, 0, gridLayout.width, gridLayout.height);
+                }
 
-                // Preserve saved tile colors over the black room background, including under locks and doors.
+                // Preserve saved apartment tile colors over the room background, including under locks and doors.
                 if (apartmentRoom) {
                     for (const cell of gridCells) {
                         const tile = parseApartmentTileState(apartmentTiles[`${cell.col}:${cell.row}`]);
