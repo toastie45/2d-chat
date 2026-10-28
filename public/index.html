@@ -962,7 +962,7 @@
             text-align: center;
         }
 
-        .mobile-chat-compose { display: none; }
+        .mobile-chat-input-capture { display: none; }
 
         .chat-entry { margin: 0 0 8px; overflow-wrap: anywhere; }
         .chat-entry strong { color: #f2f0e9; font-weight: 600; }
@@ -990,36 +990,21 @@
             .side-card { min-height: 0; }
             .chat-section { min-height: 170px; }
             .chat-log { max-height: 110px; }
-            .mobile-chat-compose.is-open {
-                display: flex;
-                gap: 8px;
-                margin-top: auto;
-                padding-top: 10px;
-            }
-            .mobile-chat-compose input {
-                flex: 1;
-                min-width: 0;
-                min-height: 42px;
-                padding: 10px 12px;
-                border: 1px solid #3b3e36;
-                border-radius: 8px;
-                background: #151613;
-                color: #f2f0e9;
-                font: inherit;
-                font-size: 16px;
-            }
-            .mobile-chat-compose input:focus { outline: 2px solid #9fc65f; outline-offset: 1px; }
-            .mobile-chat-compose button {
-                min-width: 68px;
-                min-height: 42px;
-                padding: 0 14px;
+            .mobile-chat-input-capture {
+                position: fixed;
+                z-index: 1;
+                bottom: 0;
+                left: 0;
+                display: block;
+                width: 2px;
+                height: 2px;
+                padding: 0;
                 border: 0;
-                border-radius: 8px;
-                background: #a8c879;
-                color: #151710;
-                font: inherit;
-                font-weight: 700;
-                touch-action: manipulation;
+                opacity: .01;
+                background: transparent;
+                color: transparent;
+                caret-color: transparent;
+                font-size: 16px;
             }
             .member-list { max-height: 130px; }
             .room-strip { min-height: 40px; gap: 7px; padding: 0 11px; }
@@ -1343,6 +1328,7 @@
                         <canvas id="game-canvas" tabindex="0" aria-label="Et diamantgrid med 24 primære felter og 15 mellemliggende felter. Klik på et felt for at flytte din avatar. Højreklik på en anden avatar for at se profilen. Skriv for at chatte, og tryk Enter for at sende.">
                                 Dit browserprogram understøtter ikke canvas.
                             </canvas>
+                            <input class="mobile-chat-input-capture" id="mobile-chat-input" type="text" maxlength="100" enterkeyhint="send" inputmode="text" autocomplete="off" aria-label="Skriv en chatbesked">
                             <div class="knock-dialog" id="knock-dialog" role="dialog" aria-modal="false" aria-labelledby="knock-title" hidden>
                                 <div class="knock-dialog-card">
                                     <h3 class="knock-title" id="knock-title">Banker på døren</h3>
@@ -1451,10 +1437,6 @@
                             <div class="chat-log" id="chat-log" role="log" aria-live="polite" aria-relevant="additions">
                                 <p class="chat-empty" id="chat-empty">Samtalen begynder her.</p>
                             </div>
-                            <form class="mobile-chat-compose" id="mobile-chat-compose" autocomplete="off">
-                                <input id="mobile-chat-input" type="text" maxlength="100" enterkeyhint="send" inputmode="text" placeholder="Skriv en besked..." aria-label="Skriv en besked">
-                                <button type="submit">Send</button>
-                            </form>
                         </section>
                         <section class="side-panel" id="apartment-editor-panel" aria-labelledby="apartment-editor-title" hidden>
                             <h2 class="side-title" id="apartment-editor-title">Indret din lejlighed / Velkomst info</h2>
@@ -1909,7 +1891,6 @@
             const logoutButton = document.getElementById('logout-button');
             const chatLog = document.getElementById('chat-log');
             const chatEmpty = document.getElementById('chat-empty');
-            const mobileChatCompose = document.getElementById('mobile-chat-compose');
             const mobileChatInput = document.getElementById('mobile-chat-input');
             const { cellSize, cells: gridCells } = gridLayout;
             const gridCellKeys = new Set(gridCells.map((cell) => `${cell.col}:${cell.row}`));
@@ -2000,10 +1981,8 @@
                 return true;
             }
 
-            function openMobileChatComposer() {
-                selectSidePanel('chat');
-                mobileChatCompose.classList.add('is-open');
-                requestAnimationFrame(() => mobileChatInput.focus());
+            function focusMobileChatInput() {
+                mobileChatInput.focus();
             }
 
             function getAvatarDrawY(position) {
@@ -2305,7 +2284,6 @@
             }
 
             function selectSidePanel(panel, { remember = true } = {}) {
-                if (panel !== 'chat') mobileChatCompose.classList.remove('is-open');
                 if (activeSidePanel && activeSidePanel !== panel && remember) {
                     sidePanelHistory.push(activeSidePanel);
                 }
@@ -3715,8 +3693,7 @@
                 });
             });
             chatNavButton.addEventListener('click', () => {
-                if (window.matchMedia('(max-width: 700px)').matches) openMobileChatComposer();
-                else selectSidePanel('chat');
+                selectSidePanel('chat');
             });
             roomStripName.addEventListener('click', () => selectSidePanel('welcome'));
             profileNavButton.addEventListener('click', openProfileEditor);
@@ -4119,7 +4096,7 @@
                     pendingCanvasTapTimer = null;
                     pendingCanvasTap = null;
                     closeAvatarContextMenu();
-                    openMobileChatComposer();
+                    focusMobileChatInput();
                     return;
                 }
 
@@ -4202,12 +4179,12 @@
             mobileChatInput.addEventListener('input', () => {
                 updateDraftText(mobileChatInput.value);
             });
-            mobileChatCompose.addEventListener('submit', (event) => {
+            mobileChatInput.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' || event.isComposing) return;
                 event.preventDefault();
                 if (!sendChatDraft(mobileChatInput.value)) return;
                 mobileChatInput.value = '';
                 updateDraftText('');
-                mobileChatInput.focus({ preventScroll: true });
             });
 
             window.addEventListener('resize', () => {
