@@ -317,8 +317,8 @@
             width: calc(100% + 30px);
             min-height: 54px;
             align-items: center;
-            justify-content: space-between;
-            gap: 9px;
+            justify-content: center;
+            gap: 12px;
             margin: 10px -15px -15px;
             padding: 9px 15px;
             border: 1px solid #292b26;
@@ -327,6 +327,13 @@
             background: #080909;
             box-shadow: inset 0 1px #ffffff08;
         }
+        .bottom-toolbar::before, .bottom-toolbar::after {
+            height: 1px;
+            flex: 1 1 auto;
+            background: linear-gradient(90deg, transparent, #383b32);
+            content: "";
+        }
+        .bottom-toolbar::after { transform: scaleX(-1); }
 
         .toolbar-button {
             position: relative;
@@ -385,9 +392,9 @@
         }
 
         .toolbar-button svg {
-            width: 20px;
-            height: 20px;
-            flex: 0 0 20px;
+            width: 23px;
+            height: 23px;
+            flex: 0 0 23px;
             fill: none;
             stroke: currentColor;
             stroke-linecap: round;
@@ -1016,7 +1023,7 @@
         .bottom-toolbar {
             width: calc(100% + 28px);
             min-height: 56px;
-            gap: 8px;
+            gap: 12px;
             margin: 10px -14px -14px;
             padding: 10px 14px;
             border-color: #30322e;
@@ -1025,12 +1032,14 @@
             box-shadow: inset 0 1px #ffffff08;
         }
         .toolbar-button {
-            width: 36px;
-            height: 36px;
+            width: 48px;
+            height: 42px;
+            flex: 0 0 48px;
             border-color: #41443c;
-            border-radius: 6px;
+            border-radius: 8px;
             background: #252723;
             color: #b7d982;
+            box-shadow: inset 0 1px #ffffff0a;
         }
         .toolbar-button:hover { border-color: #849c5c; background: #2b2e27; color: #d1e9a9; }
         .toolbar-button[aria-pressed="true"] { border-color: #91ad62; background: #30352a; color: #e8efdb; }
@@ -1085,6 +1094,9 @@
             .room-strip { flex-wrap: wrap; min-height: 46px; }
             .room-strip-spacer { flex: 1 1 12px; }
             .bottom-toolbar { width: calc(100% + 18px); margin: 10px -9px -9px; padding: 9px; }
+            .bottom-toolbar { gap: 8px; }
+            .toolbar-button { width: 48px; height: 38px; flex: 1 1 40px; max-width: 48px; }
+            .toolbar-button svg { width: 21px; height: 21px; flex-basis: 21px; }
             .side-panel { padding: 18px 16px; }
         }
 
@@ -1094,7 +1106,7 @@
             .board-card { padding: 9px; }
             .room-strip { padding: 5px 8px; }
             .bottom-toolbar { gap: 5px; }
-            .toolbar-button { width: 34px; height: 34px; }
+            .toolbar-button { width: 34px; height: 34px; flex-basis: 34px; }
         }
 
         .room-strip {
