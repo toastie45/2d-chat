@@ -272,6 +272,8 @@
             gap: 18px;
             align-items: stretch;
         }
+        .room.profile-editor-active { align-items: start; }
+        .room.profile-editor-active > .side-card { height: var(--profile-editor-card-height); min-height: 0; }
 
         .board-card, .side-card {
             overflow: hidden;
@@ -315,6 +317,7 @@
             width: calc(100% + 30px);
             min-height: 54px;
             align-items: center;
+            justify-content: space-between;
             gap: 9px;
             margin: 10px -15px -15px;
             padding: 9px 15px;
@@ -1697,6 +1700,8 @@
             const apartmentEditorStatus = document.getElementById('apartment-editor-status');
             const chatPanel = document.getElementById('chat-panel');
             const profileEditorPanel = document.getElementById('profile-editor-panel');
+            const roomLayout = document.querySelector('.room');
+            const boardCard = roomLayout.querySelector('.board-card');
             const profileViewPanel = document.getElementById('profile-view-panel');
             const profileForm = document.getElementById('profile-form');
             const profilePasswordToggle = document.getElementById('profile-password-toggle');
@@ -2129,6 +2134,11 @@
                 privateMailPanel.hidden = panel !== 'private-mail';
                 profileEditorPanel.hidden = panel !== 'profile-editor';
                 profileViewPanel.hidden = panel !== 'profile-view';
+                roomLayout.classList.toggle('profile-editor-active', panel === 'profile-editor');
+                roomLayout.style.removeProperty('--profile-editor-card-height');
+                if (panel === 'profile-editor') {
+                    roomLayout.style.setProperty('--profile-editor-card-height', `${boardCard.offsetHeight}px`);
+                }
                 updateToolbarState();
             }
 
@@ -3879,7 +3889,12 @@
                 setOwnMood(moods[(currentMoodIndex + direction + moods.length) % moods.length]);
             });
 
-            window.addEventListener('resize', closeAvatarContextMenu);
+            window.addEventListener('resize', () => {
+                closeAvatarContextMenu();
+                if (profileEditorPanel.hidden) return;
+                roomLayout.style.removeProperty('--profile-editor-card-height');
+                roomLayout.style.setProperty('--profile-editor-card-height', `${boardCard.offsetHeight}px`);
+            });
 
             canvas.addEventListener('keydown', (event) => {
                 if (!myId || !players[myId]) return;
