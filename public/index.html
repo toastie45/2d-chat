@@ -841,6 +841,7 @@
         .admin-room-details { display: grid; grid-template-columns: 104px minmax(0, 1fr); align-items: center; gap: 9px; }
         .admin-room-preview { display: block; width: 104px; height: 64px; border: 1px solid #3b3e36; border-radius: 6px; object-fit: cover; }
         .admin-room-bg-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+        .admin-room-overlay-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; padding-top: 7px; border-top: 1px solid #353732; }
         .admin-room-file { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
         .admin-room-bg-status { flex: 1 0 100%; color: var(--muted); font-size: 10px; }
         .navigator-floor-heading { margin: 14px 0 2px; color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
@@ -1701,7 +1702,7 @@
                             </section>
                             <section class="admin-section" id="admin-rooms-view" aria-labelledby="admin-rooms-title" hidden>
                                 <h3 class="visually-hidden" id="admin-rooms-title">Navigator - etager og rum</h3>
-                                <p class="admin-status">Opret rum på en etage, rediger/slet rum og upload en baggrund til hvert offentligt rum. Billeder beskæres til 3:2 og gemmes som JPG på højst 950 KB. Fællesrum og Diskoteket er faste rum.</p>
+                                <p class="admin-status">Opret og rediger offentlige rum, upload baggrunde og læg gennemsigtige overlays oven på figurerne. Overlays tilpasses rummets 3:2-format. Fællesrum og Diskoteket er faste rum.</p>
                                 <form class="admin-room-create" id="admin-room-create-form">
                                     <input id="admin-room-name" type="text" maxlength="60" placeholder="Nyt rumnavn" aria-label="Nyt rumnavn" required>
                                     <input id="admin-room-floor" type="number" min="1" max="100" value="1" aria-label="Etagenummer" required>
@@ -1832,6 +1833,26 @@
                 if (!roomBackgroundImageUrl) return;
                 roomBackgroundImageLoaded = true;
                 boardBackgroundDirty = true;
+                requestBoardRender();
+            });
+            const roomOverlayImage = new Image();
+            let roomOverlayImageLoaded = false;
+            let roomOverlayImageUrl = '';
+            function setRoomOverlay(url = '') {
+                const nextUrl = typeof url === 'string' ? url : '';
+                if (nextUrl === roomOverlayImageUrl) return;
+                roomOverlayImageUrl = nextUrl;
+                roomOverlayImageLoaded = false;
+                if (nextUrl) roomOverlayImage.src = nextUrl;
+                else requestBoardRender();
+            }
+            roomOverlayImage.addEventListener('load', () => {
+                if (!roomOverlayImageUrl) return;
+                roomOverlayImageLoaded = true;
+                requestBoardRender();
+            });
+            roomOverlayImage.addEventListener('error', () => {
+                roomOverlayImageLoaded = false;
                 requestBoardRender();
             });
             const avatarImage = new Image();
@@ -2651,6 +2672,7 @@
             function applyRoomState(roomId, roomName, serverPlayers = {}, welcome = {}, apartmentState = {}) {
                 activeRoom = roomId;
                 setRoomBackground(roomId, welcome.roomBackgroundUrl);
+                setRoomOverlay(welcome.roomOverlayUrl);
                 roomStripName.textContent = roomName;
                 roomStripName.setAttribute('aria-label', `Vis velkomst for ${roomName}`);
                 chatTitle.textContent = `Tekstchat i ${roomName}`;
@@ -3336,6 +3358,58 @@
                 }
             }
 
+            async function uploadAdminRoomOverlay(roomId, file, statusElement) {
+                if (!file || !['image/png', 'image/webp'].includes(file.type)) {
+                    statusElement.textContent = 'Vælg et PNG- eller WebP-billede. Gennemsigtighed anbefales.';
+                    return;
+                }
+                if (file.size > 20 * 1024 * 1024) {
+                    statusElement.textContent = 'Billedfilen må højst være 20 MB før tilpasning.';
+                    return;
+                }
+                statusElement.textContent = 'Tilpasser overlayet til rummets 3:2-format…';
+                const objectUrl = URL.createObjectURL(file);
+                try {
+                    const source = new Image();
+                    source.src = objectUrl;
+                    await source.decode();
+                    if (!source.naturalWidth || !source.naturalHeight || source.naturalWidth > 8000 || source.naturalHeight > 8000) {
+                        statusElement.textContent = 'Billedet skal være mindre end 8000 × 8000 px.';
+                        return;
+                    }
+                    let blob = null;
+                    for (const [width, height] of [[1536, 1024], [1280, 853], [1024, 683], [768, 512]]) {
+                        const output = document.createElement('canvas');
+                        output.width = width;
+                        output.height = height;
+                        const context = output.getContext('2d');
+                        const scale = Math.min(width / source.naturalWidth, height / source.naturalHeight);
+                        const drawWidth = source.naturalWidth * scale;
+                        const drawHeight = source.naturalHeight * scale;
+                        context.drawImage(source, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+                        blob = await new Promise((resolve) => output.toBlob(resolve, 'image/webp', 0.88));
+                        if (blob?.type === 'image/webp' && blob.size <= 850_000) break;
+                    }
+                    if (!blob || blob.type !== 'image/webp' || blob.size > 850_000) {
+                        statusElement.textContent = 'Overlayet kunne ikke gemmes under 850 KB. Prøv en mindre fil.';
+                        return;
+                    }
+                    if (!socket.connected) {
+                        statusElement.textContent = 'Forbindelsen er væk. Prøv igen.';
+                        return;
+                    }
+                    statusElement.textContent = 'Uploader overlay…';
+                    socket.emit('admin-public-room-overlay-upload', {
+                        id: roomId,
+                        image: new Uint8Array(await blob.arrayBuffer())
+                    });
+                } catch (error) {
+                    statusElement.textContent = 'Billedet kunne ikke læses. Prøv en anden fil.';
+                } finally {
+                    URL.revokeObjectURL(objectUrl);
+                }
+            }
+
             function renderAdminPublicRooms(rooms = []) {
                 adminPublicRooms.replaceChildren();
                 if (!rooms.length) {
@@ -3407,6 +3481,39 @@
                     }
                     backgroundTools.append(backgroundStatus);
                     editFields.append(backgroundTools);
+                    const overlayTools = document.createElement('div');
+                    overlayTools.className = 'admin-room-overlay-tools';
+                    const overlayFileInput = document.createElement('input');
+                    overlayFileInput.className = 'admin-room-file';
+                    overlayFileInput.type = 'file';
+                    overlayFileInput.accept = 'image/png,image/webp';
+                    overlayFileInput.setAttribute('aria-label', `Vælg overlay til ${room.name}`);
+                    const chooseOverlay = document.createElement('button');
+                    chooseOverlay.className = 'admin-row-button';
+                    chooseOverlay.type = 'button';
+                    chooseOverlay.textContent = 'Upload overlay';
+                    const overlayStatus = document.createElement('span');
+                    overlayStatus.className = 'admin-room-bg-status';
+                    overlayStatus.dataset.roomOverlayStatus = room.id;
+                    chooseOverlay.addEventListener('click', () => overlayFileInput.click());
+                    overlayFileInput.addEventListener('change', () => {
+                        if (overlayFileInput.files?.[0]) uploadAdminRoomOverlay(room.id, overlayFileInput.files[0], overlayStatus);
+                        overlayFileInput.value = '';
+                    });
+                    overlayTools.append(overlayFileInput, chooseOverlay);
+                    if (room.hasOverlay) {
+                        const removeOverlay = document.createElement('button');
+                        removeOverlay.className = 'admin-row-button';
+                        removeOverlay.type = 'button';
+                        removeOverlay.textContent = 'Fjern overlay';
+                        removeOverlay.addEventListener('click', () => {
+                            overlayStatus.textContent = 'Fjerner overlay…';
+                            socket.emit('admin-public-room-overlay-reset', { id: room.id });
+                        });
+                        overlayTools.append(removeOverlay);
+                    }
+                    overlayTools.append(overlayStatus);
+                    editFields.append(overlayTools);
                     const actions = document.createElement('div');
                     actions.className = 'admin-row-actions';
                     const save = document.createElement('button');
@@ -3941,6 +4048,11 @@
                         ctx.restore();
                     }
 
+                }
+
+                // Decorative overlays sit above the room background and every avatar.
+                if (roomOverlayImageLoaded) {
+                    ctx.drawImage(roomOverlayImage, 0, 0, gridLayout.width, gridLayout.height);
                 }
 
                 // Highlighted bubbles are drawn last so they remain visible when bubbles overlap.
@@ -4954,7 +5066,7 @@
                 socket.disconnect();
             });
 
-            socket.on('join-success', ({ players: serverPlayers, mutedUsernames: initialMutedUsernames = [], roomId = 'common', roomName, welcomeTitle, welcomeText, roomBackgroundUrl, apartmentTiles, canEditApartment, canEditPublicRoom, ownApartmentId, ownApartmentNumber }) => {
+            socket.on('join-success', ({ players: serverPlayers, mutedUsernames: initialMutedUsernames = [], roomId = 'common', roomName, welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl, apartmentTiles, canEditApartment, canEditPublicRoom, ownApartmentId, ownApartmentNumber }) => {
                 players = {};
                 myId = socket.id;
                 ownApartment = ownApartmentId
@@ -4962,6 +5074,7 @@
                     : null;
                 activeRoom = roomId;
                 setRoomBackground(roomId, roomBackgroundUrl);
+                setRoomOverlay(roomOverlayUrl);
                 roomStripName.textContent = roomName;
                 roomStripName.setAttribute('aria-label', `Vis velkomst for ${roomName}`);
                 chatTitle.textContent = `Tekstchat i ${roomName}`;
@@ -4997,11 +5110,11 @@
                 canvas.focus();
             });
 
-            socket.on('room-changed', ({ roomId, roomName, players: serverPlayers = {}, welcomeTitle, welcomeText, roomBackgroundUrl, apartmentTiles, canEditApartment, canEditPublicRoom } = {}) => {
+            socket.on('room-changed', ({ roomId, roomName, players: serverPlayers = {}, welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl, apartmentTiles, canEditApartment, canEditPublicRoom } = {}) => {
                 if (!roomId || !roomName) return;
                 const wasNavigatorOpen = !navigatorPanel.hidden;
                 const wasMembersOpen = !membersPanel.hidden;
-                applyRoomState(roomId, roomName, serverPlayers, { welcomeTitle, welcomeText, roomBackgroundUrl }, { apartmentTiles, canEditApartment, canEditPublicRoom });
+                applyRoomState(roomId, roomName, serverPlayers, { welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl }, { apartmentTiles, canEditApartment, canEditPublicRoom });
                 sidePanelHistory.length = 0;
                 selectSidePanel('welcome', { remember: false });
                 if (wasNavigatorOpen) socket.emit('navigator-request');
@@ -5012,9 +5125,10 @@
                 updateRoomWelcome(welcomeTitle, welcomeText);
             });
 
-            socket.on('public-room-metadata', ({ roomId, roomName, welcomeTitle, welcomeText, roomBackgroundUrl } = {}) => {
+            socket.on('public-room-metadata', ({ roomId, roomName, welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl } = {}) => {
                 if (roomId !== activeRoom) return;
                 setRoomBackground(roomId, roomBackgroundUrl);
+                setRoomOverlay(roomOverlayUrl);
                 updateApartmentRoomTitle(roomName, welcomeTitle);
                 updateRoomWelcome(welcomeTitle, welcomeText);
             });
@@ -5133,6 +5247,15 @@
             });
             socket.on('admin-room-background-result', ({ success, message } = {}) => {
                 adminRoomsStatus.textContent = message || (success ? 'Baggrunden er gemt.' : 'Baggrunden kunne ikke gemmes.');
+                if (success && adminSectionSelect.value === 'rooms') socket.emit('admin-public-rooms-request');
+            });
+            socket.on('admin-room-overlay-result', ({ id, success, message } = {}) => {
+                adminRoomsStatus.textContent = message || (success ? 'Overlayet er gemt.' : 'Overlayet kunne ikke gemmes.');
+                for (const status of adminPublicRooms.querySelectorAll('[data-room-overlay-status]')) {
+                    if (status.dataset.roomOverlayStatus === id) {
+                        status.textContent = message || (success ? 'Overlayet er gemt.' : 'Overlayet kunne ikke gemmes.');
+                    }
+                }
                 if (success && adminSectionSelect.value === 'rooms') socket.emit('admin-public-rooms-request');
             });
             socket.on('admin-room-welcome-result', ({ id, success, message } = {}) => {

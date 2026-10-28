@@ -494,7 +494,8 @@ async function startServer() {
     async function getPublicRooms() {
         const { rows } = await pool.query(`
             SELECT id, room_number, floor_number, name, is_system, welcome_title, welcome_text,
-                   background_image IS NOT NULL AS has_background, background_version
+                   background_image IS NOT NULL AS has_background, background_version,
+                   overlay_image IS NOT NULL AS has_overlay, overlay_version
             FROM chat_public_rooms ORDER BY floor_number, room_number
         `);
         return rows;
@@ -506,6 +507,11 @@ async function startServer() {
         if (!room?.has_background) return null;
         const version = room.background_version || 0;
         return `/api/public-room-background/${encodeURIComponent(room.id)}?v=${version}`;
+    }
+    function getPublicRoomOverlayUrl(room) {
+        if (!room?.has_overlay) return null;
+        const version = room.overlay_version || 0;
+        return `/api/public-room-overlay/${encodeURIComponent(room.id)}?v=${version}`;
     }
     async function getChatOnlineCount() {
         const roomIds = await getAllRoomIds();
@@ -577,6 +583,10 @@ async function startServer() {
             background_mime_type VARCHAR(24),
             background_updated_at TIMESTAMPTZ,
             background_version BIGINT NOT NULL DEFAULT 0,
+            overlay_image BYTEA,
+            overlay_mime_type VARCHAR(24),
+            overlay_updated_at TIMESTAMPTZ,
+            overlay_version BIGINT NOT NULL DEFAULT 0,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
     `);
@@ -584,6 +594,10 @@ async function startServer() {
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS background_mime_type VARCHAR(24)');
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS background_updated_at TIMESTAMPTZ');
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS background_version BIGINT NOT NULL DEFAULT 0');
+    await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS overlay_image BYTEA');
+    await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS overlay_mime_type VARCHAR(24)');
+    await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS overlay_updated_at TIMESTAMPTZ');
+    await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS overlay_version BIGINT NOT NULL DEFAULT 0');
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS welcome_title VARCHAR(100)');
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS welcome_text VARCHAR(500)');
     await pool.query("ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS layout_json JSONB NOT NULL DEFAULT '{}'::jsonb");
@@ -720,6 +734,30 @@ async function startServer() {
             response.type(room.background_mime_type || 'image/jpeg').send(room.background_image);
         } catch (error) {
             console.error('Could not load public room background:', getSafeErrorCode(error));
+            response.sendStatus(500);
+        }
+    });
+    app.get('/api/public-room-overlay/:roomId', async (request, response) => {
+        const roomId = String(request.params.roomId || '');
+        if (!/^(common|disco|public:[1-9]\d{0,18})$/.test(roomId)) {
+            response.sendStatus(404);
+            return;
+        }
+        try {
+            const { rows: [room] } = await pool.query(
+                'SELECT overlay_image, overlay_mime_type FROM chat_public_rooms WHERE id = $1', [roomId]
+            );
+            if (!room?.overlay_image) {
+                response.sendStatus(404);
+                return;
+            }
+            response.set({
+                'Cache-Control': 'public, max-age=31536000, immutable',
+                'X-Content-Type-Options': 'nosniff'
+            });
+            response.type(room.overlay_mime_type || 'image/webp').send(room.overlay_image);
+        } catch (error) {
+            console.error('Could not load public room overlay:', getSafeErrorCode(error));
             response.sendStatus(500);
         }
     });
@@ -1646,14 +1684,16 @@ async function startServer() {
         }
         const { rows: [publicRoom] = [] } = await pool.query(`
             SELECT id, room_number, name, welcome_title, welcome_text,
-                   background_image IS NOT NULL AS has_background, background_version
+                   background_image IS NOT NULL AS has_background, background_version,
+                   overlay_image IS NOT NULL AS has_overlay, overlay_version
             FROM chat_public_rooms WHERE id = $1
         `, [roomId]);
         const roomName = publicRoom ? formatPublicRoomName(publicRoom) : PUBLIC_ROOM_NAMES[roomId] || 'chatten';
         return {
             welcomeTitle: publicRoom?.welcome_title || `Velkommen i ${roomName}`,
             welcomeText: publicRoom?.welcome_text || 'Her kan du møde andre og chatte sammen. God fornøjelse!',
-            roomBackgroundUrl: getPublicRoomBackgroundUrl(publicRoom)
+            roomBackgroundUrl: getPublicRoomBackgroundUrl(publicRoom),
+            roomOverlayUrl: getPublicRoomOverlayUrl(publicRoom)
         };
     }
 
@@ -1754,6 +1794,8 @@ async function startServer() {
                 isSystem: room.is_system,
                 hasBackground: room.has_background,
                 backgroundUrl: getPublicRoomBackgroundUrl(room),
+                hasOverlay: room.has_overlay,
+                overlayUrl: getPublicRoomOverlayUrl(room),
                 count: await redis.hLen(roomKeys(room.id).players)
             })));
             socket.emit('admin-public-rooms', { rooms: result });
@@ -1792,7 +1834,8 @@ async function startServer() {
                     return;
                 }
                 const { rows: [room] } = await pool.query(`
-                    SELECT id, room_number, name, welcome_title, welcome_text, TRUE AS has_background, background_version
+                    SELECT id, room_number, name, welcome_title, welcome_text, TRUE AS has_background, background_version,
+                           overlay_image IS NOT NULL AS has_overlay, overlay_version
                     FROM chat_public_rooms WHERE id = $1
                 `, [id]);
                 const roomName = formatPublicRoomName(room);
@@ -1801,7 +1844,8 @@ async function startServer() {
                     roomName,
                     welcomeTitle: room.welcome_title || `Velkommen i ${roomName}`,
                     welcomeText: room.welcome_text || 'Her kan du møde andre og chatte sammen. God fornøjelse!',
-                    roomBackgroundUrl: getPublicRoomBackgroundUrl(room)
+                    roomBackgroundUrl: getPublicRoomBackgroundUrl(room),
+                    roomOverlayUrl: getPublicRoomOverlayUrl(room)
                 });
                 socket.emit('admin-room-background-result', { success: true, message: `Baggrunden for ${roomName} er opdateret.` });
                 await sendAdminPublicRooms();
@@ -1826,14 +1870,15 @@ async function startServer() {
                     socket.emit('admin-room-background-result', { success: false, message: 'Rummet findes ikke længere.' });
                     return;
                 }
-                const { rows: [room] } = await pool.query('SELECT id, room_number, name, welcome_title, welcome_text FROM chat_public_rooms WHERE id = $1', [id]);
+                const { rows: [room] } = await pool.query('SELECT id, room_number, name, welcome_title, welcome_text, overlay_image IS NOT NULL AS has_overlay, overlay_version FROM chat_public_rooms WHERE id = $1', [id]);
                 const roomName = formatPublicRoomName({ ...room, id });
                 io.to(roomChannel(id)).emit('public-room-metadata', {
                     roomId: id,
                     roomName,
                     welcomeTitle: room.welcome_title || `Velkommen i ${roomName}`,
                     welcomeText: room.welcome_text || 'Her kan du møde andre og chatte sammen. God fornøjelse!',
-                    roomBackgroundUrl: null
+                    roomBackgroundUrl: null,
+                    roomOverlayUrl: getPublicRoomOverlayUrl(room)
                 });
                 socket.emit('admin-room-background-result', { success: true, message: `${roomName} bruger nu testbaggrunden igen.` });
                 await sendAdminPublicRooms();
@@ -1841,6 +1886,92 @@ async function startServer() {
             } catch (error) {
                 console.error('Could not reset public room background:', getSafeErrorCode(error));
                 socket.emit('admin-room-background-result', { success: false, message: 'Baggrunden kunne ikke nulstilles.' });
+            }
+        });
+
+        socket.on('admin-public-room-overlay-upload', async ({ id, image } = {}) => {
+            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            const bytes = Buffer.isBuffer(image) ? image : image instanceof Uint8Array ? Buffer.from(image) : null;
+            const isPng = bytes && bytes.length >= 8
+                && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+            const isWebp = bytes && bytes.length >= 12
+                && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
+            if (typeof id !== 'string' || !/^(common|disco|public:[1-9]\d{0,18})$/.test(id)
+                || !bytes || (!isPng && !isWebp) || bytes.length > 850_000) {
+                socket.emit('admin-room-overlay-result', { id, success: false, message: 'Vaelg et gyldigt PNG- eller WebP-overlay paa hoejst 850 KB.' });
+                return;
+            }
+            try {
+                const mimeType = isPng ? 'image/png' : 'image/webp';
+                const { rowCount } = await pool.query(`
+                    UPDATE chat_public_rooms
+                    SET overlay_image = $2, overlay_mime_type = $3,
+                        overlay_updated_at = NOW(), overlay_version = overlay_version + 1
+                    WHERE id = $1
+                `, [id, bytes, mimeType]);
+                if (!rowCount) {
+                    socket.emit('admin-room-overlay-result', { id, success: false, message: 'Rummet findes ikke laengere.' });
+                    return;
+                }
+                const { rows: [room] } = await pool.query(`
+                    SELECT id, room_number, name, welcome_title, welcome_text,
+                           background_image IS NOT NULL AS has_background, background_version,
+                           TRUE AS has_overlay, overlay_version
+                    FROM chat_public_rooms WHERE id = $1
+                `, [id]);
+                const roomName = formatPublicRoomName(room);
+                io.to(roomChannel(id)).emit('public-room-metadata', {
+                    roomId: id,
+                    roomName,
+                    welcomeTitle: room.welcome_title || `Velkommen i ${roomName}`,
+                    welcomeText: room.welcome_text || 'Her kan du moede andre og chatte sammen. God fornoejelse!',
+                    roomBackgroundUrl: getPublicRoomBackgroundUrl(room),
+                    roomOverlayUrl: getPublicRoomOverlayUrl(room)
+                });
+                socket.emit('admin-room-overlay-result', { id, success: true, message: `Overlayet til ${roomName} er gemt.` });
+                await sendAdminPublicRooms();
+                io.emit('navigator-refresh');
+            } catch (error) {
+                console.error('Could not save public room overlay:', getSafeErrorCode(error));
+                socket.emit('admin-room-overlay-result', { id, success: false, message: 'Overlayet kunne ikke gemmes.' });
+            }
+        });
+
+        socket.on('admin-public-room-overlay-reset', async ({ id } = {}) => {
+            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)
+                || typeof id !== 'string' || !/^(common|disco|public:[1-9]\d{0,18})$/.test(id)) return;
+            try {
+                const { rowCount } = await pool.query(`
+                    UPDATE chat_public_rooms
+                    SET overlay_image = NULL, overlay_mime_type = NULL,
+                        overlay_updated_at = NULL, overlay_version = overlay_version + 1
+                    WHERE id = $1
+                `, [id]);
+                if (!rowCount) {
+                    socket.emit('admin-room-overlay-result', { id, success: false, message: 'Rummet findes ikke laengere.' });
+                    return;
+                }
+                const { rows: [room] } = await pool.query(`
+                    SELECT id, room_number, name, welcome_title, welcome_text,
+                           background_image IS NOT NULL AS has_background, background_version,
+                           overlay_image IS NOT NULL AS has_overlay, overlay_version
+                    FROM chat_public_rooms WHERE id = $1
+                `, [id]);
+                const roomName = formatPublicRoomName(room);
+                io.to(roomChannel(id)).emit('public-room-metadata', {
+                    roomId: id,
+                    roomName,
+                    welcomeTitle: room.welcome_title || `Velkommen i ${roomName}`,
+                    welcomeText: room.welcome_text || 'Her kan du moede andre og chatte sammen. God fornoejelse!',
+                    roomBackgroundUrl: getPublicRoomBackgroundUrl(room),
+                    roomOverlayUrl: null
+                });
+                socket.emit('admin-room-overlay-result', { id, success: true, message: `Overlayet til ${roomName} er fjernet.` });
+                await sendAdminPublicRooms();
+                io.emit('navigator-refresh');
+            } catch (error) {
+                console.error('Could not remove public room overlay:', getSafeErrorCode(error));
+                socket.emit('admin-room-overlay-result', { id, success: false, message: 'Overlayet kunne ikke fjernes.' });
             }
         });
 
@@ -1884,7 +2015,8 @@ async function startServer() {
                 }
                 const { rows: [updatedRoom] } = await pool.query(`
                     SELECT id, room_number, name, welcome_title, welcome_text,
-                           background_image IS NOT NULL AS has_background, background_version
+                           background_image IS NOT NULL AS has_background, background_version,
+                           overlay_image IS NOT NULL AS has_overlay, overlay_version
                     FROM chat_public_rooms WHERE id = $1
                 `, [id]);
                 const roomName = formatPublicRoomName(updatedRoom);
@@ -1893,7 +2025,8 @@ async function startServer() {
                     roomName,
                     welcomeTitle: updatedRoom.welcome_title || `Velkommen i ${roomName}`,
                     welcomeText: updatedRoom.welcome_text || 'Her kan du møde andre og chatte sammen. God fornøjelse!',
-                    roomBackgroundUrl: getPublicRoomBackgroundUrl(updatedRoom)
+                    roomBackgroundUrl: getPublicRoomBackgroundUrl(updatedRoom),
+                    roomOverlayUrl: getPublicRoomOverlayUrl(updatedRoom)
                 });
                 socket.emit('admin-room-action-result', { success: true, message: 'Rummets navn og etage er gemt.' });
                 await sendAdminPublicRooms();
