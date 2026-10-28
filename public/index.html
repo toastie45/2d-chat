@@ -2413,6 +2413,12 @@
                 return Math.max(colDistance, rowDistance) <= 1 && (colDistance > 0 || rowDistance > 0);
             }
 
+            function setOwnMood(mood) {
+                if (!myId || !players[myId] || !['glad', 'mobset'].includes(mood)) return;
+                if ((players[myId].mood || 'glad') === mood) return;
+                socket.emit('player-mood-set', { mood });
+            }
+
             function updateAvatarContextMute() {
                 const player = contextPlayerId ? players[contextPlayerId] : null;
                 const isSelf = contextPlayerId === myId;
@@ -3476,7 +3482,7 @@
                 button.addEventListener('click', () => {
                     const mood = button.dataset.avatarMood;
                     if (contextPlayerId !== myId || !['glad', 'mobset'].includes(mood)) return;
-                    socket.emit('player-mood-set', { mood });
+                    setOwnMood(mood);
                     closeAvatarContextMenu();
                 });
             });
@@ -3800,6 +3806,14 @@
                     setFriendMenuOpen(false);
                     friendMenuTrigger.focus();
                 }
+            });
+
+            document.addEventListener('keydown', (event) => {
+                if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+                if (!myId || !players[myId] || gameSection.classList.contains('hidden')) return;
+                if (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+                event.preventDefault();
+                setOwnMood(event.key === 'ArrowUp' ? 'glad' : 'mobset');
             });
 
             window.addEventListener('resize', closeAvatarContextMenu);
