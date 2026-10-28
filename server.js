@@ -662,6 +662,50 @@ async function startServer() {
     `);
     await pool.query('ALTER TABLE chat_clothing_items ADD COLUMN IF NOT EXISTS is_equipped BOOLEAN NOT NULL DEFAULT FALSE');
     await pool.query('CREATE INDEX IF NOT EXISTS chat_clothing_items_user_idx ON chat_clothing_items (target_user_id, id)');
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS chat_clothing_catalog (
+            id BIGSERIAL PRIMARY KEY,
+            name VARCHAR(60) NOT NULL,
+            description VARCHAR(300) NOT NULL DEFAULT '',
+            category VARCHAR(20) NOT NULL CHECK (category IN ('headwear', 'clothing', 'left_hand', 'right_hand', 'accessory')),
+            image BYTEA NOT NULL,
+            mime_type VARCHAR(24) NOT NULL CHECK (mime_type IN ('image/png', 'image/webp')),
+            required_level INTEGER NOT NULL DEFAULT 1 CHECK (required_level BETWEEN 1 AND 20),
+            price INTEGER NOT NULL DEFAULT 0 CHECK (price BETWEEN 0 AND 100000000),
+            transform_json JSONB NOT NULL DEFAULT '{"x":0,"y":0,"rotation":0,"scale":1}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS chat_clothing_assignments (
+            id BIGSERIAL PRIMARY KEY,
+            target_user_id BIGINT NOT NULL REFERENCES chat_users(id) ON DELETE CASCADE,
+            clothing_item_id BIGINT NOT NULL REFERENCES chat_clothing_catalog(id) ON DELETE CASCADE,
+            is_equipped BOOLEAN NOT NULL DEFAULT FALSE,
+            assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (target_user_id, clothing_item_id)
+        )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS chat_clothing_assignments_user_idx ON chat_clothing_assignments (target_user_id, clothing_item_id)');
+    // Migrate the legacy per-user copies into reusable catalog entries and assignments.
+    await pool.query(`
+        INSERT INTO chat_clothing_catalog
+            (id, name, description, category, image, mime_type, required_level, price, transform_json, created_at)
+        SELECT id, name, description, category, image, mime_type, required_level, price, transform_json, created_at
+        FROM chat_clothing_items
+        ON CONFLICT (id) DO NOTHING
+    `);
+    await pool.query(`
+        INSERT INTO chat_clothing_assignments (target_user_id, clothing_item_id, is_equipped, assigned_at)
+        SELECT target_user_id, id, is_equipped, created_at FROM chat_clothing_items
+        ON CONFLICT (target_user_id, clothing_item_id) DO NOTHING
+    `);
+    await pool.query('DELETE FROM chat_clothing_items');
+    await pool.query(`
+        SELECT setval(pg_get_serial_sequence('chat_clothing_catalog', 'id'),
+            GREATEST(COALESCE((SELECT MAX(id) FROM chat_clothing_catalog), 1), 1),
+            EXISTS (SELECT 1 FROM chat_clothing_catalog))
+    `);
     await pool.query('CREATE INDEX IF NOT EXISTS chat_users_registration_ip_hash_idx ON chat_users (registration_ip_hash) WHERE registration_ip_hash IS NOT NULL');
     await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_online_sessions (
@@ -825,7 +869,7 @@ async function startServer() {
         }
         try {
             const { rows: [item] } = await pool.query(
-                'SELECT image, mime_type FROM chat_clothing_items WHERE id = $1', [itemId]
+                'SELECT image, mime_type FROM chat_clothing_catalog WHERE id = $1', [itemId]
             );
             if (!item?.image) {
                 response.sendStatus(404);
@@ -1658,8 +1702,10 @@ async function startServer() {
 
     async function getUserClothing(userId) {
         const { rows } = await pool.query(`
-            SELECT id, name, category, transform_json
-            FROM chat_clothing_items WHERE target_user_id = $1 AND is_equipped = TRUE ORDER BY id
+            SELECT item.id, item.name, item.category, item.transform_json
+            FROM chat_clothing_assignments assignment
+            JOIN chat_clothing_catalog item ON item.id = assignment.clothing_item_id
+            WHERE assignment.target_user_id = $1 AND assignment.is_equipped = TRUE ORDER BY item.id
         `, [userId]);
         return rows.map((item) => {
             const transform = normalizePublicRoomOverlayTransform(item.transform_json);
@@ -1943,25 +1989,35 @@ async function startServer() {
         }
 
         async function sendAdminClothingItems() {
-            const { rows } = await pool.query(`
-                SELECT item.id, item.target_user_id::text AS target_user_id, target.username AS target_username,
-                       item.name, item.description, item.category, item.required_level, item.price,
-                       item.transform_json, item.created_at
-                FROM chat_clothing_items item
-                JOIN chat_users target ON target.id = item.target_user_id
-                ORDER BY item.created_at DESC, item.id DESC LIMIT 200
-            `);
+            const [catalogResult, assignmentResult] = await Promise.all([
+                pool.query(`
+                    SELECT item.id, item.name, item.description, item.category, item.required_level, item.price,
+                           item.transform_json, item.created_at, COUNT(assignment.id)::integer AS assignment_count
+                    FROM chat_clothing_catalog item
+                    LEFT JOIN chat_clothing_assignments assignment ON assignment.clothing_item_id = item.id
+                    GROUP BY item.id ORDER BY item.created_at DESC, item.id DESC LIMIT 200
+                `),
+                pool.query(`
+                    SELECT assignment.id AS assignment_id, item.id AS item_id,
+                           assignment.target_user_id::text AS target_user_id, target.username AS target_username,
+                           item.name, item.description, item.category, item.required_level, item.price,
+                           item.transform_json, assignment.assigned_at
+                    FROM chat_clothing_assignments assignment
+                    JOIN chat_clothing_catalog item ON item.id = assignment.clothing_item_id
+                    JOIN chat_users target ON target.id = assignment.target_user_id
+                    ORDER BY assignment.assigned_at DESC, assignment.id DESC LIMIT 300
+                `)
+            ]);
+            const mapItem = (item) => ({
+                id: String(item.id), name: item.name, description: item.description, category: item.category,
+                requiredLevel: Number(item.required_level), price: Number(item.price),
+                transform: normalizePublicRoomOverlayTransform(item.transform_json)
+            });
             socket.emit('admin-clothing-items', {
-                items: rows.map((item) => ({
-                    id: String(item.id),
-                    targetUserId: item.target_user_id,
-                    targetUsername: item.target_username,
-                    name: item.name,
-                    description: item.description,
-                    category: item.category,
-                    requiredLevel: Number(item.required_level),
-                    price: Number(item.price),
-                    transform: normalizePublicRoomOverlayTransform(item.transform_json)
+                catalog: catalogResult.rows.map((item) => ({ ...mapItem(item), assignmentCount: Number(item.assignment_count) })),
+                items: assignmentResult.rows.map((item) => ({
+                    ...mapItem({ ...item, id: item.item_id }), id: String(item.assignment_id),
+                    catalogId: String(item.item_id), targetUserId: item.target_user_id, targetUsername: item.target_username
                 }))
             });
         }
@@ -1977,38 +2033,64 @@ async function startServer() {
 
         socket.on('admin-clothing-item-create', async (payload = {}) => {
             if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
-            const username = normalizeUsername(payload.username);
+            const username = typeof payload.username === 'string' && payload.username.trim() ? normalizeUsername(payload.username) : null;
             const name = typeof payload.name === 'string' ? payload.name.normalize('NFKC').trim() : '';
             const description = typeof payload.description === 'string' ? payload.description.normalize('NFKC').trim() : '';
-            const category = payload.category;
-            const requiredLevel = Number(payload.requiredLevel);
-            const price = Number(payload.price);
-            const x = Number(payload.x);
-            const y = Number(payload.y);
-            const rotation = Number(payload.rotation);
-            const scale = Number(payload.scale);
-            const image = Buffer.isBuffer(payload.image)
-                ? payload.image
-                : payload.image instanceof Uint8Array ? Buffer.from(payload.image) : null;
-            const isPng = image && image.length >= 8
-                && image.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
-            const isWebp = image && image.length >= 12
-                && image.toString('ascii', 0, 4) === 'RIFF'
-                && image.toString('ascii', 8, 12) === 'WEBP';
-            const validTransform = Number.isFinite(x) && x >= -270 && x <= 270
-                && Number.isFinite(y) && y >= -180 && y <= 180
-                && Number.isFinite(rotation) && rotation >= -180 && rotation <= 180
-                && Number.isFinite(scale) && scale >= 0.25 && scale <= 3;
-            if (!username || !name || name.length > 60 || /[\u0000-\u001f\u007f]/.test(name)
-                || description.length > 300 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(description)
-                || !['headwear', 'clothing', 'left_hand', 'right_hand', 'accessory'].includes(category)
-                || !Number.isInteger(requiredLevel) || requiredLevel < 1 || requiredLevel > 20
-                || !Number.isInteger(price) || price < 0 || price > 100000000
-                || !validTransform || !image || image.length > 950_000 || (!isPng && !isWebp)) {
-                socket.emit('admin-clothing-action-result', {
-                    success: false,
-                    message: 'Kontrollér bruger, navn, kategori, level, pris og placering. Billedet skal være PNG/WebP på højst 950 KB.'
-                });
+            const category = payload.category, requiredLevel=Number(payload.requiredLevel), price=Number(payload.price);
+            const x=Number(payload.x), y=Number(payload.y), rotation=Number(payload.rotation), scale=Number(payload.scale);
+            const image=Buffer.isBuffer(payload.image)?payload.image:payload.image instanceof Uint8Array?Buffer.from(payload.image):null;
+            const isPng=image&&image.length>=8&&image.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
+            const isWebp=image&&image.length>=12&&image.toString('ascii',0,4)==='RIFF'&&image.toString('ascii',8,12)==='WEBP';
+            const validTransform=Number.isFinite(x)&&x>=-270&&x<=270&&Number.isFinite(y)&&y>=-180&&y<=180&&Number.isFinite(rotation)&&rotation>=-180&&rotation<=180&&Number.isFinite(scale)&&scale>=0.25&&scale<=3;
+            if((payload.username!=null&&typeof payload.username!=='string')||(payload.username?.trim()&&!username)||!name||name.length>60||/[\u0000-\u001f\u007f]/.test(name)||description.length>300||/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(description)||!['headwear','clothing','left_hand','right_hand','accessory'].includes(category)||!Number.isInteger(requiredLevel)||requiredLevel<1||requiredLevel>20||!Number.isInteger(price)||price<0||price>100000000||!validTransform||!image||image.length>950000||(!isPng&&!isWebp)){
+                socket.emit('admin-clothing-action-result',{success:false,message:'Kontroll?r brugernavn (valgfrit), navn, kategori, level, pris og placering. Billedet skal v?re PNG/WebP p? h?jst 950 KB.'});return;
+            }
+            try{
+                const targetResult=username?await pool.query('SELECT id, username FROM chat_users WHERE username_normalized = $1',[username.normalized]):null;
+                const target=targetResult?.rows[0]||null;
+                if(username&&!target){socket.emit('admin-clothing-action-result',{success:false,message:'Brugeren findes ikke.'});return;}
+                const client=await pool.connect();
+                try{
+                    await client.query('BEGIN');
+                    const {rows:[item]}=await client.query(`
+                        INSERT INTO chat_clothing_catalog (name,description,category,image,mime_type,required_level,price,transform_json)
+                        VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb) RETURNING id
+                    `,[name,description,category,image,isPng?'image/png':'image/webp',requiredLevel,price,JSON.stringify({x,y,rotation,scale})]);
+                    if(target)await client.query('INSERT INTO chat_clothing_assignments (target_user_id,clothing_item_id) VALUES ($1,$2)',[target.id,item.id]);
+                    await client.query('COMMIT');
+                }catch(error){try{await client.query('ROLLBACK')}catch{}throw error;}finally{client.release();}
+                if(target)await refreshOnlineUserClothing(target.id);
+                socket.emit('admin-clothing-action-result',{success:true,action:'create',message:target?(name+' blev gemt og lagt i '+target.username+'s tojskab.'):name+' blev gemt i tojkataloget.'});
+                await sendAdminClothingItems();
+            }catch(error){console.error('Could not create clothing item:',getSafeErrorCode(error));socket.emit('admin-clothing-action-result',{success:false,message:'T?jdelen kunne ikke gemmes.'});}
+        });
+
+        socket.on('admin-clothing-item-delete', async ({ id } = {}) => {
+            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            if (typeof id !== 'string' || !/^[1-9]\d{0,18}$/.test(id)) return;
+            try {
+                const { rows: [item] } = await pool.query(
+                    'DELETE FROM chat_clothing_assignments WHERE id = $1 RETURNING target_user_id::text AS target_user_id', [id]
+                );
+                if (!item) {
+                    socket.emit('admin-clothing-action-result', { success: false, message: 'Tøjdelen findes ikke længere.' });
+                    return;
+                }
+                await refreshOnlineUserClothing(item.target_user_id);
+                socket.emit('admin-clothing-action-result', { success: true, action: 'assignment-delete', message: 'Tojdelen blev fjernet fra brugerens skab.' });
+                await sendAdminClothingItems();
+            } catch (error) {
+                console.error('Could not delete clothing item:', getSafeErrorCode(error));
+                socket.emit('admin-clothing-action-result', { success: false, message: 'Tøjdelen kunne ikke fjernes.' });
+            }
+        });
+
+        socket.on('admin-clothing-template-assign', async ({ id, username: rawUsername } = {}) => {
+            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            if (typeof id !== 'string' || !/^[1-9]\d{0,18}$/.test(id)) return;
+            const username = normalizeUsername(rawUsername);
+            if (!username) {
+                socket.emit('admin-clothing-action-result', { success: false, message: 'Skriv et gyldigt brugernavn.' });
                 return;
             }
             try {
@@ -2019,50 +2101,60 @@ async function startServer() {
                     socket.emit('admin-clothing-action-result', { success: false, message: 'Brugeren findes ikke.' });
                     return;
                 }
-                const transform = { x, y, rotation, scale };
-                const result = await pool.query(`
-                    INSERT INTO chat_clothing_items
-                        (target_user_id, name, description, category, image, mime_type, required_level, price, transform_json)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
-                    RETURNING id
-                `, [target.id, name, description, category, image, isPng ? 'image/png' : 'image/webp', requiredLevel, price, JSON.stringify(transform)]);
-                await refreshOnlineUserClothing(target.id);
+                const { rows: [item] } = await pool.query(`
+                    INSERT INTO chat_clothing_assignments (target_user_id, clothing_item_id)
+                    SELECT $1, id FROM chat_clothing_catalog WHERE id = $2
+                    ON CONFLICT (target_user_id, clothing_item_id) DO NOTHING
+                    RETURNING clothing_item_id
+                `, [target.id, id]);
+                const { rows: [template] } = await pool.query('SELECT name FROM chat_clothing_catalog WHERE id = $1', [id]);
+                if (!template) {
+                    socket.emit('admin-clothing-action-result', { success: false, message: 'Tøjskabelonen findes ikke længere.' });
+                    return;
+                }
+                if (item) await refreshOnlineUserClothing(target.id);
                 socket.emit('admin-clothing-action-result', {
                     success: true,
-                    message: `${name} blev lagt i ${target.username}s tøjskab.`
+                    message: item ? `${template.name} blev lagt i ${target.username}s tøjskab.` : `${target.username} har allerede ${template.name}.`
                 });
                 await sendAdminClothingItems();
             } catch (error) {
-                console.error('Could not create clothing item:', getSafeErrorCode(error));
-                socket.emit('admin-clothing-action-result', { success: false, message: 'Tøjdelen kunne ikke gemmes.' });
+                console.error('Could not assign clothing template:', getSafeErrorCode(error));
+                socket.emit('admin-clothing-action-result', { success: false, message: 'Tøjdelen kunne ikke tildeles.' });
             }
         });
 
-        socket.on('admin-clothing-item-delete', async ({ id } = {}) => {
+        socket.on('admin-clothing-template-delete', async ({ id } = {}) => {
             if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
             if (typeof id !== 'string' || !/^[1-9]\d{0,18}$/.test(id)) return;
             try {
+                const { rows: assignments } = await pool.query(
+                    'SELECT target_user_id::text AS target_user_id FROM chat_clothing_assignments WHERE clothing_item_id = $1', [id]
+                );
                 const { rows: [item] } = await pool.query(
-                    'DELETE FROM chat_clothing_items WHERE id = $1 RETURNING target_user_id::text AS target_user_id, name', [id]
+                    'DELETE FROM chat_clothing_catalog WHERE id = $1 RETURNING name', [id]
                 );
                 if (!item) {
-                    socket.emit('admin-clothing-action-result', { success: false, message: 'Tøjdelen findes ikke længere.' });
+                    socket.emit('admin-clothing-action-result', { success: false, message: 'Tøjskabelonen findes ikke længere.' });
                     return;
                 }
-                await refreshOnlineUserClothing(item.target_user_id);
-                socket.emit('admin-clothing-action-result', { success: true, message: `${item.name} blev fjernet.` });
+                await Promise.all([...new Set(assignments.map((assignment) => assignment.target_user_id))].map(refreshOnlineUserClothing));
+                socket.emit('admin-clothing-action-result', { success: true, action: 'template-delete', message: `${item.name} og dens tildelinger blev slettet.` });
                 await sendAdminClothingItems();
             } catch (error) {
-                console.error('Could not delete clothing item:', getSafeErrorCode(error));
-                socket.emit('admin-clothing-action-result', { success: false, message: 'Tøjdelen kunne ikke fjernes.' });
+                console.error('Could not delete clothing template:', getSafeErrorCode(error));
+                socket.emit('admin-clothing-action-result', { success: false, message: 'Tøjskabelonen kunne ikke slettes.' });
             }
         });
 
         async function sendUserWardrobe() {
             const [{ rows }, totalOnlineMs, { rows: [progress] }] = await Promise.all([
                 pool.query(`
-                    SELECT id, name, description, category, required_level, price, is_equipped, transform_json
-                    FROM chat_clothing_items WHERE target_user_id = $1 ORDER BY category, id
+                    SELECT item.id, item.name, item.description, item.category, item.required_level, item.price,
+                           assignment.is_equipped, item.transform_json
+                    FROM chat_clothing_assignments assignment
+                    JOIN chat_clothing_catalog item ON item.id = assignment.clothing_item_id
+                    WHERE assignment.target_user_id = $1 ORDER BY item.category, item.id
                 `, [socket.data.user.id]),
                 getTotalOnlineMs(socket.data.user.id),
                 pool.query('SELECT accepted_chat_messages FROM chat_users WHERE id = $1', [socket.data.user.id])
@@ -2106,8 +2198,10 @@ async function startServer() {
                 await client.query('BEGIN');
                 await client.query('SELECT id FROM chat_users WHERE id = $1 FOR UPDATE', [socket.data.user.id]);
                 const { rows: [item] } = await client.query(`
-                    SELECT id, name, category, required_level
-                    FROM chat_clothing_items WHERE id = $1 AND target_user_id = $2 FOR UPDATE
+                    SELECT item.id, item.name, item.category, item.required_level
+                    FROM chat_clothing_catalog item
+                    JOIN chat_clothing_assignments assignment ON assignment.clothing_item_id = item.id
+                    WHERE item.id = $1 AND assignment.target_user_id = $2 FOR UPDATE OF assignment
                 `, [id, socket.data.user.id]);
                 if (!item) {
                     await client.query('ROLLBACK');
@@ -2124,11 +2218,16 @@ async function startServer() {
                 }
                 if (equipped && item.category !== 'accessory') {
                     await client.query(`
-                        UPDATE chat_clothing_items SET is_equipped = FALSE
-                        WHERE target_user_id = $1 AND category = $2 AND id <> $3
+                        UPDATE chat_clothing_assignments assignment SET is_equipped = FALSE
+                        FROM chat_clothing_catalog item
+                        WHERE assignment.clothing_item_id = item.id AND assignment.target_user_id = $1
+                          AND item.category = $2 AND item.id <> $3
                     `, [socket.data.user.id, item.category, id]);
                 }
-                await client.query('UPDATE chat_clothing_items SET is_equipped = $2 WHERE id = $1', [id, equipped]);
+                await client.query(`
+                    UPDATE chat_clothing_assignments SET is_equipped = $3
+                    WHERE clothing_item_id = $1 AND target_user_id = $2
+                `, [id, socket.data.user.id, equipped]);
                 await client.query('COMMIT');
                 await refreshOnlineUserClothing(socket.data.user.id);
                 await sendUserWardrobe();
