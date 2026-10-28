@@ -828,6 +828,10 @@
         .admin-floor-heading { margin: 14px 0 7px; color: #b8d981; font-size: 12px; font-weight: 700; }
         .admin-room-create { display: grid; grid-template-columns: minmax(0, 1fr) 110px auto; gap: 8px; margin: 12px 0; }
         .admin-room-create input, .admin-room-edit input { min-width: 0; min-height: 34px; padding: 7px 9px; border: 1px solid #3b3e36; border-radius: 7px; background: #151613; color: #f2f0e9; font: inherit; font-size: 11px; }
+        .admin-room-check, .admin-room-policy label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 10px; }
+        .admin-room-create .admin-room-check { grid-column: 1 / -1; }
+        .admin-room-create input[type="checkbox"], .admin-room-edit input[type="checkbox"] { width: 14px; min-width: 14px; min-height: 14px; margin: 0; padding: 0; accent-color: #a6c774; }
+        .admin-room-policy { display: flex; flex-wrap: wrap; gap: 10px; grid-column: 1 / -1; padding-top: 2px; }
         .admin-room-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 9px; border: 1px solid #393b33; border-radius: 8px; background: #20211d; }
         .admin-room-welcome { grid-column: 1 / -1; border-top: 1px solid #353732; padding-top: 7px; }
         .admin-room-welcome summary { color: #c1f078; font-size: 10px; font-weight: 650; cursor: pointer; }
@@ -848,6 +852,20 @@
         .admin-room-overlay-transform label { display: grid; gap: 3px; color: var(--muted); font-size: 9px; }
         .admin-room-overlay-transform input { width: 100%; min-width: 0; min-height: 29px; padding: 5px 7px; border: 1px solid #3b3e36; border-radius: 5px; background: #151613; color: #f2f0e9; font: inherit; font-size: 10px; }
         .admin-room-overlay-hint { flex: 1 0 100%; margin: 0; color: var(--muted); font-size: 9px; }
+        .admin-clothing-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin: 12px 0; }
+        .admin-clothing-form label { display: grid; min-width: 0; gap: 4px; color: var(--muted); font-size: 10px; }
+        .admin-clothing-form input, .admin-clothing-form select, .admin-clothing-form textarea { width: 100%; min-width: 0; min-height: 32px; padding: 6px 8px; border: 1px solid #3b3e36; border-radius: 6px; background: #151613; color: #f2f0e9; font: inherit; font-size: 11px; }
+        .admin-clothing-form textarea { min-height: 54px; resize: vertical; }
+        .admin-clothing-form .wide { grid-column: 1 / -1; }
+        .admin-clothing-transform { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+        .admin-clothing-transform label { font-size: 9px; }
+        .admin-clothing-preview-wrap { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 9px; border: 1px solid #353732; border-radius: 7px; background: #151613; }
+        .admin-clothing-preview { display: block; width: 108px; height: 150px; border: 1px solid #34372f; border-radius: 5px; background: #090a09; image-rendering: auto; }
+        .admin-clothing-preview-note { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+        .admin-clothing-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 8px; border: 1px solid #393b33; border-radius: 7px; background: #20211d; }
+        .admin-clothing-thumb { width: 40px; height: 48px; object-fit: contain; border-radius: 4px; background: #10110f; }
+        .admin-clothing-meta { display: grid; gap: 3px; min-width: 0; color: var(--muted); font-size: 9px; }
+        .admin-clothing-meta strong { color: #f2f0e9; font-size: 11px; }
         .admin-room-file { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
         .admin-room-bg-status { flex: 1 0 100%; color: var(--muted); font-size: 10px; }
         .navigator-floor-heading { margin: 14px 0 2px; color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
@@ -1208,6 +1226,7 @@
         .navigator-room-button { border-radius: 7px; transition: background .2s ease, border-color .2s ease; }
         .navigator-room-button:hover { border-color: #758953; background: #2b2d28; }
         .navigator-room-button[aria-current="true"] { border-color: #829b5a; background: #252623; color: #e6e6df; }
+        .navigator-room-button:disabled { border-color: #353732; background: #1a1b19; color: #85877f; cursor: not-allowed; }
         .profile-section-title, .profile-facts-title { border-color: #353732; background: #252623; }
         .profile-facts-view, .profile-about { border-color: #353732; background: #1a1b19; }
         .profile-fact { border-color: #30322e; }
@@ -1325,6 +1344,11 @@
             .room-strip-user { max-width: 86px; }
             .admin-room-create { grid-template-columns: minmax(0, 1fr) 72px; }
             .admin-room-create button { grid-column: 1 / -1; }
+            .admin-clothing-form { grid-template-columns: 1fr; }
+            .admin-clothing-form .wide, .admin-clothing-preview-wrap { grid-column: 1; }
+            .admin-clothing-transform { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .admin-clothing-row { grid-template-columns: 34px minmax(0, 1fr) auto; gap: 6px; }
+            .admin-clothing-thumb { width: 34px; height: 42px; }
             .admin-room-row { grid-template-columns: minmax(0, 1fr); }
             .admin-room-row .admin-row-actions { justify-content: flex-end; }
             .admin-room-details { grid-template-columns: 82px minmax(0, 1fr); }
@@ -1687,6 +1711,7 @@
                                 <option value="" selected>Vælg adminfunktion:</option>
                                 <option value="users">Brugerkontrol</option>
                                 <option value="rooms">Navigator - etager og rum</option>
+                                <option value="clothing">Tøj og tilbehør</option>
                             </select>
                             <section class="admin-welcome" id="admin-welcome-view" aria-labelledby="admin-welcome-title">
                                 <h3 id="admin-welcome-title">Velkommen til adminpanelet</h3>
@@ -1713,10 +1738,60 @@
                                 <form class="admin-room-create" id="admin-room-create-form">
                                     <input id="admin-room-name" type="text" maxlength="60" placeholder="Nyt rumnavn" aria-label="Nyt rumnavn" required>
                                     <input id="admin-room-floor" type="number" min="1" max="100" value="1" aria-label="Etagenummer" required>
+                                    <label class="admin-room-check"><input id="admin-room-create-locked" type="checkbox"> Låst for ikke-admins</label>
+                                    <label class="admin-room-check"><input id="admin-room-create-hidden" type="checkbox"> Skjul for ikke-admins</label>
                                     <button class="admin-row-button" type="submit">Tilføj rum</button>
                                 </form>
                                 <p class="admin-status" id="admin-rooms-status" aria-live="polite"></p>
                                 <div class="admin-list" id="admin-public-rooms" role="list"></div>
+                            </section>
+                            <section class="admin-section" id="admin-clothing-view" aria-labelledby="admin-clothing-title" hidden>
+                                <h3 class="visually-hidden" id="admin-clothing-title">Tøj og tilbehør</h3>
+                                <p class="admin-status">Upload en gennemsigtig PNG eller WebP, justér den i previewet, og tildel tøjdelen til en bruger. Level og pris gemmes som genstandsoplysninger.</p>
+                                <form class="admin-clothing-form" id="admin-clothing-form">
+                                    <label>Brugernavn
+                                        <input id="admin-clothing-username" type="text" maxlength="18" autocomplete="off" required placeholder="Brugeren der får tøjdelen">
+                                    </label>
+                                    <label>Navn på genstand
+                                        <input id="admin-clothing-name" type="text" maxlength="60" required placeholder="Fx Grøn kasket">
+                                    </label>
+                                    <label class="wide">Beskrivelse (valgfri)
+                                        <textarea id="admin-clothing-description" maxlength="300" placeholder="Kort beskrivelse"></textarea>
+                                    </label>
+                                    <label>Kategori
+                                        <select id="admin-clothing-category" required>
+                                            <option value="headwear">Hovedbeklædning</option>
+                                            <option value="clothing">Tøj</option>
+                                            <option value="left_hand">Venstre hånd</option>
+                                            <option value="right_hand">Højre hånd</option>
+                                            <option value="accessory">Tilbehør</option>
+                                        </select>
+                                    </label>
+                                    <label>Billede (PNG/WebP, maks. 950 KB)
+                                        <input id="admin-clothing-image" type="file" accept="image/png,image/webp" required>
+                                    </label>
+                                    <label>Levelkrav (1–20)
+                                        <input id="admin-clothing-level" type="number" min="1" max="20" value="1" required>
+                                    </label>
+                                    <label>Pris (mønter)
+                                        <input id="admin-clothing-price" type="number" min="0" max="100000000" value="0" required>
+                                    </label>
+                                    <div class="admin-clothing-transform wide">
+                                        <label>X (px)<input id="admin-clothing-x" type="number" min="-270" max="270" value="0" step="1"></label>
+                                        <label>Y (px)<input id="admin-clothing-y" type="number" min="-180" max="180" value="0" step="1"></label>
+                                        <label>Rotation (°)<input id="admin-clothing-rotation" type="number" min="-180" max="180" value="0" step="1"></label>
+                                        <label>Størrelse (%)<input id="admin-clothing-scale" type="number" min="25" max="300" value="100" step="1"></label>
+                                    </div>
+                                    <div class="admin-clothing-preview-wrap">
+                                        <canvas class="admin-clothing-preview" id="admin-clothing-preview" width="216" height="300" aria-label="Live preview af tøjdelen på avataren"></canvas>
+                                        <p class="admin-clothing-preview-note">Placeringen opdateres live. Overlayet tegnes oven på avataren og følger den på tværs af rum.</p>
+                                    </div>
+                                    <button class="admin-row-button wide" id="admin-clothing-save" type="submit">Tildel tøjdelen</button>
+                                    <p class="admin-status wide" id="admin-clothing-status" aria-live="polite"></p>
+                                </form>
+                                <h3 class="admin-subsection-title">Tildelte tøjdele</h3>
+                                <button class="admin-row-button admin-refresh" id="admin-clothing-refresh" type="button">Opdater tøjlisten</button>
+                                <div class="admin-list" id="admin-clothing-items" role="list"></div>
                             </section>
                         </section>
                     </aside>
@@ -1879,6 +1954,8 @@
             const kedAvatarImage = new Image();
             const blappetAvatarImage = new Image();
             const boevetAvatarImage = new Image();
+            const clothingImageCache = new Map();
+            const clothingCategoryOrder = { left_hand: 0, right_hand: 1, clothing: 2, accessory: 3, headwear: 4 };
             const avatarWidth = 54;
             const avatarHeight = 75;
             let avatarImageLoaded = false;
@@ -1911,6 +1988,21 @@
                 requestBoardRender();
             });
             boevetAvatarImage.src = '/images/boevet.png';
+            function getClothingImage(item) {
+                if (!item?.id || !item.imageUrl) return null;
+                let image = clothingImageCache.get(String(item.id));
+                if (!image) {
+                    image = new Image();
+                    image.loaded = false;
+                    image.addEventListener('load', () => {
+                        image.loaded = true;
+                        requestBoardRender();
+                    });
+                    image.src = item.imageUrl;
+                    clothingImageCache.set(String(item.id), image);
+                }
+                return image.loaded ? image : null;
+            }
             const loginSection = document.getElementById('login-section');
             const gameSection = document.getElementById('game-section');
             const usernameInput = document.getElementById('username-input');
@@ -1951,11 +2043,30 @@
             const adminWelcomeTitle = document.getElementById('admin-welcome-title');
             const adminUsersView = document.getElementById('admin-users-view');
             const adminRoomsView = document.getElementById('admin-rooms-view');
+            const adminClothingView = document.getElementById('admin-clothing-view');
+            const adminClothingForm = document.getElementById('admin-clothing-form');
+            const adminClothingUsername = document.getElementById('admin-clothing-username');
+            const adminClothingName = document.getElementById('admin-clothing-name');
+            const adminClothingDescription = document.getElementById('admin-clothing-description');
+            const adminClothingCategory = document.getElementById('admin-clothing-category');
+            const adminClothingImageInput = document.getElementById('admin-clothing-image');
+            const adminClothingLevel = document.getElementById('admin-clothing-level');
+            const adminClothingPrice = document.getElementById('admin-clothing-price');
+            const adminClothingX = document.getElementById('admin-clothing-x');
+            const adminClothingY = document.getElementById('admin-clothing-y');
+            const adminClothingRotation = document.getElementById('admin-clothing-rotation');
+            const adminClothingScale = document.getElementById('admin-clothing-scale');
+            const adminClothingPreview = document.getElementById('admin-clothing-preview');
+            const adminClothingStatus = document.getElementById('admin-clothing-status');
+            const adminClothingItems = document.getElementById('admin-clothing-items');
+            const adminClothingRefresh = document.getElementById('admin-clothing-refresh');
             const adminRoomsStatus = document.getElementById('admin-rooms-status');
             const adminPublicRooms = document.getElementById('admin-public-rooms');
             const adminRoomCreateForm = document.getElementById('admin-room-create-form');
             const adminRoomName = document.getElementById('admin-room-name');
             const adminRoomFloor = document.getElementById('admin-room-floor');
+            const adminRoomCreateLocked = document.getElementById('admin-room-create-locked');
+            const adminRoomCreateHidden = document.getElementById('admin-room-create-hidden');
             const adminUserSearch = document.getElementById('admin-user-search');
             const adminUsersRefresh = document.getElementById('admin-users-refresh');
             const adminBansRefresh = document.getElementById('admin-bans-refresh');
@@ -2730,7 +2841,14 @@
                     if (room.type === 'apartment') {
                         detail.textContent = `${room.count} ${room.count === 1 ? 'bruger' : 'brugere'} i rummet`;
                     } else {
-                        detail.textContent = room.id === activeRoomId ? 'Du er her nu' : 'Offentligt rum';
+                        const lockedForUser = room.isLocked && !isAdminUser;
+                        detail.textContent = lockedForUser
+                            ? 'Låst for deltagere'
+                            : room.id === activeRoomId ? 'Du er her nu' : 'Offentligt rum';
+                        if (lockedForUser) {
+                            button.disabled = true;
+                            button.title = 'Rummet er låst for deltagere lige nu.';
+                        }
                     }
                     button.append(detail);
                     button.addEventListener('click', () => {
@@ -3310,15 +3428,146 @@
             function selectAdminSection() {
                 const showUsers = adminSectionSelect.value === 'users';
                 const showRooms = adminSectionSelect.value === 'rooms';
-                adminWelcomeView.hidden = showUsers || showRooms;
+                const showClothing = adminSectionSelect.value === 'clothing';
+                adminWelcomeView.hidden = showUsers || showRooms || showClothing;
                 adminUsersView.hidden = !showUsers;
                 adminRoomsView.hidden = !showRooms;
+                adminClothingView.hidden = !showClothing;
                 if (showUsers) {
                     requestAdminUserList();
                     socket.emit('admin-ip-bans-request');
                 }
                 if (showRooms) socket.emit('admin-public-rooms-request');
+                if (showClothing) socket.emit('admin-clothing-items-request');
             }
+
+            let adminClothingPreviewImage = null;
+            let adminClothingPreviewUrl = '';
+            const adminClothingPreviewAvatar = new Image();
+            adminClothingPreviewAvatar.src = '/images/mand.png';
+            function drawAdminClothingPreview() {
+                const context = adminClothingPreview.getContext('2d');
+                context.clearRect(0, 0, adminClothingPreview.width, adminClothingPreview.height);
+                context.fillStyle = '#090a09';
+                context.fillRect(0, 0, adminClothingPreview.width, adminClothingPreview.height);
+                if (adminClothingPreviewAvatar.complete && adminClothingPreviewAvatar.naturalWidth) {
+                    context.drawImage(adminClothingPreviewAvatar, 0, 0, adminClothingPreview.width, adminClothingPreview.height);
+                }
+                if (!adminClothingPreviewImage?.naturalWidth) return;
+                const scale = Math.max(25, Math.min(300, Number(adminClothingScale.value) || 100)) / 100;
+                const baseScale = Math.min(adminClothingPreview.width / adminClothingPreviewImage.naturalWidth,
+                    adminClothingPreview.height / adminClothingPreviewImage.naturalHeight);
+                const drawWidth = adminClothingPreviewImage.naturalWidth * baseScale;
+                const drawHeight = adminClothingPreviewImage.naturalHeight * baseScale;
+                context.save();
+                context.translate(
+                    adminClothingPreview.width / 2 + (Number(adminClothingX.value) || 0) * 4,
+                    adminClothingPreview.height / 2 + (Number(adminClothingY.value) || 0) * 4
+                );
+                context.rotate((Number(adminClothingRotation.value) || 0) * Math.PI / 180);
+                context.scale(scale, scale);
+                context.drawImage(adminClothingPreviewImage, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+                context.restore();
+            }
+            adminClothingPreviewAvatar.addEventListener('load', drawAdminClothingPreview);
+            [adminClothingX, adminClothingY, adminClothingRotation, adminClothingScale].forEach((input) =>
+                input.addEventListener('input', drawAdminClothingPreview)
+            );
+            adminClothingImageInput.addEventListener('change', () => {
+                if (adminClothingPreviewUrl) URL.revokeObjectURL(adminClothingPreviewUrl);
+                adminClothingPreviewUrl = '';
+                adminClothingPreviewImage = null;
+                const file = adminClothingImageInput.files?.[0];
+                if (!file) { drawAdminClothingPreview(); return; }
+                if (!['image/png', 'image/webp'].includes(file.type) || file.size > 20 * 1024 * 1024) {
+                    adminClothingStatus.textContent = 'Vælg en PNG- eller WebP-fil på højst 20 MB.';
+                    adminClothingImageInput.value = '';
+                    drawAdminClothingPreview();
+                    return;
+                }
+                adminClothingPreviewUrl = URL.createObjectURL(file);
+                const image = new Image();
+                image.addEventListener('load', () => {
+                    if (image.naturalWidth > 8000 || image.naturalHeight > 8000) {
+                        adminClothingStatus.textContent = 'Billedet må højst være 8000 × 8000 px.';
+                        adminClothingImageInput.value = '';
+                        adminClothingPreviewImage = null;
+                    } else {
+                        adminClothingStatus.textContent = '';
+                        adminClothingPreviewImage = image;
+                    }
+                    drawAdminClothingPreview();
+                }, { once: true });
+                image.addEventListener('error', () => {
+                    adminClothingStatus.textContent = 'Billedet kunne ikke åbnes.';
+                    adminClothingPreviewImage = null;
+                    drawAdminClothingPreview();
+                }, { once: true });
+                image.src = adminClothingPreviewUrl;
+            });
+
+            async function prepareAdminClothingImage(file) {
+                if (!file || !['image/png', 'image/webp'].includes(file.type) || file.size > 20 * 1024 * 1024) {
+                    throw new Error('Vælg en PNG- eller WebP-fil på højst 20 MB.');
+                }
+                const image = new Image();
+                const objectUrl = URL.createObjectURL(file);
+                try {
+                    image.src = objectUrl;
+                    await image.decode();
+                    if (!image.naturalWidth || !image.naturalHeight || image.naturalWidth > 8000 || image.naturalHeight > 8000) {
+                        throw new Error('Billedet skal være mellem 1 og 8000 px i hver retning.');
+                    }
+                    if (file.size <= 950_000 && file.size > 0) return { blob: file, mimeType: file.type };
+                    const ratio = Math.min(1, 1536 / Math.max(image.naturalWidth, image.naturalHeight));
+                    const canvas = document.createElement('canvas');
+                    canvas.width = Math.max(1, Math.round(image.naturalWidth * ratio));
+                    canvas.height = Math.max(1, Math.round(image.naturalHeight * ratio));
+                    canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+                    let blob = null;
+                    for (const quality of [0.96, 0.92, 0.88, 0.84, 0.8]) {
+                        blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', quality));
+                        if (blob && blob.size <= 950_000) break;
+                    }
+                    if (!blob || blob.size > 950_000) throw new Error('Billedet kunne ikke tilpasses under 950 KB.');
+                    return { blob, mimeType: 'image/webp' };
+                } finally {
+                    URL.revokeObjectURL(objectUrl);
+                }
+            }
+
+            async function submitAdminClothing(event) {
+                event.preventDefault();
+                const file = adminClothingImageInput.files?.[0];
+                if (!file) {
+                    adminClothingStatus.textContent = 'Vælg et billede til tøjdelen.';
+                    return;
+                }
+                try {
+                    adminClothingStatus.textContent = 'Forbereder og uploader tøjdelen…';
+                    const { blob, mimeType } = await prepareAdminClothingImage(file);
+                    if (!socket.connected) throw new Error('Forbindelsen er afbrudt. Prøv igen.');
+                    document.getElementById('admin-clothing-save').disabled = true;
+                    socket.emit('admin-clothing-item-create', {
+                        username: adminClothingUsername.value,
+                        name: adminClothingName.value,
+                        description: adminClothingDescription.value,
+                        category: adminClothingCategory.value,
+                        requiredLevel: Number(adminClothingLevel.value),
+                        price: Number(adminClothingPrice.value),
+                        x: Number(adminClothingX.value),
+                        y: Number(adminClothingY.value),
+                        rotation: Number(adminClothingRotation.value),
+                        scale: Number(adminClothingScale.value) / 100,
+                        mimeType,
+                        image: new Uint8Array(await blob.arrayBuffer())
+                    });
+                } catch (error) {
+                    adminClothingStatus.textContent = error.message || 'Tøjdelen kunne ikke uploades.';
+                    document.getElementById('admin-clothing-save').disabled = false;
+                }
+            }
+            adminClothingForm.addEventListener('submit', submitAdminClothing);
 
             async function uploadAdminRoomBackground(roomId, file, statusElement) {
                 if (!file || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
@@ -3456,6 +3705,19 @@
                     const floor = document.createElement('input');
                     floor.type = 'number'; floor.min = '1'; floor.max = '100'; floor.required = true; floor.value = String(room.floorNumber);
                     floor.setAttribute('aria-label', `Etage for rum #${room.roomNumber}`);
+                    const policy = document.createElement('div');
+                    policy.className = 'admin-room-policy';
+                    const lockedLabel = document.createElement('label');
+                    const locked = document.createElement('input');
+                    locked.type = 'checkbox';
+                    locked.checked = Boolean(room.isLocked);
+                    lockedLabel.append(locked, document.createTextNode(' Låst for ikke-admins'));
+                    const hiddenLabel = document.createElement('label');
+                    const hidden = document.createElement('input');
+                    hidden.type = 'checkbox';
+                    hidden.checked = Boolean(room.isHidden);
+                    hiddenLabel.append(hidden, document.createTextNode(' Skjul for ikke-admins'));
+                    policy.append(lockedLabel, hiddenLabel);
                     const details = document.createElement('div');
                     details.className = 'admin-room-details';
                     const meta = document.createElement('div');
@@ -3622,7 +3884,7 @@
                     remove.className = 'admin-row-button ban'; remove.type = 'button'; remove.textContent = 'Fjern';
                     remove.disabled = room.isSystem || room.count > 0;
                     remove.title = room.isSystem ? 'Faste systemrum kan ikke slettes' : room.count ? 'Rummet skal være tomt før det kan slettes' : 'Fjern rum';
-                    form.append(name, floor);
+                    form.append(name, floor, policy);
                     actions.append(save, remove);
                     const welcomeEditor = document.createElement('details');
                     welcomeEditor.className = 'admin-room-welcome';
@@ -3666,13 +3928,67 @@
                     row.append(details, actions, welcomeEditor);
                     form.addEventListener('submit', (event) => {
                         event.preventDefault();
-                        socket.emit('admin-public-room-update', { id: room.id, name: name.value, floorNumber: Number(floor.value) });
+                        socket.emit('admin-public-room-update', {
+                            id: room.id,
+                            name: name.value,
+                            floorNumber: Number(floor.value),
+                            isLocked: locked.checked,
+                            isHidden: hidden.checked
+                        });
                     });
                     save.addEventListener('click', () => form.requestSubmit());
                     remove.addEventListener('click', () => {
                         if (confirm(`Vil du slette #${room.roomNumber} ${room.name}?`)) socket.emit('admin-public-room-delete', { id: room.id });
                     });
                     adminPublicRooms.append(row);
+                }
+            }
+
+            function renderAdminClothingItems(items = []) {
+                adminClothingItems.replaceChildren();
+                if (!items.length) {
+                    const empty = document.createElement('p');
+                    empty.className = 'admin-status';
+                    empty.textContent = 'Der er ingen tildelte tøjdele endnu.';
+                    adminClothingItems.append(empty);
+                    return;
+                }
+                const categoryNames = {
+                    headwear: 'Hovedbeklædning', clothing: 'Tøj', left_hand: 'Venstre hånd',
+                    right_hand: 'Højre hånd', accessory: 'Tilbehør'
+                };
+                for (const item of items) {
+                    const row = document.createElement('div');
+                    row.className = 'admin-clothing-row';
+                    row.setAttribute('role', 'listitem');
+                    const image = document.createElement('img');
+                    image.className = 'admin-clothing-thumb';
+                    image.src = `/api/clothing-items/${encodeURIComponent(item.id)}/image`;
+                    image.alt = '';
+                    const details = document.createElement('div');
+                    details.className = 'admin-clothing-meta';
+                    const name = document.createElement('strong');
+                    name.textContent = item.name;
+                    const meta = document.createElement('span');
+                    meta.textContent = `${item.targetUsername} · ${categoryNames[item.category] || item.category} · Level ${item.requiredLevel} · ${Number(item.price).toLocaleString('da-DK')} mønter`;
+                    details.append(name, meta);
+                    if (item.description) {
+                        const description = document.createElement('span');
+                        description.textContent = item.description;
+                        details.append(description);
+                    }
+                    const remove = document.createElement('button');
+                    remove.className = 'admin-row-button ban';
+                    remove.type = 'button';
+                    remove.textContent = 'Fjern';
+                    remove.setAttribute('aria-label', `Fjern ${item.name} fra ${item.targetUsername}`);
+                    remove.addEventListener('click', () => {
+                        if (confirm(`Fjerne ${item.name} fra ${item.targetUsername}?`)) {
+                            socket.emit('admin-clothing-item-delete', { id: item.id });
+                        }
+                    });
+                    row.append(image, details, remove);
+                    adminClothingItems.append(row);
                 }
             }
 
@@ -4131,6 +4447,24 @@
                         ctx.stroke();
                     }
 
+                    const clothingLayers = Array.isArray(player.clothing) ? player.clothing.slice().sort((first, second) =>
+                        (clothingCategoryOrder[first.category] ?? 2) - (clothingCategoryOrder[second.category] ?? 2)
+                    ) : [];
+                    for (const item of clothingLayers) {
+                        const clothingImage = getClothingImage(item);
+                        if (!clothingImage) continue;
+                        const scale = Math.max(0.25, Math.min(3, Number(item.scale) || 1));
+                        ctx.save();
+                        ctx.translate(position.x + (Number(item.x) || 0), avatarY + (Number(item.y) || 0));
+                        ctx.rotate((Number(item.rotation) || 0) * Math.PI / 180);
+                        ctx.scale(scale, scale);
+                        const imageScale = Math.min(visualWidth / clothingImage.naturalWidth, visualHeight / clothingImage.naturalHeight);
+                        const imageWidth = clothingImage.naturalWidth * imageScale;
+                        const imageHeight = clothingImage.naturalHeight * imageScale;
+                        ctx.drawImage(clothingImage, -imageWidth / 2, -imageHeight / 2, imageWidth, imageHeight);
+                        ctx.restore();
+                    }
+
                     if (muted) {
                         ctx.save();
                         ctx.lineCap = 'round';
@@ -4426,14 +4760,18 @@
                 adminWelcomeView.hidden = false;
                 adminUsersView.hidden = true;
                 adminRoomsView.hidden = true;
+                adminClothingView.hidden = true;
             });
             adminSectionSelect.addEventListener('change', selectAdminSection);
+            adminClothingRefresh.addEventListener('click', () => socket.emit('admin-clothing-items-request'));
             adminRoomCreateForm.addEventListener('submit', (event) => {
                 event.preventDefault();
                 adminRoomsStatus.textContent = 'Opretter rum…';
                 socket.emit('admin-public-room-create', {
                     name: adminRoomName.value,
-                    floorNumber: Number(adminRoomFloor.value)
+                    floorNumber: Number(adminRoomFloor.value),
+                    isLocked: adminRoomCreateLocked.checked,
+                    isHidden: adminRoomCreateHidden.checked
                 });
             });
             adminUsersRefresh.addEventListener('click', requestAdminUserList);
@@ -5341,6 +5679,19 @@
                 isAdminUser = isAdmin === true;
                 adminNavButton.hidden = !currentUser || !isAdminUser;
             });
+            socket.on('admin-clothing-items', ({ items = [] } = {}) => {
+                if (isAdminUser) renderAdminClothingItems(Array.isArray(items) ? items : []);
+            });
+            socket.on('admin-clothing-action-result', ({ success, message } = {}) => {
+                adminClothingStatus.textContent = message || (success ? 'Tøjdelen er gemt.' : 'Handlingen mislykkedes.');
+                document.getElementById('admin-clothing-save').disabled = false;
+                if (!success) return;
+                if (adminClothingPreviewUrl) URL.revokeObjectURL(adminClothingPreviewUrl);
+                adminClothingPreviewUrl = '';
+                adminClothingPreviewImage = null;
+                adminClothingForm.reset();
+                drawAdminClothingPreview();
+            });
             socket.on('admin-online-users', ({ users = [], query = '', totalCount } = {}) => {
                 if (!isAdminUser) return;
                 const currentQuery = adminUserSearch.value.normalize('NFKC').trim().slice(0, 18);
@@ -5371,7 +5722,11 @@
             socket.on('admin-room-action-result', ({ success, message } = {}) => {
                 adminRoomsStatus.textContent = message || (success ? 'Ændringer gemt.' : 'Handlingen mislykkedes.');
                 if (success) {
-                    if (message && message.startsWith('Rum #')) adminRoomName.value = '';
+                    if (message && message.startsWith('Rum #')) {
+                        adminRoomName.value = '';
+                        adminRoomCreateLocked.checked = false;
+                        adminRoomCreateHidden.checked = false;
+                    }
                     if (adminSectionSelect.value === 'rooms') socket.emit('admin-public-rooms-request');
                 }
             });
@@ -5497,6 +5852,12 @@
                 showPlayer(player);
                 updateOnlineList();
                 addChatSystemEntry(`${player.name} er kommet ind i chatten.`);
+            });
+
+            socket.on('player-clothing-updated', ({ id, clothing = [] } = {}) => {
+                if (!players[id]) return;
+                players[id].clothing = Array.isArray(clothing) ? clothing : [];
+                requestBoardRender();
             });
 
             socket.on('playerMoved', (player) => {

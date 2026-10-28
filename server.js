@@ -129,6 +129,7 @@ if existing then
     player.lastSeen = tonumber(ARGV[3])
     player.joinedAt = tonumber(player.joinedAt or ARGV[3])
     player.lastActivityAt = tonumber(player.lastActivityAt or ARGV[3])
+    player.clothing = cjson.decode(ARGV[5])
     redis.call('HSET', KEYS[1], ARGV[1], cjson.encode(player))
     return cjson.encode(player)
 end
@@ -144,6 +145,7 @@ local function tryJoin(cell)
             col = tonumber(col),
             row = tonumber(row),
             mood = ARGV[4],
+            clothing = cjson.decode(ARGV[5]),
             text = '',
             messageTime = 0,
             lastSeen = tonumber(ARGV[3]),
@@ -158,7 +160,7 @@ local function tryJoin(cell)
 end
 
 -- In an apartment, prefer a designated door as the spawn point when available.
-for index = 5, #ARGV do
+for index = 6, #ARGV do
     local cell = ARGV[index]
     local tileState = redis.call('HGET', KEYS[3], cell)
     if tileState == 'door' or (tileState and string.sub(tileState, 1, 5) == 'door:') then
@@ -166,7 +168,7 @@ for index = 5, #ARGV do
         if player then return player end
     end
 end
-for index = 5, #ARGV do
+for index = 6, #ARGV do
     local player = tryJoin(ARGV[index])
     if player then return player end
 end
@@ -195,6 +197,15 @@ player.lastSeen = tonumber(ARGV[4])
 player.lastActivityAt = tonumber(ARGV[4])
 redis.call('HSET', KEYS[1], ARGV[1], cjson.encode(player))
 redis.call('HSET', KEYS[2], nextCell, ARGV[1])
+return cjson.encode(player)
+`;
+
+const UPDATE_PLAYER_CLOTHING_SCRIPT = `
+local encoded = redis.call('HGET', KEYS[1], ARGV[1])
+if not encoded then return false end
+local player = cjson.decode(encoded)
+player.clothing = cjson.decode(ARGV[2])
+redis.call('HSET', KEYS[1], ARGV[1], cjson.encode(player))
 return cjson.encode(player)
 `;
 
@@ -328,7 +339,17 @@ function publicPlayer(player) {
         row: player.row,
         mood: ['glad', 'mobset', 'ked', 'blappet', 'boevet'].includes(player.mood) ? player.mood : 'glad',
         text: player.text,
-        messageTime: player.messageTime
+        messageTime: player.messageTime,
+        clothing: Array.isArray(player.clothing) ? player.clothing.map((item) => ({
+            id: String(item.id),
+            name: item.name,
+            category: item.category,
+            imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image`,
+            x: item.x,
+            y: item.y,
+            rotation: item.rotation,
+            scale: item.scale
+        })) : []
     };
 }
 
@@ -495,7 +516,8 @@ async function startServer() {
         const { rows } = await pool.query(`
             SELECT id, room_number, floor_number, name, is_system, welcome_title, welcome_text,
                    background_image IS NOT NULL AS has_background, background_version,
-                   overlay_image IS NOT NULL AS has_overlay, overlay_version, overlay_transform
+                   overlay_image IS NOT NULL AS has_overlay, overlay_version, overlay_transform,
+                   is_locked, is_hidden
             FROM chat_public_rooms ORDER BY floor_number, room_number
         `);
         return rows;
@@ -586,6 +608,8 @@ async function startServer() {
             floor_number INTEGER NOT NULL DEFAULT 1 CHECK (floor_number BETWEEN 1 AND 100),
             name VARCHAR(60) NOT NULL,
             is_system BOOLEAN NOT NULL DEFAULT FALSE,
+            is_locked BOOLEAN NOT NULL DEFAULT FALSE,
+            is_hidden BOOLEAN NOT NULL DEFAULT FALSE,
             welcome_title VARCHAR(100),
             welcome_text VARCHAR(500),
             layout_json JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -610,6 +634,8 @@ async function startServer() {
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS overlay_updated_at TIMESTAMPTZ');
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS overlay_version BIGINT NOT NULL DEFAULT 0');
     await pool.query("ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS overlay_transform JSONB NOT NULL DEFAULT '{\"x\":0,\"y\":0,\"rotation\":0,\"scale\":1}'::jsonb");
+    await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS is_locked BOOLEAN NOT NULL DEFAULT FALSE');
+    await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS is_hidden BOOLEAN NOT NULL DEFAULT FALSE');
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS welcome_title VARCHAR(100)');
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS welcome_text VARCHAR(500)');
     await pool.query("ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS layout_json JSONB NOT NULL DEFAULT '{}'::jsonb");
@@ -618,6 +644,22 @@ async function startServer() {
         VALUES ('common', 1, 1, 'Fællesrum', TRUE), ('disco', 2, 1, 'Diskoteket', TRUE)
         ON CONFLICT (id) DO NOTHING
     `);
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS chat_clothing_items (
+            id BIGSERIAL PRIMARY KEY,
+            target_user_id BIGINT NOT NULL REFERENCES chat_users(id) ON DELETE CASCADE,
+            name VARCHAR(60) NOT NULL,
+            description VARCHAR(300) NOT NULL DEFAULT '',
+            category VARCHAR(20) NOT NULL CHECK (category IN ('headwear', 'clothing', 'left_hand', 'right_hand', 'accessory')),
+            image BYTEA NOT NULL,
+            mime_type VARCHAR(24) NOT NULL CHECK (mime_type IN ('image/png', 'image/webp')),
+            required_level INTEGER NOT NULL DEFAULT 1 CHECK (required_level BETWEEN 1 AND 20),
+            price INTEGER NOT NULL DEFAULT 0 CHECK (price BETWEEN 0 AND 100000000),
+            transform_json JSONB NOT NULL DEFAULT '{"x":0,"y":0,"rotation":0,"scale":1}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS chat_clothing_items_user_idx ON chat_clothing_items (target_user_id, id)');
     await pool.query('CREATE INDEX IF NOT EXISTS chat_users_registration_ip_hash_idx ON chat_users (registration_ip_hash) WHERE registration_ip_hash IS NOT NULL');
     await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_online_sessions (
@@ -770,6 +812,30 @@ async function startServer() {
             response.type(room.overlay_mime_type || 'image/webp').send(room.overlay_image);
         } catch (error) {
             console.error('Could not load public room overlay:', getSafeErrorCode(error));
+            response.sendStatus(500);
+        }
+    });
+    app.get('/api/clothing-items/:itemId/image', async (request, response) => {
+        const itemId = String(request.params.itemId || '');
+        if (!/^[1-9]\d{0,18}$/.test(itemId)) {
+            response.sendStatus(404);
+            return;
+        }
+        try {
+            const { rows: [item] } = await pool.query(
+                'SELECT image, mime_type FROM chat_clothing_items WHERE id = $1', [itemId]
+            );
+            if (!item?.image) {
+                response.sendStatus(404);
+                return;
+            }
+            response.set({
+                'Cache-Control': 'public, max-age=31536000, immutable',
+                'X-Content-Type-Options': 'nosniff'
+            });
+            response.type(item.mime_type).send(item.image);
+        } catch (error) {
+            console.error('Could not load clothing image:', getSafeErrorCode(error));
             response.sendStatus(500);
         }
     });
@@ -1588,6 +1654,41 @@ async function startServer() {
         return getPublicPlayers(await redis.hGetAll(roomKeys(roomId).players));
     }
 
+    async function getUserClothing(userId) {
+        const { rows } = await pool.query(`
+            SELECT id, name, category, transform_json
+            FROM chat_clothing_items WHERE target_user_id = $1 ORDER BY id
+        `, [userId]);
+        return rows.map((item) => {
+            const transform = normalizePublicRoomOverlayTransform(item.transform_json);
+            return {
+                id: String(item.id),
+                name: item.name,
+                category: item.category,
+                x: transform.x,
+                y: transform.y,
+                rotation: transform.rotation,
+                scale: transform.scale
+            };
+        });
+    }
+
+    async function refreshOnlineUserClothing(userId) {
+        const clothing = await getUserClothing(userId);
+        for (const socketId of activeSocketIds) {
+            if (String(activeSocketUsers.get(socketId) || '') !== String(userId)) continue;
+            const roomId = activeSocketRooms.get(socketId);
+            if (!roomId) continue;
+            const keys = roomKeys(roomId);
+            const updated = await redis.eval(UPDATE_PLAYER_CLOTHING_SCRIPT, {
+                keys: [keys.players],
+                arguments: [socketId, JSON.stringify(clothing)]
+            });
+            if (!updated) continue;
+            io.to(roomChannel(roomId)).emit('player-clothing-updated', { id: socketId, clothing });
+        }
+    }
+
     function getMissingTargetMessage(targetId) {
         return targetId.startsWith(OFFLINE_PROFILE_PREFIX)
             ? 'Brugeren findes ikke længere.'
@@ -1627,6 +1728,21 @@ async function startServer() {
         if (!match) return false;
         const { rowCount } = await pool.query('SELECT 1 FROM chat_apartments WHERE id = $1', [match[1]]);
         return rowCount > 0;
+    }
+
+    async function getPublicRoomPolicy(roomId) {
+        if (!isPublicChatRoomId(roomId)) return null;
+        const { rows: [room] = [] } = await pool.query(
+            'SELECT is_locked, is_hidden FROM chat_public_rooms WHERE id = $1', [roomId]
+        );
+        return room || null;
+    }
+
+    function publicRoomAccessError(policy, isAdmin) {
+        if (!policy) return 'Rummet findes ikke.';
+        if (policy.is_hidden && !isAdmin) return 'Rummet findes ikke.';
+        if (policy.is_locked && !isAdmin) return 'Rummet er låst for deltagere lige nu.';
+        return '';
     }
 
     async function canEditApartmentRoom(userId, roomId) {
@@ -1711,12 +1827,18 @@ async function startServer() {
     }
 
     async function placeSocketInRoom(socket, roomId) {
+        if (isPublicChatRoomId(roomId)) {
+            const policy = await getPublicRoomPolicy(roomId);
+            if (publicRoomAccessError(policy, Boolean(socket.data.isAdmin))) return null;
+        }
         const keys = roomKeys(roomId);
         const apartmentTiles = await loadApartmentTiles(roomId);
+        const clothing = await getUserClothing(socket.data.user.id);
         const joined = await redis.eval(PLAYER_JOIN_SCRIPT, {
             keys: [keys.players, keys.cells, keys.tiles],
             arguments: [socket.id, socket.data.user.username, String(Date.now()),
                 socket.data.mood || 'glad',
+                JSON.stringify(clothing),
                 ...GRID_CELLS.map((cell) => `${cell.col}:${cell.row}`)]
         });
         if (!joined) return null;
@@ -1805,6 +1927,8 @@ async function startServer() {
                 welcomeTitle: room.welcome_title || `Velkommen i ${formatPublicRoomName(room)}`,
                 welcomeText: room.welcome_text || 'Her kan du møde andre og chatte sammen. God fornøjelse!',
                 isSystem: room.is_system,
+                isLocked: room.is_locked,
+                isHidden: room.is_hidden,
                 hasBackground: room.has_background,
                 backgroundUrl: getPublicRoomBackgroundUrl(room),
                 hasOverlay: room.has_overlay,
@@ -1814,6 +1938,122 @@ async function startServer() {
             })));
             socket.emit('admin-public-rooms', { rooms: result });
         }
+
+        async function sendAdminClothingItems() {
+            const { rows } = await pool.query(`
+                SELECT item.id, item.target_user_id::text AS target_user_id, target.username AS target_username,
+                       item.name, item.description, item.category, item.required_level, item.price,
+                       item.transform_json, item.created_at
+                FROM chat_clothing_items item
+                JOIN chat_users target ON target.id = item.target_user_id
+                ORDER BY item.created_at DESC, item.id DESC LIMIT 200
+            `);
+            socket.emit('admin-clothing-items', {
+                items: rows.map((item) => ({
+                    id: String(item.id),
+                    targetUserId: item.target_user_id,
+                    targetUsername: item.target_username,
+                    name: item.name,
+                    description: item.description,
+                    category: item.category,
+                    requiredLevel: Number(item.required_level),
+                    price: Number(item.price),
+                    transform: normalizePublicRoomOverlayTransform(item.transform_json)
+                }))
+            });
+        }
+
+        socket.on('admin-clothing-items-request', async () => {
+            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            try { await sendAdminClothingItems(); }
+            catch (error) {
+                console.error('Could not list admin clothing items:', getSafeErrorCode(error));
+                socket.emit('admin-clothing-action-result', { success: false, message: 'Tøjlisten kunne ikke hentes.' });
+            }
+        });
+
+        socket.on('admin-clothing-item-create', async (payload = {}) => {
+            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            const username = normalizeUsername(payload.username);
+            const name = typeof payload.name === 'string' ? payload.name.normalize('NFKC').trim() : '';
+            const description = typeof payload.description === 'string' ? payload.description.normalize('NFKC').trim() : '';
+            const category = payload.category;
+            const requiredLevel = Number(payload.requiredLevel);
+            const price = Number(payload.price);
+            const x = Number(payload.x);
+            const y = Number(payload.y);
+            const rotation = Number(payload.rotation);
+            const scale = Number(payload.scale);
+            const image = Buffer.isBuffer(payload.image)
+                ? payload.image
+                : payload.image instanceof Uint8Array ? Buffer.from(payload.image) : null;
+            const isPng = image && image.length >= 8
+                && image.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+            const isWebp = image && image.length >= 12
+                && image.toString('ascii', 0, 4) === 'RIFF'
+                && image.toString('ascii', 8, 12) === 'WEBP';
+            const validTransform = Number.isFinite(x) && x >= -270 && x <= 270
+                && Number.isFinite(y) && y >= -180 && y <= 180
+                && Number.isFinite(rotation) && rotation >= -180 && rotation <= 180
+                && Number.isFinite(scale) && scale >= 0.25 && scale <= 3;
+            if (!username || !name || name.length > 60 || /[\u0000-\u001f\u007f]/.test(name)
+                || description.length > 300 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(description)
+                || !['headwear', 'clothing', 'left_hand', 'right_hand', 'accessory'].includes(category)
+                || !Number.isInteger(requiredLevel) || requiredLevel < 1 || requiredLevel > 20
+                || !Number.isInteger(price) || price < 0 || price > 100000000
+                || !validTransform || !image || image.length > 950_000 || (!isPng && !isWebp)) {
+                socket.emit('admin-clothing-action-result', {
+                    success: false,
+                    message: 'Kontrollér bruger, navn, kategori, level, pris og placering. Billedet skal være PNG/WebP på højst 950 KB.'
+                });
+                return;
+            }
+            try {
+                const { rows: [target] } = await pool.query(
+                    'SELECT id, username FROM chat_users WHERE username_normalized = $1', [username.normalized]
+                );
+                if (!target) {
+                    socket.emit('admin-clothing-action-result', { success: false, message: 'Brugeren findes ikke.' });
+                    return;
+                }
+                const transform = { x, y, rotation, scale };
+                const result = await pool.query(`
+                    INSERT INTO chat_clothing_items
+                        (target_user_id, name, description, category, image, mime_type, required_level, price, transform_json)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+                    RETURNING id
+                `, [target.id, name, description, category, image, isPng ? 'image/png' : 'image/webp', requiredLevel, price, JSON.stringify(transform)]);
+                await refreshOnlineUserClothing(target.id);
+                socket.emit('admin-clothing-action-result', {
+                    success: true,
+                    message: `${name} blev tildelt ${target.username}.`
+                });
+                await sendAdminClothingItems();
+            } catch (error) {
+                console.error('Could not create clothing item:', getSafeErrorCode(error));
+                socket.emit('admin-clothing-action-result', { success: false, message: 'Tøjdelen kunne ikke gemmes.' });
+            }
+        });
+
+        socket.on('admin-clothing-item-delete', async ({ id } = {}) => {
+            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            if (typeof id !== 'string' || !/^[1-9]\d{0,18}$/.test(id)) return;
+            try {
+                const { rows: [item] } = await pool.query(
+                    'DELETE FROM chat_clothing_items WHERE id = $1 RETURNING target_user_id::text AS target_user_id, name', [id]
+                );
+                if (!item) {
+                    socket.emit('admin-clothing-action-result', { success: false, message: 'Tøjdelen findes ikke længere.' });
+                    return;
+                }
+                await refreshOnlineUserClothing(item.target_user_id);
+                socket.emit('admin-clothing-action-result', { success: true, message: `${item.name} blev fjernet.` });
+                await sendAdminClothingItems();
+            } catch (error) {
+                console.error('Could not delete clothing item:', getSafeErrorCode(error));
+                socket.emit('admin-clothing-action-result', { success: false, message: 'Tøjdelen kunne ikke fjernes.' });
+            }
+        });
 
         socket.on('admin-public-rooms-request', async () => {
             if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
@@ -2039,20 +2279,24 @@ async function startServer() {
             }
         });
 
-        socket.on('admin-public-room-create', async ({ name, floorNumber } = {}) => {
+        socket.on('admin-public-room-create', async ({ name, floorNumber, isLocked = false, isHidden = false } = {}) => {
             if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
             const cleanName = typeof name === 'string' ? name.normalize('NFKC').trim() : '';
             const floor = Number(floorNumber);
             if (!cleanName || cleanName.length > 60 || /[\u0000-\u001f\u007f]/.test(cleanName)
-                || !Number.isInteger(floor) || floor < 1 || floor > 100) {
-                socket.emit('admin-room-action-result', { success: false, message: 'Angiv et rumnavn og en etage fra 1 til 100.' });
+                || !Number.isInteger(floor) || floor < 1 || floor > 100
+                || typeof isLocked !== 'boolean' || typeof isHidden !== 'boolean') {
+                socket.emit('admin-room-action-result', { success: false, message: 'Angiv et rumnavn, en gyldig etage og adgangsindstillinger.' });
                 return;
             }
             try {
                 const { rows: [numberRow] } = await pool.query("SELECT nextval('chat_public_room_number_seq') AS room_number");
                 const roomNumber = numberRow.room_number;
                 const id = `public:${roomNumber}`;
-                await pool.query('INSERT INTO chat_public_rooms (id, room_number, floor_number, name) VALUES ($1, $2, $3, $4)', [id, roomNumber, floor, cleanName]);
+                await pool.query(`
+                    INSERT INTO chat_public_rooms (id, room_number, floor_number, name, is_locked, is_hidden)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                `, [id, roomNumber, floor, cleanName, isLocked, isHidden]);
                 socket.emit('admin-room-action-result', { success: true, message: `Rum #${roomNumber} blev oprettet på etage ${floor}.` });
                 await sendAdminPublicRooms();
                 io.emit('navigator-refresh');
@@ -2062,17 +2306,21 @@ async function startServer() {
             }
         });
 
-        socket.on('admin-public-room-update', async ({ id, name, floorNumber } = {}) => {
+        socket.on('admin-public-room-update', async ({ id, name, floorNumber, isLocked, isHidden } = {}) => {
             if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
             const cleanName = typeof name === 'string' ? name.normalize('NFKC').trim() : '';
             const floor = Number(floorNumber);
             if (typeof id !== 'string' || cleanName.length < 1 || cleanName.length > 60
-                || /[\u0000-\u001f\u007f]/.test(cleanName) || !Number.isInteger(floor) || floor < 1 || floor > 100) {
+                || /[\u0000-\u001f\u007f]/.test(cleanName) || !Number.isInteger(floor) || floor < 1 || floor > 100
+                || typeof isLocked !== 'boolean' || typeof isHidden !== 'boolean') {
                 socket.emit('admin-room-action-result', { success: false, message: 'Kontrollér rumnavn og etagenummer (1–100).' });
                 return;
             }
             try {
-                const { rowCount } = await pool.query('UPDATE chat_public_rooms SET name = $2, floor_number = $3 WHERE id = $1', [id, cleanName, floor]);
+                const { rowCount } = await pool.query(
+                    'UPDATE chat_public_rooms SET name = $2, floor_number = $3, is_locked = $4, is_hidden = $5 WHERE id = $1',
+                    [id, cleanName, floor, isLocked, isHidden]
+                );
                 if (!rowCount) {
                     socket.emit('admin-room-action-result', { success: false, message: 'Rummet findes ikke længere.' });
                     return;
@@ -2226,6 +2474,7 @@ async function startServer() {
                     FROM chat_apartments a JOIN chat_users u ON u.id = a.owner_id
                 `);
                 const publicRooms = await getPublicRooms();
+                const hiddenPublicRoomIds = new Set(publicRooms.filter((room) => room.is_hidden).map((room) => room.id));
                 const roomNames = new Map([
                     ...publicRooms.map((room) => [room.id, formatPublicRoomName(room)]),
                     ...apartments.map((apartment) => [
@@ -2476,6 +2725,13 @@ async function startServer() {
             if (!activeSocketIds.has(socket.id) || socket.data.switchingRoom) return;
             const roomId = String(payload.roomId || '');
             if (!await isValidRoomId(roomId)) return;
+            if (isPublicChatRoomId(roomId)) {
+                const accessError = publicRoomAccessError(await getPublicRoomPolicy(roomId), Boolean(socket.data.isAdmin));
+                if (accessError) {
+                    socket.emit('room-error', { message: accessError });
+                    return;
+                }
+            }
             socket.data.switchingRoom = true;
             try {
                 const apartmentMatch = /^apartment:([1-9]\d{0,18})$/.exec(roomId);
@@ -2903,13 +3159,14 @@ async function startServer() {
             if (!activeSocketIds.has(socket.id)) return;
             try {
                 await cleanupStalePlayers();
-                const publicRooms = await getPublicRooms();
+                const publicRooms = (await getPublicRooms()).filter((room) => socket.data.isAdmin || !room.is_hidden);
                 const rooms = publicRooms.map((room) => ({
                     id: room.id,
                     name: formatPublicRoomName(room),
                     type: 'public',
                     roomNumber: Number(room.room_number),
-                    floorNumber: Number(room.floor_number)
+                    floorNumber: Number(room.floor_number),
+                    isLocked: room.is_locked
                 }));
                 const { rows: apartments } = await pool.query(`
                     SELECT DISTINCT a.id, a.apartment_number, a.apartment_name, u.username
@@ -2966,8 +3223,10 @@ async function startServer() {
                             userId: String(activeSocketUsers.get(playerId) || ''),
                             name: player.name,
                             id: playerId,
-                            roomId,
-                            roomName: roomNames.get(roomId) || 'Ukendt rum',
+                            roomId: hiddenPublicRoomIds.has(roomId) && !socket.data.isAdmin ? null : roomId,
+                            roomName: hiddenPublicRoomIds.has(roomId) && !socket.data.isAdmin
+                                ? 'Privat område'
+                                : roomNames.get(roomId) || 'Ukendt rum',
                             isSelf: playerId === socket.id
                         });
                     }
@@ -4007,6 +4266,7 @@ async function startServer() {
                 socket.data.roomId = initialRoomId;
                 const initialRoomKeys = roomKeys(initialRoomId);
                 const apartmentTiles = await loadApartmentTiles(initialRoomId);
+                const clothing = await getUserClothing(socket.data.user.id);
                 await cleanupStalePlayers();
                 await replaceSameTabOnlineSession(socket);
                 const { rows: mutedUsers } = await pool.query(`
@@ -4020,6 +4280,7 @@ async function startServer() {
                     socket.data.user.username,
                     String(Date.now()),
                     socket.data.mood || 'glad',
+                    JSON.stringify(clothing),
                     ...GRID_CELLS.map((cell) => `${cell.col}:${cell.row}`)
                 ];
                 const joinedPlayerJson = await redis.eval(PLAYER_JOIN_SCRIPT, {
