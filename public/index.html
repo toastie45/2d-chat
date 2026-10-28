@@ -2182,6 +2182,9 @@
             const adminBanStatus = document.getElementById('admin-ban-status');
             const adminBanCancel = document.getElementById('admin-ban-cancel');
             let isAdminUser = false;
+            let isFullAdminUser = false;
+            let canManagePublicRooms = false;
+            let canManageClothing = false;
             let pendingAdminBanTarget = null;
             let adminUserSearchTimer = 0;
             const navigatorPublicTab = document.getElementById('navigator-public-tab');
@@ -3349,6 +3352,9 @@
                 document.documentElement.classList.remove('auth-checking');
                 currentUser = null;
                 isAdminUser = false;
+                isFullAdminUser = false;
+                canManagePublicRooms = false;
+                canManageClothing = false;
                 adminNavButton.hidden = true;
                 ownApartment = null;
                 resetTopbarProgress();
@@ -3524,9 +3530,14 @@
             }
 
             function selectAdminSection() {
-                const showUsers = adminSectionSelect.value === 'users';
-                const showRooms = adminSectionSelect.value === 'rooms';
-                const showClothing = adminSectionSelect.value === 'clothing';
+                if (adminSectionSelect.value === 'users' && !isFullAdminUser
+                    || adminSectionSelect.value === 'rooms' && !canManagePublicRooms
+                    || adminSectionSelect.value === 'clothing' && !canManageClothing) {
+                    adminSectionSelect.value = '';
+                }
+                const showUsers = adminSectionSelect.value === 'users' && isFullAdminUser;
+                const showRooms = adminSectionSelect.value === 'rooms' && canManagePublicRooms;
+                const showClothing = adminSectionSelect.value === 'clothing' && canManageClothing;
                 adminWelcomeView.hidden = showUsers || showRooms || showClothing;
                 adminUsersView.hidden = !showUsers;
                 adminRoomsView.hidden = !showRooms;
@@ -5991,9 +6002,16 @@
                 if (Array.isArray(rooms)) renderNavigatorRooms(rooms, activeRoomId || activeRoom);
             });
 
-            socket.on('admin-status', ({ isAdmin } = {}) => {
+            socket.on('admin-status', ({ isAdmin, role, canManageUsers, canManagePublicRooms: mayManageRooms, canManageClothing: mayManageClothing } = {}) => {
                 isAdminUser = isAdmin === true;
+                isFullAdminUser = canManageUsers === true || role === 'full';
+                canManagePublicRooms = mayManageRooms === true || isFullAdminUser;
+                canManageClothing = mayManageClothing === true || isFullAdminUser;
                 adminNavButton.hidden = !currentUser || !isAdminUser;
+                adminSectionSelect.querySelector('option[value="users"]').hidden = !isFullAdminUser;
+                adminSectionSelect.querySelector('option[value="rooms"]').hidden = !canManagePublicRooms;
+                adminSectionSelect.querySelector('option[value="clothing"]').hidden = !canManageClothing;
+                selectAdminSection();
             });
             socket.on('wardrobe-items', ({ items = [], level = 1 } = {}) => {
                 renderWardrobeItems(Array.isArray(items) ? items : [], Math.max(1, Number(level) || 1));
@@ -6018,13 +6036,13 @@
                 drawAdminClothingPreview();
             });
             socket.on('admin-online-users', ({ users = [], query = '', totalCount } = {}) => {
-                if (!isAdminUser) return;
+                if (!isFullAdminUser) return;
                 const currentQuery = adminUserSearch.value.normalize('NFKC').trim().slice(0, 18);
                 if (query !== currentQuery) return;
                 renderAdminOnlineUsers(Array.isArray(users) ? users : [], query, Number.isInteger(totalCount) ? totalCount : users.length);
             });
             socket.on('admin-public-rooms', ({ rooms = [] } = {}) => {
-                if (isAdminUser) renderAdminPublicRooms(Array.isArray(rooms) ? rooms : []);
+                if (canManagePublicRooms) renderAdminPublicRooms(Array.isArray(rooms) ? rooms : []);
             });
             socket.on('admin-room-background-result', ({ success, message } = {}) => {
                 adminRoomsStatus.textContent = message || (success ? 'Baggrunden er gemt.' : 'Baggrunden kunne ikke gemmes.');
@@ -6056,7 +6074,7 @@
                 }
             });
             socket.on('admin-ip-bans', ({ bans = [] } = {}) => {
-                if (isAdminUser) renderAdminIpBans(Array.isArray(bans) ? bans : []);
+                if (isFullAdminUser) renderAdminIpBans(Array.isArray(bans) ? bans : []);
             });
             socket.on('admin-error', ({ message } = {}) => {
                 adminUsersStatus.textContent = message || 'Adminfunktionen kunne ikke indlæses.';

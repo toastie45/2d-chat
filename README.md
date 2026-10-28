@@ -14,11 +14,12 @@ Set these environment variables before starting the server:
 | `REDIS_URL` | Redis connection string for Render Key Value |
 | `SESSION_SECRET` | A private random value of at least 32 bytes |
 | `ADMIN_USERNAMES` | Optional comma-separated list of exact account usernames allowed to use the admin panel |
+| `LIMITED_ADMIN_USERNAMES` | Optional comma-separated list of accounts limited to public room/Navigator management and clothing/accessory management |
 | `PORT` | Optional HTTP port; defaults to `3000` |
 | `PGSSLMODE` | Set to `require` when PostgreSQL requires TLS, including Supabase |
 | `PGSSLROOTCERT` | Optional path to a trusted PostgreSQL root CA certificate |
 
-To enable the admin panel, set `ADMIN_USERNAMES` in the server environment to the exact account username(s), separated by commas (for example, `Tommy`). The server checks this setting for every authenticated connection; admin rights are never granted by the browser.
+To enable the full admin panel, set `ADMIN_USERNAMES` in the server environment to the exact account username(s), separated by commas (for example, `Tommy`). To grant only Navigator/public room and clothing/accessory management, set `LIMITED_ADMIN_USERNAMES` instead. The server checks these settings for every authenticated connection; admin rights are never granted by the browser. A username listed in `ADMIN_USERNAMES` receives the full role even if it is also listed as limited.
 
 Generate a session secret locally with:
 

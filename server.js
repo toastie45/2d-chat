@@ -377,6 +377,10 @@ async function startServer() {
         .split(',')
         .map((username) => normalizeUsername(username)?.normalized)
         .filter(Boolean));
+    const limitedAdminUsernames = new Set(String(process.env.LIMITED_ADMIN_USERNAMES || '')
+        .split(',')
+        .map((username) => normalizeUsername(username)?.normalized)
+        .filter(Boolean));
     const ipEncryptionKey = crypto.createHash('sha256').update('chat-ip-ban:').update(SESSION_SECRET).digest();
     const encryptIpAddress = (address) => {
         const iv = crypto.randomBytes(12);
@@ -397,9 +401,12 @@ async function startServer() {
             return 'Ukendt';
         }
     };
-    const isAdminUser = (user) => {
-        const normalized = normalizeUsername(user?.username);
-        return Boolean(normalized && adminUsernames.has(normalized.normalized));
+    const getAdminRole = (user) => {
+        const normalized = normalizeUsername(user?.username)?.normalized;
+        if (!normalized) return 'none';
+        if (adminUsernames.has(normalized)) return 'full';
+        if (limitedAdminUsernames.has(normalized)) return 'rooms-clothing';
+        return 'none';
     };
     const getRequestIpAddress = (request) => String(request.ip || request.socket.remoteAddress || '').trim();
     const recordUserLastIp = async (userId, ipAddress, ipHash) => {
@@ -1525,7 +1532,10 @@ async function startServer() {
             socket.data.clientIp,
             SESSION_SECRET
         );
-        socket.data.isAdmin = isAdminUser(socket.data.user);
+        socket.data.adminRole = getAdminRole(socket.data.user);
+        socket.data.isAdmin = socket.data.adminRole === 'full';
+        socket.data.canManagePublicRooms = socket.data.isAdmin || socket.data.adminRole === 'rooms-clothing';
+        socket.data.canManageClothing = socket.data.isAdmin || socket.data.adminRole === 'rooms-clothing';
         try {
             const ban = await getActiveIpBan(socket.data.ipHash);
             if (ban) {
@@ -1878,7 +1888,7 @@ async function startServer() {
     async function placeSocketInRoom(socket, roomId) {
         if (isPublicChatRoomId(roomId)) {
             const policy = await getPublicRoomPolicy(roomId);
-            if (publicRoomAccessError(policy, Boolean(socket.data.isAdmin))) return null;
+            if (publicRoomAccessError(policy, Boolean(socket.data.canManagePublicRooms))) return null;
         }
         const keys = roomKeys(roomId);
         const apartmentTiles = await loadApartmentTiles(roomId);
@@ -1926,7 +1936,7 @@ async function startServer() {
             getRoomWelcome(roomId),
             canEditApartmentRoom(socket.data.user.id, roomId)
         ]);
-        const canEditPublicRoom = Boolean(socket.data.isAdmin && isPublicChatRoomId(roomId));
+        const canEditPublicRoom = Boolean(socket.data.canManagePublicRooms && isPublicChatRoomId(roomId));
         socket.emit('room-changed', { roomId, roomName, players, apartmentTiles, canEditApartment, canEditPublicRoom, ...welcome });
         socket.to(roomChannel(roomId)).emit('newPlayer', publicPlayer(JSON.parse(joined)));
         io.emit('navigator-refresh');
@@ -1965,7 +1975,13 @@ async function startServer() {
 
     io.on('connection', (socket) => {
         socket.join(`session:${socket.request.sessionID}`);
-        socket.emit('admin-status', { isAdmin: Boolean(socket.data.isAdmin) });
+        socket.emit('admin-status', {
+            isAdmin: Boolean(socket.data.isAdmin || socket.data.canManagePublicRooms || socket.data.canManageClothing),
+            role: socket.data.adminRole || 'none',
+            canManageUsers: Boolean(socket.data.isAdmin),
+            canManagePublicRooms: Boolean(socket.data.canManagePublicRooms),
+            canManageClothing: Boolean(socket.data.canManageClothing)
+        });
 
         async function sendAdminPublicRooms() {
             const rooms = await getPublicRooms();
@@ -2024,7 +2040,7 @@ async function startServer() {
         }
 
         socket.on('admin-clothing-items-request', async () => {
-            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            if (!socket.data.canManageClothing || !activeSocketIds.has(socket.id)) return;
             try { await sendAdminClothingItems(); }
             catch (error) {
                 console.error('Could not list admin clothing items:', getSafeErrorCode(error));
@@ -2033,7 +2049,7 @@ async function startServer() {
         });
 
         socket.on('admin-clothing-item-create', async (payload = {}) => {
-            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            if (!socket.data.canManageClothing || !activeSocketIds.has(socket.id)) return;
             const username = typeof payload.username === 'string' && payload.username.trim() ? normalizeUsername(payload.username) : null;
             const name = typeof payload.name === 'string' ? payload.name.normalize('NFKC').trim() : '';
             const description = typeof payload.description === 'string' ? payload.description.normalize('NFKC').trim() : '';
@@ -2067,7 +2083,7 @@ async function startServer() {
         });
 
         socket.on('admin-clothing-item-delete', async ({ id } = {}) => {
-            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            if (!socket.data.canManageClothing || !activeSocketIds.has(socket.id)) return;
             if (typeof id !== 'string' || !/^[1-9]\d{0,18}$/.test(id)) return;
             try {
                 const { rows: [item] } = await pool.query(
@@ -2087,7 +2103,7 @@ async function startServer() {
         });
 
         socket.on('admin-clothing-template-assign', async ({ id, username: rawUsername } = {}) => {
-            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            if (!socket.data.canManageClothing || !activeSocketIds.has(socket.id)) return;
             if (typeof id !== 'string' || !/^[1-9]\d{0,18}$/.test(id)) return;
             const username = normalizeUsername(rawUsername);
             if (!username) {
@@ -2126,7 +2142,7 @@ async function startServer() {
         });
 
         socket.on('admin-clothing-template-delete', async ({ id } = {}) => {
-            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            if (!socket.data.canManageClothing || !activeSocketIds.has(socket.id)) return;
             if (typeof id !== 'string' || !/^[1-9]\d{0,18}$/.test(id)) return;
             try {
                 const { rows: assignments } = await pool.query(
@@ -2266,7 +2282,7 @@ async function startServer() {
         });
 
         socket.on('admin-public-rooms-request', async () => {
-            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            if (!socket.data.canManagePublicRooms || !activeSocketIds.has(socket.id)) return;
             try { await sendAdminPublicRooms(); }
             catch (error) {
                 console.error('Could not list public rooms for admin:', getSafeErrorCode(error));
@@ -2275,7 +2291,7 @@ async function startServer() {
         });
 
         socket.on('admin-public-room-background-upload', async ({ id, image } = {}) => {
-            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            if (!socket.data.canManagePublicRooms || !activeSocketIds.has(socket.id)) return;
             const bytes = Buffer.isBuffer(image) ? image : image instanceof Uint8Array ? Buffer.from(image) : null;
             const isJpeg = bytes && bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
             if (typeof id !== 'string' || !/^(common|disco|public:[1-9]\d{0,18})$/.test(id)
@@ -2322,7 +2338,7 @@ async function startServer() {
         });
 
         socket.on('admin-public-room-background-reset', async ({ id } = {}) => {
-            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)
+            if (!socket.data.canManagePublicRooms || !activeSocketIds.has(socket.id)
                 || typeof id !== 'string' || !/^(common|disco|public:[1-9]\d{0,18})$/.test(id)) return;
             try {
                 const { rowCount } = await pool.query(`
@@ -2356,7 +2372,7 @@ async function startServer() {
         });
 
         socket.on('admin-public-room-overlay-upload', async ({ id, image } = {}) => {
-            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            if (!socket.data.canManagePublicRooms || !activeSocketIds.has(socket.id)) return;
             const bytes = Buffer.isBuffer(image) ? image : image instanceof Uint8Array ? Buffer.from(image) : null;
             const isPng = bytes && bytes.length >= 8
                 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
@@ -2405,7 +2421,7 @@ async function startServer() {
         });
 
         socket.on('admin-public-room-overlay-reset', async ({ id } = {}) => {
-            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)
+            if (!socket.data.canManagePublicRooms || !activeSocketIds.has(socket.id)
                 || typeof id !== 'string' || !/^(common|disco|public:[1-9]\d{0,18})$/.test(id)) return;
             try {
                 const { rowCount } = await pool.query(`
@@ -2444,7 +2460,7 @@ async function startServer() {
         });
 
         socket.on('admin-public-room-overlay-transform-set', async ({ id, x, y, rotation, scale } = {}) => {
-            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            if (!socket.data.canManagePublicRooms || !activeSocketIds.has(socket.id)) return;
             const values = [x, y, rotation, scale].map(Number);
             if (typeof id !== 'string' || !/^(common|disco|public:[1-9]\d{0,18})$/.test(id)
                 || !values.every(Number.isFinite)
@@ -2490,7 +2506,7 @@ async function startServer() {
         });
 
         socket.on('admin-public-room-create', async ({ name, floorNumber, isLocked = false, isHidden = false } = {}) => {
-            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            if (!socket.data.canManagePublicRooms || !activeSocketIds.has(socket.id)) return;
             const cleanName = typeof name === 'string' ? name.normalize('NFKC').trim() : '';
             const floor = Number(floorNumber);
             if (!cleanName || cleanName.length > 60 || /[\u0000-\u001f\u007f]/.test(cleanName)
@@ -2517,7 +2533,7 @@ async function startServer() {
         });
 
         socket.on('admin-public-room-update', async ({ id, name, floorNumber, isLocked, isHidden } = {}) => {
-            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            if (!socket.data.canManagePublicRooms || !activeSocketIds.has(socket.id)) return;
             const cleanName = typeof name === 'string' ? name.normalize('NFKC').trim() : '';
             const floor = Number(floorNumber);
             if (typeof id !== 'string' || cleanName.length < 1 || cleanName.length > 60
@@ -2561,7 +2577,7 @@ async function startServer() {
         });
 
         socket.on('admin-public-room-welcome-update', async ({ id, welcomeTitle, welcomeText } = {}) => {
-            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            if (!socket.data.canManagePublicRooms || !activeSocketIds.has(socket.id)) return;
             const cleanTitle = typeof welcomeTitle === 'string' ? welcomeTitle.normalize('NFKC').trim() : '';
             const cleanText = typeof welcomeText === 'string'
                 ? welcomeText.normalize('NFKC').replace(/\r\n?/g, '\n').trim()
@@ -2601,7 +2617,7 @@ async function startServer() {
         });
 
         socket.on('admin-public-room-delete', async ({ id } = {}) => {
-            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            if (!socket.data.canManagePublicRooms || !activeSocketIds.has(socket.id)) return;
             if (typeof id !== 'string' || !/^public:[1-9]\d{0,18}$/.test(id)) {
                 socket.emit('admin-room-action-result', { success: false, message: 'Fællesrum og Diskoteket er faste systemrum og kan ikke slettes.' });
                 return;
@@ -2936,7 +2952,7 @@ async function startServer() {
             const roomId = String(payload.roomId || '');
             if (!await isValidRoomId(roomId)) return;
             if (isPublicChatRoomId(roomId)) {
-                const accessError = publicRoomAccessError(await getPublicRoomPolicy(roomId), Boolean(socket.data.isAdmin));
+                const accessError = publicRoomAccessError(await getPublicRoomPolicy(roomId), Boolean(socket.data.canManagePublicRooms));
                 if (accessError) {
                     socket.emit('room-error', { message: accessError });
                     return;
@@ -3092,7 +3108,7 @@ async function startServer() {
             if (!activeSocketIds.has(socket.id)) return;
             const roomId = activeSocketRooms.get(socket.id);
             const canEditApartment = await canEditApartmentRoom(socket.data.user.id, roomId);
-            if (!canEditApartment && !(socket.data.isAdmin && isPublicChatRoomId(roomId))) return;
+            if (!canEditApartment && !(socket.data.canManagePublicRooms && isPublicChatRoomId(roomId))) return;
             const [publicRooms, { rows: apartments }] = await Promise.all([
                 getPublicRooms(),
                 pool.query(`SELECT a.id, a.apartment_number, a.apartment_name, u.username
@@ -3141,7 +3157,7 @@ async function startServer() {
         });
 
         socket.on('public-room-layout-save', async ({ tiles: requestedTiles } = {}) => {
-            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)
+            if (!socket.data.canManagePublicRooms || !activeSocketIds.has(socket.id)
                 || !Array.isArray(requestedTiles) || requestedTiles.length > GRID_CELLS.length) return;
             const roomId = activeSocketRooms.get(socket.id);
             if (!isPublicChatRoomId(roomId)) return;
@@ -3369,7 +3385,7 @@ async function startServer() {
             if (!activeSocketIds.has(socket.id)) return;
             try {
                 await cleanupStalePlayers();
-                const publicRooms = (await getPublicRooms()).filter((room) => socket.data.isAdmin || !room.is_hidden);
+                const publicRooms = (await getPublicRooms()).filter((room) => socket.data.canManagePublicRooms || !room.is_hidden);
                 const rooms = publicRooms.map((room) => ({
                     id: room.id,
                     name: formatPublicRoomName(room),
@@ -4541,7 +4557,7 @@ async function startServer() {
                 }
                 const welcome = await getRoomWelcome(initialRoomId);
                 const canEditApartment = await canEditApartmentRoom(socket.data.user.id, initialRoomId);
-                const canEditPublicRoom = Boolean(socket.data.isAdmin && isPublicChatRoomId(initialRoomId));
+                const canEditPublicRoom = Boolean(socket.data.canManagePublicRooms && isPublicChatRoomId(initialRoomId));
                 socket.emit('join-success', {
                     players: currentPlayers,
                     mutedUsernames: mutedUsers.map((mutedUser) => mutedUser.username),
