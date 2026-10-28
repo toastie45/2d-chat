@@ -842,6 +842,10 @@
         .admin-room-preview { display: block; width: 104px; height: 64px; border: 1px solid #3b3e36; border-radius: 6px; object-fit: cover; }
         .admin-room-bg-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
         .admin-room-overlay-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; padding-top: 7px; border-top: 1px solid #353732; }
+        .admin-room-overlay-transform { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; align-items: end; gap: 6px; flex: 1 0 100%; }
+        .admin-room-overlay-transform label { display: grid; gap: 3px; color: var(--muted); font-size: 9px; }
+        .admin-room-overlay-transform input { width: 100%; min-width: 0; min-height: 29px; padding: 5px 7px; border: 1px solid #3b3e36; border-radius: 5px; background: #151613; color: #f2f0e9; font: inherit; font-size: 10px; }
+        .admin-room-overlay-hint { flex: 1 0 100%; margin: 0; color: var(--muted); font-size: 9px; }
         .admin-room-file { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
         .admin-room-bg-status { flex: 1 0 100%; color: var(--muted); font-size: 10px; }
         .navigator-floor-heading { margin: 14px 0 2px; color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
@@ -1323,6 +1327,7 @@
             .admin-room-row .admin-row-actions { justify-content: flex-end; }
             .admin-room-details { grid-template-columns: 82px minmax(0, 1fr); }
             .admin-room-preview { width: 82px; height: 54px; }
+            .admin-room-overlay-transform { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
     </style>
 </head>
@@ -1838,9 +1843,21 @@
             const roomOverlayImage = new Image();
             let roomOverlayImageLoaded = false;
             let roomOverlayImageUrl = '';
-            function setRoomOverlay(url = '') {
+            let roomOverlayTransform = { x: 0, y: 0, rotation: 0, scale: 1 };
+            function setRoomOverlay(url = '', transform = {}) {
                 const nextUrl = typeof url === 'string' ? url : '';
-                if (nextUrl === roomOverlayImageUrl) return;
+                const nextTransform = {
+                    x: Math.max(-270, Math.min(270, Number(transform?.x) || 0)),
+                    y: Math.max(-180, Math.min(180, Number(transform?.y) || 0)),
+                    rotation: Math.max(-180, Math.min(180, Number(transform?.rotation) || 0)),
+                    scale: Math.max(0.25, Math.min(3, Number(transform?.scale) || 1))
+                };
+                const transformChanged = Object.keys(nextTransform).some((key) => nextTransform[key] !== roomOverlayTransform[key]);
+                roomOverlayTransform = nextTransform;
+                if (nextUrl === roomOverlayImageUrl) {
+                    if (transformChanged) requestBoardRender();
+                    return;
+                }
                 roomOverlayImageUrl = nextUrl;
                 roomOverlayImageLoaded = false;
                 if (nextUrl) roomOverlayImage.src = nextUrl;
@@ -2672,7 +2689,7 @@
             function applyRoomState(roomId, roomName, serverPlayers = {}, welcome = {}, apartmentState = {}) {
                 activeRoom = roomId;
                 setRoomBackground(roomId, welcome.roomBackgroundUrl);
-                setRoomOverlay(welcome.roomOverlayUrl);
+                setRoomOverlay(welcome.roomOverlayUrl, welcome.roomOverlayTransform);
                 roomStripName.textContent = roomName;
                 roomStripName.setAttribute('aria-label', `Vis velkomst for ${roomName}`);
                 chatTitle.textContent = `Tekstchat i ${roomName}`;
@@ -3512,6 +3529,49 @@
                         });
                         overlayTools.append(removeOverlay);
                     }
+                    const overlayTransform = room.overlayTransform || { x: 0, y: 0, rotation: 0, scale: 1 };
+                    const transformForm = document.createElement('form');
+                    transformForm.className = 'admin-room-overlay-transform';
+                    const overlayTransformFields = {};
+                    const addOverlayTransformField = (key, labelText, min, max, step, value) => {
+                        const label = document.createElement('label');
+                        label.textContent = labelText;
+                        const input = document.createElement('input');
+                        input.type = 'number';
+                        input.min = String(min);
+                        input.max = String(max);
+                        input.step = String(step);
+                        input.value = String(value);
+                        input.required = true;
+                        input.setAttribute('aria-label', `${labelText} for overlay til ${room.name}`);
+                        label.append(input);
+                        transformForm.append(label);
+                        overlayTransformFields[key] = input;
+                    };
+                    addOverlayTransformField('x', 'X (px)', -270, 270, 1, overlayTransform.x ?? 0);
+                    addOverlayTransformField('y', 'Y (px)', -180, 180, 1, overlayTransform.y ?? 0);
+                    addOverlayTransformField('rotation', 'Rotation (°)', -180, 180, 1, overlayTransform.rotation ?? 0);
+                    addOverlayTransformField('scale', 'Størrelse (%)', 25, 300, 1, Math.round((overlayTransform.scale ?? 1) * 100));
+                    const saveTransform = document.createElement('button');
+                    saveTransform.className = 'admin-row-button';
+                    saveTransform.type = 'submit';
+                    saveTransform.textContent = 'Gem placering';
+                    transformForm.append(saveTransform);
+                    transformForm.addEventListener('submit', (event) => {
+                        event.preventDefault();
+                        overlayStatus.textContent = 'Gemmer overlayets placering…';
+                        socket.emit('admin-public-room-overlay-transform-set', {
+                            id: room.id,
+                            x: Number(overlayTransformFields.x.value),
+                            y: Number(overlayTransformFields.y.value),
+                            rotation: Number(overlayTransformFields.rotation.value),
+                            scale: Number(overlayTransformFields.scale.value) / 100
+                        });
+                    });
+                    const transformHint = document.createElement('p');
+                    transformHint.className = 'admin-room-overlay-hint';
+                    transformHint.textContent = 'X/Y måles fra midten af rummet (+X højre, +Y ned). Rotation er i grader; størrelse er i procent.';
+                    overlayTools.append(transformForm, transformHint);
                     overlayTools.append(overlayStatus);
                     editFields.append(overlayTools);
                     const actions = document.createElement('div');
@@ -4052,7 +4112,12 @@
 
                 // Decorative overlays sit above the room background and every avatar.
                 if (roomOverlayImageLoaded) {
-                    ctx.drawImage(roomOverlayImage, 0, 0, gridLayout.width, gridLayout.height);
+                    ctx.save();
+                    ctx.translate(gridLayout.width / 2 + roomOverlayTransform.x, gridLayout.height / 2 + roomOverlayTransform.y);
+                    ctx.rotate(roomOverlayTransform.rotation * Math.PI / 180);
+                    ctx.scale(roomOverlayTransform.scale, roomOverlayTransform.scale);
+                    ctx.drawImage(roomOverlayImage, -gridLayout.width / 2, -gridLayout.height / 2, gridLayout.width, gridLayout.height);
+                    ctx.restore();
                 }
 
                 // Highlighted bubbles are drawn last so they remain visible when bubbles overlap.
@@ -5066,7 +5131,7 @@
                 socket.disconnect();
             });
 
-            socket.on('join-success', ({ players: serverPlayers, mutedUsernames: initialMutedUsernames = [], roomId = 'common', roomName, welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl, apartmentTiles, canEditApartment, canEditPublicRoom, ownApartmentId, ownApartmentNumber }) => {
+            socket.on('join-success', ({ players: serverPlayers, mutedUsernames: initialMutedUsernames = [], roomId = 'common', roomName, welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl, roomOverlayTransform, apartmentTiles, canEditApartment, canEditPublicRoom, ownApartmentId, ownApartmentNumber }) => {
                 players = {};
                 myId = socket.id;
                 ownApartment = ownApartmentId
@@ -5074,7 +5139,7 @@
                     : null;
                 activeRoom = roomId;
                 setRoomBackground(roomId, roomBackgroundUrl);
-                setRoomOverlay(roomOverlayUrl);
+                setRoomOverlay(roomOverlayUrl, roomOverlayTransform);
                 roomStripName.textContent = roomName;
                 roomStripName.setAttribute('aria-label', `Vis velkomst for ${roomName}`);
                 chatTitle.textContent = `Tekstchat i ${roomName}`;
@@ -5110,11 +5175,11 @@
                 canvas.focus();
             });
 
-            socket.on('room-changed', ({ roomId, roomName, players: serverPlayers = {}, welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl, apartmentTiles, canEditApartment, canEditPublicRoom } = {}) => {
+            socket.on('room-changed', ({ roomId, roomName, players: serverPlayers = {}, welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl, roomOverlayTransform, apartmentTiles, canEditApartment, canEditPublicRoom } = {}) => {
                 if (!roomId || !roomName) return;
                 const wasNavigatorOpen = !navigatorPanel.hidden;
                 const wasMembersOpen = !membersPanel.hidden;
-                applyRoomState(roomId, roomName, serverPlayers, { welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl }, { apartmentTiles, canEditApartment, canEditPublicRoom });
+                applyRoomState(roomId, roomName, serverPlayers, { welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl, roomOverlayTransform }, { apartmentTiles, canEditApartment, canEditPublicRoom });
                 sidePanelHistory.length = 0;
                 selectSidePanel('welcome', { remember: false });
                 if (wasNavigatorOpen) socket.emit('navigator-request');
@@ -5125,10 +5190,10 @@
                 updateRoomWelcome(welcomeTitle, welcomeText);
             });
 
-            socket.on('public-room-metadata', ({ roomId, roomName, welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl } = {}) => {
+            socket.on('public-room-metadata', ({ roomId, roomName, welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl, roomOverlayTransform } = {}) => {
                 if (roomId !== activeRoom) return;
                 setRoomBackground(roomId, roomBackgroundUrl);
-                setRoomOverlay(roomOverlayUrl);
+                setRoomOverlay(roomOverlayUrl, roomOverlayTransform);
                 updateApartmentRoomTitle(roomName, welcomeTitle);
                 updateRoomWelcome(welcomeTitle, welcomeText);
             });
