@@ -143,7 +143,7 @@ local function tryJoin(cell)
             name = ARGV[2],
             col = tonumber(col),
             row = tonumber(row),
-            mood = 'glad',
+            mood = ARGV[4],
             text = '',
             messageTime = 0,
             lastSeen = tonumber(ARGV[3]),
@@ -158,7 +158,7 @@ local function tryJoin(cell)
 end
 
 -- In an apartment, prefer a designated door as the spawn point when available.
-for index = 4, #ARGV do
+for index = 5, #ARGV do
     local cell = ARGV[index]
     local tileState = redis.call('HGET', KEYS[3], cell)
     if tileState == 'door' or (tileState and string.sub(tileState, 1, 5) == 'door:') then
@@ -166,7 +166,7 @@ for index = 4, #ARGV do
         if player then return player end
     end
 end
-for index = 4, #ARGV do
+for index = 5, #ARGV do
     local player = tryJoin(ARGV[index])
     if player then return player end
 end
@@ -1348,6 +1348,7 @@ async function startServer() {
         socket.data.user = session.user;
         socket.data.tabId = tabId;
         socket.data.sessionId = socket.request.sessionID;
+        socket.data.mood = ['glad', 'mobset', 'ked', 'blappet', 'boevet'].includes(session.mood) ? session.mood : 'glad';
         const forwardedAddresses = String(socket.request.headers['x-forwarded-for'] || '')
             .split(',').map((address) => address.trim()).filter(Boolean);
         socket.data.clientIp = session.clientIp
@@ -1657,6 +1658,7 @@ async function startServer() {
         const joined = await redis.eval(PLAYER_JOIN_SCRIPT, {
             keys: [keys.players, keys.cells, keys.tiles],
             arguments: [socket.id, socket.data.user.username, String(Date.now()),
+                socket.data.mood || 'glad',
                 ...GRID_CELLS.map((cell) => `${cell.col}:${cell.row}`)]
         });
         if (!joined) return null;
@@ -3770,6 +3772,7 @@ async function startServer() {
                     socket.id,
                     socket.data.user.username,
                     String(Date.now()),
+                    socket.data.mood || 'glad',
                     ...GRID_CELLS.map((cell) => `${cell.col}:${cell.row}`)
                 ];
                 const joinedPlayerJson = await redis.eval(PLAYER_JOIN_SCRIPT, {
@@ -3865,7 +3868,12 @@ async function startServer() {
             if (!activeSocketIds.has(socket.id) || !['glad', 'mobset', 'ked', 'blappet', 'boevet'].includes(mood)) return;
             const roomId = activeSocketRooms.get(socket.id);
             if (!roomId) return;
+            socket.data.mood = mood;
             try {
+                await new Promise((resolve, reject) => {
+                    socket.request.session.mood = mood;
+                    socket.request.session.save((error) => error ? reject(error) : resolve());
+                });
                 const keys = roomKeys(roomId);
                 const encodedPlayer = await redis.hGet(keys.players, socket.id);
                 if (!encodedPlayer) return;

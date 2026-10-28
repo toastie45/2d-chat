@@ -1800,6 +1800,12 @@
             ctx.scale(canvasPixelRatio, canvasPixelRatio);
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'high';
+            const boardBackgroundCanvas = document.createElement('canvas');
+            boardBackgroundCanvas.width = canvas.width;
+            boardBackgroundCanvas.height = canvas.height;
+            const boardBackgroundCtx = boardBackgroundCanvas.getContext('2d');
+            boardBackgroundCtx.scale(canvasPixelRatio, canvasPixelRatio);
+            let boardBackgroundDirty = true;
             const roomBackgroundImage = new Image();
             let roomBackgroundImageLoaded = false;
             let roomBackgroundImageRequested = false;
@@ -1811,12 +1817,14 @@
                 roomBackgroundImageUrl = nextUrl;
                 roomBackgroundImageLoaded = false;
                 roomBackgroundImageRequested = true;
+                boardBackgroundDirty = true;
                 if (nextUrl) roomBackgroundImage.src = nextUrl;
                 else requestBoardRender();
             }
             roomBackgroundImage.addEventListener('load', () => {
                 if (!roomBackgroundImageUrl) return;
                 roomBackgroundImageLoaded = true;
+                boardBackgroundDirty = true;
                 requestBoardRender();
             });
             const avatarImage = new Image();
@@ -2624,6 +2632,7 @@
 
             function applyApartmentRoomState(tiles = {}, canEdit = false, canEditPublic = false) {
                 apartmentTiles = tiles && typeof tiles === 'object' && !Array.isArray(tiles) ? { ...tiles } : {};
+                boardBackgroundDirty = true;
                 savedApartmentTiles = { ...apartmentTiles };
                 apartmentDraftTiles = { ...apartmentTiles };
                 canEditCurrentApartment = Boolean(canEdit);
@@ -3161,17 +3170,37 @@
                 const visualWidth = avatarImageLoaded ? avatarWidth : avatarRadius * 2;
                 const visualHeight = avatarImageLoaded ? avatarHeight : avatarRadius * 2;
                 const labelHeight = 24;
+                let horizontalNudge = 0;
+                let lowerRowNudge = 0;
+                for (const other of Object.values(players)) {
+                    if (other.id === player.id) continue;
+                    const otherPosition = positionFor(other);
+                    const dx = otherPosition.x - position.x;
+                    const dy = position.y - otherPosition.y;
+                    if (Math.abs(dy) <= 2 && Math.abs(dx) > 2 && Math.abs(dx) <= cellSize + 2) {
+                        horizontalNudge += Math.sign(dx) * 4;
+                    }
+                    if (dy > 0 && dy < visualHeight && Math.abs(dx) < visualWidth + 2) {
+                        lowerRowNudge = Math.max(lowerRowNudge, 9);
+                    }
+                }
+                horizontalNudge = Math.max(-8, Math.min(8, horizontalNudge));
                 return {
-                    x: Math.max(visualWidth / 2 + 2, Math.min(gridLayout.width - visualWidth / 2 - 2, position.x)),
-                    y: Math.max(visualHeight / 2 + 2, Math.min(gridLayout.height - visualHeight / 2 - labelHeight, position.y))
+                    x: Math.max(visualWidth / 2 + 2, Math.min(gridLayout.width - visualWidth / 2 - 2, position.x + horizontalNudge)),
+                    y: Math.max(visualHeight / 2 + 2, Math.min(gridLayout.height - visualHeight / 2 - labelHeight, position.y + lowerRowNudge))
                 };
             }
 
+            function refreshAvatarPositions() {
+                for (const player of Object.values(players)) {
+                    player.position = avatarPositionFor(player);
+                    player.target = player.position;
+                }
+            }
+
             function showPlayer(player) {
-                const target = avatarPositionFor(player);
-                player.position = { x: target.x, y: target.y };
-                player.target = target;
                 players[player.id] = player;
+                refreshAvatarPositions();
                 requestBoardRender();
             }
 
@@ -3720,65 +3749,16 @@
                 socket.emit('move', { col, row });
             }
 
-            function drawBoard() {
-                if (!roomBackgroundImageRequested) setRoomBackground(activeRoom);
-                ctx.clearRect(0, 0, gridLayout.width, gridLayout.height);
+            function renderBoardBackground() {
+                if (!boardBackgroundDirty) return;
+                const backgroundCtx = boardBackgroundCtx;
                 const discoRoom = activeRoom === 'disco';
                 const apartmentRoom = activeRoom.startsWith('apartment:');
-                ctx.fillStyle = discoRoom ? '#090812' : apartmentRoom ? '#000000' : '#080a08';
-                ctx.fillRect(0, 0, gridLayout.width, gridLayout.height);
-
-                for (const cell of gridCells) {
-                    const savedTileState = apartmentRoom ? apartmentTiles[`${cell.col}:${cell.row}`] : null;
-                    const savedTile = parseApartmentTileState(savedTileState);
-                    const visibleColor = savedTile.color;
-                    // Locks and doors affect movement only; they have no marker on the shared room canvas.
-                    const customColor = Boolean(visibleColor);
-                    ctx.beginPath();
-                    ctx.moveTo(cell.x, cell.y - cellSize / 2);
-                    ctx.lineTo(cell.x + cellSize / 2, cell.y);
-                    ctx.lineTo(cell.x, cell.y + cellSize / 2);
-                    ctx.lineTo(cell.x - cellSize / 2, cell.y);
-                    ctx.closePath();
-                    ctx.fillStyle = customColor
-                        ? visibleColor
-                            : discoRoom
-                        ? (cell.kind === 'primary' ? '#12101b' : '#20162a')
-                        : apartmentRoom
-                            ? (cell.kind === 'primary' ? '#19130c' : '#282015')
-                            : (cell.kind === 'primary' ? '#11130f' : '#172012');
-                    ctx.fill();
-                    ctx.strokeStyle = customColor
-                        ? visibleColor
-                        : discoRoom
-                        ? (cell.kind === 'primary' ? '#302743' : '#624276')
-                        : apartmentRoom
-                            ? (cell.kind === 'primary' ? '#3b2e1b' : '#624a27')
-                            : (cell.kind === 'primary' ? '#293126' : '#3e5532');
-                    ctx.lineWidth = 1.5;
-                    ctx.stroke();
-                }
-
-                if (hoveredCell) {
-                    const hoveredPosition = positionFor(hoveredCell);
-                    ctx.beginPath();
-                    ctx.moveTo(hoveredPosition.x, hoveredPosition.y - cellSize / 2);
-                    ctx.lineTo(hoveredPosition.x + cellSize / 2, hoveredPosition.y);
-                    ctx.lineTo(hoveredPosition.x, hoveredPosition.y + cellSize / 2);
-                    ctx.lineTo(hoveredPosition.x - cellSize / 2, hoveredPosition.y);
-                    ctx.closePath();
-                    ctx.fillStyle = '#c1f07835';
-                    ctx.fill();
-                    ctx.strokeStyle = '#658f36';
-                    ctx.lineWidth = 2;
-                    ctx.stroke();
-                }
-
-                // Keep movement on the same diamond grid, with the test room art underneath.
-                ctx.fillStyle = '#000';
-                ctx.fillRect(0, 0, gridLayout.width, gridLayout.height);
+                backgroundCtx.clearRect(0, 0, gridLayout.width, gridLayout.height);
+                backgroundCtx.fillStyle = discoRoom ? '#090812' : apartmentRoom ? '#000000' : '#080a08';
+                backgroundCtx.fillRect(0, 0, gridLayout.width, gridLayout.height);
                 if (roomBackgroundImageLoaded) {
-                    ctx.drawImage(roomBackgroundImage, 0, 0, gridLayout.width, gridLayout.height);
+                    backgroundCtx.drawImage(roomBackgroundImage, 0, 0, gridLayout.width, gridLayout.height);
                 }
 
                 // Preserve saved apartment tile colors over the room background, including under locks and doors.
@@ -3786,16 +3766,24 @@
                     for (const cell of gridCells) {
                         const tile = parseApartmentTileState(apartmentTiles[`${cell.col}:${cell.row}`]);
                         if (!tile.color) continue;
-                        ctx.beginPath();
-                        ctx.moveTo(cell.x, cell.y - cellSize / 2);
-                        ctx.lineTo(cell.x + cellSize / 2, cell.y);
-                        ctx.lineTo(cell.x, cell.y + cellSize / 2);
-                        ctx.lineTo(cell.x - cellSize / 2, cell.y);
-                        ctx.closePath();
-                        ctx.fillStyle = tile.color;
-                        ctx.fill();
+                        backgroundCtx.beginPath();
+                        backgroundCtx.moveTo(cell.x, cell.y - cellSize / 2);
+                        backgroundCtx.lineTo(cell.x + cellSize / 2, cell.y);
+                        backgroundCtx.lineTo(cell.x, cell.y + cellSize / 2);
+                        backgroundCtx.lineTo(cell.x - cellSize / 2, cell.y);
+                        backgroundCtx.closePath();
+                        backgroundCtx.fillStyle = tile.color;
+                        backgroundCtx.fill();
                     }
                 }
+                boardBackgroundDirty = false;
+            }
+
+            function drawBoard() {
+                if (!roomBackgroundImageRequested) setRoomBackground(activeRoom);
+                renderBoardBackground();
+                ctx.clearRect(0, 0, gridLayout.width, gridLayout.height);
+                ctx.drawImage(boardBackgroundCanvas, 0, 0, gridLayout.width, gridLayout.height);
 
                 // Draw every nameplate first so all avatars remain visually in front of the names.
                 ctx.font = '11px Inter, system-ui, sans-serif';
@@ -5246,8 +5234,7 @@
                 if (!players[player.id]) return;
                 players[player.id].col = player.col;
                 players[player.id].row = player.row;
-                players[player.id].position = avatarPositionFor(player);
-                players[player.id].target = players[player.id].position;
+                refreshAvatarPositions();
                 cancelWhisperIfOutOfRange();
                 requestBoardRender();
                 if (contextPlayerId) updateAvatarContextMute();
@@ -5561,6 +5548,7 @@
             socket.on('playerDisconnected', (id) => {
                 const player = players[id];
                 delete players[id];
+                refreshAvatarPositions();
                 highlightedSpeechBubblePlayers.delete(id);
                 cancelWhisperIfOutOfRange();
                 requestBoardRender();
