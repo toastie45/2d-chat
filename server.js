@@ -1667,6 +1667,7 @@ async function startServer() {
                 id: String(item.id),
                 name: item.name,
                 category: item.category,
+                imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image`,
                 x: transform.x,
                 y: transform.y,
                 rotation: transform.rotation,
