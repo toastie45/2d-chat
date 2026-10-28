@@ -403,6 +403,7 @@
 
         .toolbar-button:hover { border-color: #9fc65f; background: #2c3027; color: #d5f59c; }
         .toolbar-button:active { transform: translateY(1px); }
+        .toolbar-button[hidden] { display: none; }
         .navigator-category-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
         .navigator-category-tab { min-height: 36px; padding: 7px 9px; border: 1px solid #393b33; border-radius: 8px; background: #20211d; color: #c6c8bd; font: inherit; font-size: 11px; font-weight: 650; cursor: pointer; }
         .navigator-category-tab:hover { border-color: #9fc65f; color: #e6e6df; }
@@ -803,6 +804,33 @@
             box-shadow: 0 24px 90px #000a;
         }
         .level-overview-dialog::backdrop { background: #050605c9; }
+        .admin-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+        .admin-tab { min-height: 34px; padding: 7px 12px; border: 1px solid #393b33; border-radius: 7px; background: #20211d; color: #c6c8bd; font: inherit; font-size: 11px; cursor: pointer; }
+        .admin-tab[aria-selected="true"] { border-color: #8cae53; background: #252a1e; color: #c1f078; }
+        .admin-list { display: grid; gap: 8px; }
+        .admin-user-row, .admin-ban-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 11px; border: 1px solid #393b33; border-radius: 8px; background: #20211d; }
+        .admin-user-details, .admin-ban-details { display: grid; min-width: 0; gap: 4px; }
+        .admin-user-name, .admin-ban-name { color: #f2f0e9; font-size: 12px; font-weight: 650; }
+        .admin-user-room, .admin-ban-meta { color: var(--muted); font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
+        .admin-row-actions { display: flex; flex: 0 0 auto; gap: 6px; }
+        .admin-row-button { min-height: 29px; padding: 5px 9px; border: 1px solid #4b4e44; border-radius: 6px; background: #282a25; color: #e8e9e2; font: inherit; font-size: 10px; cursor: pointer; }
+        .admin-row-button.ban { border-color: #8c554d; color: #ffc0b5; }
+        .admin-row-button.unban { border-color: #778e53; color: #c1f078; }
+        .admin-row-button:disabled { opacity: .45; cursor: not-allowed; }
+        .admin-refresh { margin: 0 0 10px; }
+        .admin-status { min-height: 16px; margin: 8px 0; color: var(--muted); font-size: 10px; }
+        .admin-ban-dialog { width: min(430px, calc(100vw - 32px)); max-height: 88vh; overflow-y: auto; padding: 20px; border: 1px solid #44483b; border-radius: 12px; background: #171914; color: #f2f0e9; box-shadow: 0 24px 90px #000a; }
+        .admin-ban-dialog::backdrop { background: #050605c9; }
+        .admin-ban-dialog h2 { margin: 0; font-size: 16px; }
+        .admin-ban-form { display: grid; gap: 11px; margin-top: 14px; }
+        .admin-ban-form label { display: grid; gap: 5px; color: #c7c9bf; font-size: 11px; }
+        .admin-ban-form input, .admin-ban-form select, .admin-ban-form textarea { width: 100%; min-height: 36px; padding: 8px 10px; border: 1px solid #3b3e36; border-radius: 6px; background: #151613; color: #f2f0e9; font: inherit; font-size: 12px; }
+        .admin-ban-form textarea { min-height: 68px; resize: vertical; }
+        .admin-ban-form [hidden] { display: none; }
+        .admin-ban-date { margin: 0; color: var(--muted); font-size: 10px; }
+        .admin-ban-actions { display: flex; gap: 8px; margin-top: 4px; }
+        .admin-ban-actions button { flex: 1; min-height: 37px; border: 1px solid #41443b; border-radius: 7px; background: #262824; color: #e8e9e2; font: inherit; cursor: pointer; }
+        .admin-ban-actions button[type="submit"] { border-color: #91ad62; background: #a8c879; color: #151710; font-weight: 700; }
         .canvas-stage { position: relative; }
         .knock-dialog[hidden] { display: none; }
         .knock-dialog {
@@ -1361,6 +1389,9 @@
                             <button class="toolbar-button" id="navigator-nav-button" type="button" aria-pressed="false" aria-controls="navigator-panel" aria-label="Navigator" title="Navigator">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.8 8.2-2.4 5.2-5.2 2.4 2.4-5.2z"/></svg>
                             </button>
+                            <button class="toolbar-button" id="admin-nav-button" type="button" aria-pressed="false" aria-controls="admin-panel" aria-label="Admin" title="Admin" hidden>
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 20 6v5c0 5-3.4 8-8 10-4.6-2-8-5-8-10V6l8-3Z"/><path d="m8.5 12 2.2 2.2 4.8-5"/></svg>
+                            </button>
                         </nav>
                     </section>
                     <aside class="side-card">
@@ -1608,6 +1639,23 @@
                                 </form>
                             </section>
                         </section>
+                        <section class="side-panel" id="admin-panel" aria-labelledby="admin-title" hidden>
+                            <h2 class="side-title" id="admin-title">Admin</h2>
+                            <div class="admin-tabs" role="tablist" aria-label="Adminfunktioner">
+                                <button class="admin-tab" id="admin-users-tab" type="button" role="tab" aria-selected="true" aria-controls="admin-users-view">Brugerkontrol</button>
+                                <button class="admin-tab" id="admin-bans-tab" type="button" role="tab" aria-selected="false" aria-controls="admin-bans-view" tabindex="-1">Bannede brugere</button>
+                            </div>
+                            <div id="admin-users-view" role="tabpanel" aria-labelledby="admin-users-tab">
+                                <button class="admin-row-button admin-refresh" id="admin-users-refresh" type="button">Opdater brugerlisten</button>
+                                <p class="admin-status" id="admin-users-status" aria-live="polite"></p>
+                                <div class="admin-list" id="admin-online-users" role="list"></div>
+                            </div>
+                            <div id="admin-bans-view" role="tabpanel" aria-labelledby="admin-bans-tab" hidden>
+                                <button class="admin-row-button admin-refresh" id="admin-bans-refresh" type="button">Opdater banlisten</button>
+                                <p class="admin-status" id="admin-bans-status" aria-live="polite"></p>
+                                <div class="admin-list" id="admin-ip-bans" role="list"></div>
+                            </div>
+                        </section>
                     </aside>
                 </div>
             </section>
@@ -1643,6 +1691,39 @@
                     <tbody id="level-overview-rows"></tbody>
                 </table>
             </div>
+        </dialog>
+        <dialog class="admin-ban-dialog" id="admin-ban-dialog" aria-labelledby="admin-ban-title">
+            <h2 id="admin-ban-title">Ban bruger</h2>
+            <p class="admin-ban-date" id="admin-ban-target"></p>
+            <form class="admin-ban-form" id="admin-ban-form">
+                <label for="admin-ban-duration">Varighed
+                    <select id="admin-ban-duration" required>
+                        <option value="60">1 time</option>
+                        <option value="1440">1 dag</option>
+                        <option value="10080">1 uge</option>
+                        <option value="20160">2 uger</option>
+                        <option value="30240">3 uger</option>
+                        <option value="43200">1 måned</option>
+                        <option value="manual">Manuel varighed</option>
+                        <option value="permanent">Livstid (permanent)</option>
+                    </select>
+                </label>
+                <label id="admin-ban-custom-wrap" for="admin-ban-custom-minutes" hidden>Manuel varighed i minutter
+                    <input id="admin-ban-custom-minutes" type="number" min="1" max="525600" step="1" value="1">
+                </label>
+                <label for="admin-ban-reason">Grundlag
+                    <textarea id="admin-ban-reason" maxlength="240" required></textarea>
+                </label>
+                <label for="admin-ban-initials">Admin-initialer
+                    <input id="admin-ban-initials" maxlength="8" pattern="[A-Za-zÆØÅæøå]{1,8}" autocomplete="off" required>
+                </label>
+                <p class="admin-ban-date">Dato registreres automatisk: <time id="admin-ban-created-at"></time></p>
+                <p class="admin-status" id="admin-ban-status" aria-live="polite"></p>
+                <div class="admin-ban-actions">
+                    <button id="admin-ban-cancel" type="button">Annuller</button>
+                    <button type="submit">Bekræft ban</button>
+                </div>
+            </form>
         </dialog>
     </div>
     <script src="/grid-layout.js"></script>
@@ -1740,7 +1821,32 @@
             const refreshNavButton = document.getElementById('refresh-nav-button');
             const membersNavButton = document.getElementById('members-nav-button');
             const navigatorNavButton = document.getElementById('navigator-nav-button');
+            const adminNavButton = document.getElementById('admin-nav-button');
             const navigatorPanel = document.getElementById('navigator-panel');
+            const adminPanel = document.getElementById('admin-panel');
+            const adminUsersTab = document.getElementById('admin-users-tab');
+            const adminBansTab = document.getElementById('admin-bans-tab');
+            const adminUsersView = document.getElementById('admin-users-view');
+            const adminBansView = document.getElementById('admin-bans-view');
+            const adminUsersRefresh = document.getElementById('admin-users-refresh');
+            const adminBansRefresh = document.getElementById('admin-bans-refresh');
+            const adminUsersStatus = document.getElementById('admin-users-status');
+            const adminBansStatus = document.getElementById('admin-bans-status');
+            const adminOnlineUsers = document.getElementById('admin-online-users');
+            const adminIpBans = document.getElementById('admin-ip-bans');
+            const adminBanDialog = document.getElementById('admin-ban-dialog');
+            const adminBanForm = document.getElementById('admin-ban-form');
+            const adminBanTarget = document.getElementById('admin-ban-target');
+            const adminBanDuration = document.getElementById('admin-ban-duration');
+            const adminBanCustomWrap = document.getElementById('admin-ban-custom-wrap');
+            const adminBanCustomMinutes = document.getElementById('admin-ban-custom-minutes');
+            const adminBanReason = document.getElementById('admin-ban-reason');
+            const adminBanInitials = document.getElementById('admin-ban-initials');
+            const adminBanCreatedAt = document.getElementById('admin-ban-created-at');
+            const adminBanStatus = document.getElementById('admin-ban-status');
+            const adminBanCancel = document.getElementById('admin-ban-cancel');
+            let isAdminUser = false;
+            let pendingAdminBanTarget = null;
             const navigatorPublicTab = document.getElementById('navigator-public-tab');
             const navigatorApartmentTab = document.getElementById('navigator-apartment-tab');
             const navigatorPublicView = document.getElementById('navigator-public-view');
@@ -2260,6 +2366,7 @@
                 bottomToolbar.classList.toggle('hidden', !isAuthenticated);
                 pageWrapper.classList.toggle('has-session', isAuthenticated);
                 roomStripUser.textContent = isAuthenticated ? currentUser.username : '';
+                adminNavButton.hidden = !isAuthenticated || !isAdminUser;
                 if (!isAuthenticated) setFriendMenuOpen(false);
             }
 
@@ -2270,6 +2377,7 @@
                 profileNavButton.setAttribute('aria-pressed', String(!profileEditorPanel.hidden));
                 searchNavButton.setAttribute('aria-pressed', String(!searchPanel.hidden));
                 privateMailNavButton.setAttribute('aria-pressed', String(!privateMailPanel.hidden));
+                adminNavButton.setAttribute('aria-pressed', String(!adminPanel.hidden));
             }
 
             function selectAuthMode(mode) {
@@ -2299,6 +2407,7 @@
                 chatPanel.hidden = panel !== 'chat';
                 searchPanel.hidden = panel !== 'search';
                 privateMailPanel.hidden = panel !== 'private-mail';
+                adminPanel.hidden = panel !== 'admin';
                 profileEditorPanel.hidden = panel !== 'profile-editor';
                 profileViewPanel.hidden = panel !== 'profile-view';
                 roomLayout.classList.add('panel-content-contained');
@@ -2864,6 +2973,8 @@
                 stopGameLoop();
                 document.documentElement.classList.remove('auth-checking');
                 currentUser = null;
+                isAdminUser = false;
+                adminNavButton.hidden = true;
                 ownApartment = null;
                 resetTopbarProgress();
                 whisperBubbles.clear();
@@ -3012,6 +3123,116 @@
                     row.append(name, room);
                     memberList.append(row);
                 });
+            }
+
+            function formatAdminDate(value) {
+                const date = new Date(value);
+                if (!Number.isFinite(date.getTime())) return 'Ukendt';
+                return new Intl.DateTimeFormat('da-DK', {
+                    dateStyle: 'short', timeStyle: 'short', timeZone: 'Europe/Copenhagen'
+                }).format(date);
+            }
+
+            function selectAdminTab(tab) {
+                const showBans = tab === 'bans';
+                adminUsersView.hidden = showBans;
+                adminBansView.hidden = !showBans;
+                adminUsersTab.setAttribute('aria-selected', String(!showBans));
+                adminBansTab.setAttribute('aria-selected', String(showBans));
+                adminUsersTab.tabIndex = showBans ? -1 : 0;
+                adminBansTab.tabIndex = showBans ? 0 : -1;
+                if (showBans) socket.emit('admin-ip-bans-request');
+                else socket.emit('admin-online-users-request');
+            }
+
+            function renderAdminOnlineUsers(users = []) {
+                adminOnlineUsers.replaceChildren();
+                if (!users.length) {
+                    adminUsersStatus.textContent = 'Der er ingen aktive brugere.';
+                    return;
+                }
+                adminUsersStatus.textContent = `${users.length} aktive ${users.length === 1 ? 'bruger' : 'brugere'}.`;
+                for (const user of users) {
+                    const row = document.createElement('div');
+                    row.className = 'admin-user-row';
+                    row.setAttribute('role', 'listitem');
+                    const details = document.createElement('div');
+                    details.className = 'admin-user-details';
+                    const name = document.createElement('span');
+                    name.className = 'admin-user-name';
+                    name.textContent = user.username;
+                    const room = document.createElement('span');
+                    room.className = 'admin-user-room';
+                    room.textContent = user.roomName || 'Ukendt rum';
+                    details.append(name, room);
+                    const actions = document.createElement('div');
+                    actions.className = 'admin-row-actions';
+                    const kick = document.createElement('button');
+                    kick.className = 'admin-row-button';
+                    kick.type = 'button';
+                    kick.textContent = 'Kick';
+                    kick.disabled = Boolean(user.isSelf);
+                    kick.title = user.isSelf ? 'Du kan ikke kicke din egen bruger' : `Kick ${user.username}`;
+                    kick.addEventListener('click', () => {
+                        if (!window.confirm(`Vil du kicke ${user.username}?`)) return;
+                        adminUsersStatus.textContent = `Kicker ${user.username}…`;
+                        socket.emit('admin-user-kick', { targetSocketId: user.socketId });
+                    });
+                    const ban = document.createElement('button');
+                    ban.className = 'admin-row-button ban';
+                    ban.type = 'button';
+                    ban.textContent = 'Ban';
+                    ban.disabled = Boolean(user.isSelf);
+                    ban.title = user.isSelf ? 'Du kan ikke banne din egen bruger' : `Ban ${user.username}`;
+                    ban.addEventListener('click', () => {
+                        if (user.isSelf) return;
+                        pendingAdminBanTarget = user.socketId;
+                        adminBanTarget.textContent = `${user.username} · ${user.roomName || 'Ukendt rum'}`;
+                        adminBanDuration.value = '60';
+                        adminBanCustomWrap.hidden = true;
+                        adminBanReason.value = '';
+                        adminBanStatus.textContent = '';
+                        adminBanCreatedAt.textContent = formatAdminDate(new Date());
+                        adminBanDialog.showModal();
+                    });
+                    actions.append(kick, ban);
+                    row.append(details, actions);
+                    adminOnlineUsers.append(row);
+                }
+            }
+
+            function renderAdminIpBans(bans = []) {
+                adminIpBans.replaceChildren();
+                if (!bans.length) {
+                    adminBansStatus.textContent = 'Der er ingen aktive banlysninger.';
+                    return;
+                }
+                adminBansStatus.textContent = `${bans.length} aktive ${bans.length === 1 ? 'banlysning' : 'banlysninger'}.`;
+                for (const ban of bans) {
+                    const row = document.createElement('div');
+                    row.className = 'admin-ban-row';
+                    row.setAttribute('role', 'listitem');
+                    const details = document.createElement('div');
+                    details.className = 'admin-ban-details';
+                    const title = document.createElement('span');
+                    title.className = 'admin-ban-name';
+                    title.textContent = `${ban.ipAddress} · ${ban.username}`;
+                    const meta = document.createElement('span');
+                    meta.className = 'admin-ban-meta';
+                    const expiry = ban.expiresAt ? formatAdminDate(ban.expiresAt) : 'Permanent';
+                    meta.textContent = `${ban.reason} · ${ban.adminInitials} · Oprettet ${formatAdminDate(ban.createdAt)} · Udløber ${expiry}`;
+                    details.append(title, meta);
+                    const unban = document.createElement('button');
+                    unban.className = 'admin-row-button unban';
+                    unban.type = 'button';
+                    unban.textContent = 'Unban';
+                    unban.addEventListener('click', () => {
+                        if (!window.confirm(`Fjern banlysningen for ${ban.username} (${ban.ipAddress})?`)) return;
+                        socket.emit('admin-ip-unban', { banId: ban.id });
+                    });
+                    row.append(details, unban);
+                    adminIpBans.append(row);
+                }
             }
 
             function createMemberRow(player, element = 'div') {
@@ -3682,6 +3903,37 @@
             navigatorNavButton.addEventListener('click', () => {
                 selectSidePanel('navigator');
                 socket.emit('navigator-request');
+            });
+            adminNavButton.addEventListener('click', () => {
+                if (!isAdminUser) return;
+                selectSidePanel('admin');
+                selectAdminTab(adminBansView.hidden ? 'users' : 'bans');
+            });
+            adminUsersTab.addEventListener('click', () => selectAdminTab('users'));
+            adminBansTab.addEventListener('click', () => selectAdminTab('bans'));
+            adminUsersRefresh.addEventListener('click', () => socket.emit('admin-online-users-request'));
+            adminBansRefresh.addEventListener('click', () => socket.emit('admin-ip-bans-request'));
+            adminBanDuration.addEventListener('change', () => {
+                adminBanCustomWrap.hidden = adminBanDuration.value !== 'manual';
+                if (adminBanDuration.value === 'manual') adminBanCustomMinutes.focus();
+            });
+            adminBanCancel.addEventListener('click', () => adminBanDialog.close());
+            adminBanDialog.addEventListener('close', () => { pendingAdminBanTarget = null; });
+            adminBanForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                if (!pendingAdminBanTarget) return;
+                const permanent = adminBanDuration.value === 'permanent';
+                const durationMinutes = adminBanDuration.value === 'manual'
+                    ? Number(adminBanCustomMinutes.value)
+                    : Number(adminBanDuration.value);
+                adminBanStatus.textContent = 'Gemmer banlysningen…';
+                socket.emit('admin-user-ban', {
+                    targetSocketId: pendingAdminBanTarget,
+                    permanent,
+                    durationMinutes,
+                    reason: adminBanReason.value,
+                    initials: adminBanInitials.value
+                });
             });
             navigatorPublicTab.addEventListener('click', () => selectNavigatorCategory('public'));
             navigatorApartmentTab.addEventListener('click', () => selectNavigatorCategory('apartments'));
@@ -4489,9 +4741,37 @@
                 if (Array.isArray(rooms)) renderNavigatorRooms(rooms, activeRoomId || activeRoom);
             });
 
+            socket.on('admin-status', ({ isAdmin } = {}) => {
+                isAdminUser = isAdmin === true;
+                adminNavButton.hidden = !currentUser || !isAdminUser;
+            });
+            socket.on('admin-online-users', ({ users = [] } = {}) => {
+                if (isAdminUser) renderAdminOnlineUsers(Array.isArray(users) ? users : []);
+            });
+            socket.on('admin-ip-bans', ({ bans = [] } = {}) => {
+                if (isAdminUser) renderAdminIpBans(Array.isArray(bans) ? bans : []);
+            });
+            socket.on('admin-error', ({ message } = {}) => {
+                adminUsersStatus.textContent = message || 'Adminfunktionen kunne ikke indlæses.';
+                adminBansStatus.textContent = message || 'Adminfunktionen kunne ikke indlæses.';
+            });
+            socket.on('admin-action-result', ({ success, message } = {}) => {
+                const statusMessage = message || (success ? 'Handlingen er gennemført.' : 'Handlingen mislykkedes.');
+                adminUsersStatus.textContent = statusMessage;
+                adminBansStatus.textContent = statusMessage;
+                if (adminBanDialog.open) {
+                    adminBanStatus.textContent = statusMessage;
+                    if (success) adminBanDialog.close();
+                }
+                if (!success || adminPanel.hidden) return;
+                if (adminBansView.hidden) socket.emit('admin-online-users-request');
+                else socket.emit('admin-ip-bans-request');
+            });
+
             socket.on('navigator-refresh', () => {
                 if (!navigatorPanel.hidden) socket.emit('navigator-request');
                 if (!membersPanel.hidden) socket.emit('online-users-request');
+                if (!adminPanel.hidden && adminBansView.hidden) socket.emit('admin-online-users-request');
             });
 
             socket.on('online-users', ({ users = [] } = {}) => renderOnlineUsers(users));

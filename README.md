@@ -13,9 +13,12 @@ Set these environment variables before starting the server:
 | `DATABASE_URL` | PostgreSQL connection string; Supabase Session pooler is suitable for the persistent Render server |
 | `REDIS_URL` | Redis connection string for Render Key Value |
 | `SESSION_SECRET` | A private random value of at least 32 bytes |
+| `ADMIN_USERNAMES` | Optional comma-separated list of exact account usernames allowed to use the admin panel |
 | `PORT` | Optional HTTP port; defaults to `3000` |
 | `PGSSLMODE` | Set to `require` when PostgreSQL requires TLS, including Supabase |
 | `PGSSLROOTCERT` | Optional path to a trusted PostgreSQL root CA certificate |
+
+To enable the admin panel, set `ADMIN_USERNAMES` in the server environment to the exact account username(s), separated by commas (for example, `Tommy`). The server checks this setting for every authenticated connection; admin rights are never granted by the browser.
 
 Generate a session secret locally with:
 
