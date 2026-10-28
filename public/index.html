@@ -331,10 +331,32 @@
         }
 
         .side-card {
+            position: relative;
             display: flex;
             min-height: 100%;
             flex-direction: column;
         }
+
+        .side-back-button {
+            position: absolute;
+            z-index: 2;
+            top: 14px;
+            right: 16px;
+            display: inline-grid;
+            width: 32px;
+            height: 32px;
+            place-items: center;
+            border: 1px solid #383a35;
+            border-radius: 7px;
+            background: #252622;
+            color: #c1e784;
+            cursor: pointer;
+            transition: background-color .18s ease, border-color .18s ease;
+        }
+        .side-back-button:hover { border-color: #8fae5d; background: #2c3026; }
+        .side-back-button:focus-visible { outline: 2px solid #a8c879; outline-offset: 2px; }
+        .side-back-button svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+        .side-back-button[hidden] { display: none; }
 
         .side-panel { min-height: 0; flex: 1; padding: 20px 17px; }
         .side-panel[hidden] { display: none; }
@@ -1356,6 +1378,9 @@
                         </nav>
                     </section>
                     <aside class="side-card">
+                        <button class="side-back-button" id="side-back-button" type="button" aria-label="Tilbage" title="Tilbage" hidden>
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/><path d="M9 12h11"/></svg>
+                        </button>
                         <section class="side-panel" id="navigator-panel" aria-labelledby="navigator-title" hidden>
                             <h2 class="side-title" id="navigator-title">Navigator</h2>
                             <div class="navigator-category-tabs" role="tablist" aria-label="Vælg rumtype">
@@ -1729,6 +1754,7 @@
             const friendMenuList = document.getElementById('friend-menu-list');
             const friendMenuEmpty = document.getElementById('friend-menu-empty');
             const bottomToolbar = document.getElementById('bottom-toolbar');
+            const sideBackButton = document.getElementById('side-back-button');
             const refreshNavButton = document.getElementById('refresh-nav-button');
             const membersNavButton = document.getElementById('members-nav-button');
             const navigatorNavButton = document.getElementById('navigator-nav-button');
@@ -1905,6 +1931,8 @@
             let currentUser = null;
             let roomNoticeTimer = null;
             let activeRoom = 'common';
+            let activeSidePanel = null;
+            const sidePanelHistory = [];
             let canEditCurrentApartment = false;
             let apartmentTiles = {};
             let apartmentDraftTiles = {};
@@ -2268,7 +2296,11 @@
                 }
             }
 
-            function selectSidePanel(panel) {
+            function selectSidePanel(panel, { remember = true } = {}) {
+                if (activeSidePanel && activeSidePanel !== panel && remember) {
+                    sidePanelHistory.push(activeSidePanel);
+                }
+                activeSidePanel = panel;
                 if (panel !== 'profile-view') {
                     viewingProfilePlayerId = null;
                     viewingProfileUserId = null;
@@ -2285,6 +2317,7 @@
                 roomLayout.classList.add('panel-content-contained');
                 roomLayout.style.removeProperty('--room-side-card-height');
                 syncRoomSideCardHeight();
+                sideBackButton.hidden = sidePanelHistory.length === 0;
                 updateToolbarState();
             }
 
@@ -3648,6 +3681,11 @@
 
             authSwitchButton.addEventListener('click', () => selectAuthMode(authMode === 'register' ? 'login' : 'register'));
             refreshNavButton.addEventListener('click', () => window.location.reload());
+            sideBackButton.addEventListener('click', () => {
+                const previousPanel = sidePanelHistory.pop();
+                if (!previousPanel) return;
+                selectSidePanel(previousPanel, { remember: false });
+            });
             const openOnlineUsersPanel = () => {
                 selectSidePanel('members');
                 socket.emit('online-users-request');
@@ -4327,7 +4365,8 @@
                 socket.emit('online-users-request');
                 requestProfileManagement();
                 socket.emit('private-mail-unread-request');
-                selectSidePanel('welcome');
+                sidePanelHistory.length = 0;
+                selectSidePanel('welcome', { remember: false });
                 updateToolbarState();
                 loginSection.classList.add('hidden');
                 gameSection.classList.remove('hidden');
@@ -4345,7 +4384,8 @@
                 const wasNavigatorOpen = !navigatorPanel.hidden;
                 const wasMembersOpen = !membersPanel.hidden;
                 applyRoomState(roomId, roomName, serverPlayers, { welcomeTitle, welcomeText }, { apartmentTiles, canEditApartment });
-                selectSidePanel('welcome');
+                sidePanelHistory.length = 0;
+                selectSidePanel('welcome', { remember: false });
                 if (wasNavigatorOpen) socket.emit('navigator-request');
                 if (wasMembersOpen) socket.emit('online-users-request');
             });
