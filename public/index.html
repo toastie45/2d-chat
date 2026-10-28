@@ -2554,8 +2554,9 @@
                 avatarContextWhisper.title = 'Start en privat hvisken';
                 const isPublicRoom = activeRoom === 'common' || activeRoom === 'disco';
                 const selfApartment = isSelf ? ownApartment : null;
-                avatarContextApartment.hidden = !player || (isSelf ? !selfApartment || !isPublicRoom : true);
-                avatarContextApartment.disabled = !isSelf || !selfApartment || !isPublicRoom;
+                const alreadyInSelfApartment = Boolean(selfApartment && activeRoom === `apartment:${selfApartment.id}`);
+                avatarContextApartment.hidden = !player || (isSelf ? !selfApartment || alreadyInSelfApartment : true);
+                avatarContextApartment.disabled = !isSelf || !selfApartment || alreadyInSelfApartment;
                 avatarContextApartment.textContent = selfApartment
                     ? `Gå til lejlighed (#${selfApartment.number})`
                     : isSelf ? '' : 'Henter lejlighed…';
