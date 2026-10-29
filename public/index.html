@@ -924,13 +924,14 @@
         .admin-row-button.unban { border-color: #778e53; color: #c1f078; }
         .admin-row-button:disabled { opacity: .45; cursor: not-allowed; }
         .admin-floor-heading { margin: 14px 0 7px; color: #b8d981; font-size: 12px; font-weight: 700; }
-        .admin-room-create { display: grid; grid-template-columns: minmax(0, 1fr) 145px 90px auto; gap: 8px; margin: 12px 0; }
+        .admin-room-create { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(100px, .7fr) minmax(100px, .7fr); gap: 9px; margin: 12px 0; padding: 12px; border: 1px solid #393b33; border-radius: 9px; background: #191a17; }
+        .admin-room-create-field { display: grid; min-width: 0; gap: 4px; color: var(--muted); font-size: 10px; }
         .admin-room-create input, .admin-room-edit input { min-width: 0; min-height: 34px; padding: 7px 9px; border: 1px solid #3b3e36; border-radius: 7px; background: #151613; color: #f2f0e9; font: inherit; font-size: 11px; }
         .admin-room-check, .admin-room-policy label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 10px; }
-        .admin-room-create .admin-room-check { grid-column: 1 / -1; }
+        .admin-room-create-options { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; grid-column: 1 / -1; padding: 8px 0 2px; border-top: 1px solid #353732; }
         .admin-room-create input[type="checkbox"], .admin-room-edit input[type="checkbox"] { width: 14px; min-width: 14px; min-height: 14px; margin: 0; padding: 0; accent-color: #a6c774; }
         .admin-room-policy { display: flex; flex-wrap: wrap; gap: 10px; grid-column: 1 / -1; padding-top: 2px; }
-        .admin-room-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 9px; border: 1px solid #393b33; border-radius: 8px; background: #20211d; }
+        .admin-room-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 9px; padding: 11px; border: 1px solid #393b33; border-radius: 9px; background: #20211d; }
         .admin-room-welcome { grid-column: 1 / -1; border-top: 1px solid #353732; padding-top: 7px; }
         .admin-room-welcome summary { color: #c1f078; font-size: 10px; font-weight: 650; cursor: pointer; }
         .admin-room-welcome-form { display: grid; gap: 7px; margin-top: 8px; }
@@ -939,17 +940,31 @@
         .admin-room-welcome-form textarea { min-height: 64px; resize: vertical; }
         .admin-room-welcome-status { color: var(--muted); font-size: 10px; }
         .admin-room-edit { display: grid; grid-template-columns: minmax(0, 1fr) 82px; gap: 6px; }
+        .admin-room-edit > label { display: grid; min-width: 0; gap: 4px; color: var(--muted); font-size: 9px; }
         .admin-room-meta { margin-bottom: 5px; color: var(--muted); font-size: 10px; }
-        .admin-room-details { display: grid; grid-template-columns: 104px minmax(0, 1fr); align-items: center; gap: 9px; }
-        .admin-room-preview-stack { position: relative; width: 96px; height: 64px; overflow: hidden; border: 1px solid #3b3e36; border-radius: 6px; background: #080a08; }
-        .admin-room-preview { display: block; width: 100%; height: 100%; object-fit: fill; }
+        .admin-room-details { display: grid; grid-template-columns: 128px minmax(0, 1fr); align-items: start; gap: 11px; }
+        .admin-room-preview-stack { position: relative; width: 120px; aspect-ratio: 3 / 2; overflow: hidden; border: 1px solid #3b3e36; border-radius: 7px; background: #080a08; }
+        .admin-room-preview { position: absolute; top: 0; left: 0; display: block; width: 100%; height: 100%; object-fit: fill; }
         .admin-room-preview-overlay { position: absolute; top: 50%; left: 50%; width: 100%; height: 100%; object-fit: fill; transform-origin: center; pointer-events: none; }
-        .admin-room-bg-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
-        .admin-room-overlay-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; padding-top: 7px; border-top: 1px solid #353732; }
+        .admin-room-config { margin-top: 8px; border: 1px solid #383a33; border-radius: 7px; background: #191a17; }
+        .admin-room-config summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 10px; color: #e8e9e2; font-size: 10px; font-weight: 700; cursor: pointer; list-style: none; }
+        .admin-room-config summary::-webkit-details-marker { display: none; }
+        .admin-room-config summary::after { content: '+'; color: #b8d981; font-size: 14px; line-height: 1; }
+        .admin-room-config[open] summary::after { content: '−'; }
+        .admin-room-config-state { margin-left: auto; color: var(--muted); font-size: 9px; font-weight: 500; }
+        .admin-room-config-content { display: grid; gap: 8px; padding: 0 9px 9px; }
+        .admin-room-bg-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+        .admin-room-animation { display: grid; grid-template-columns: repeat(4, minmax(56px, 84px)); align-items: end; gap: 7px; flex: 1 0 100%; padding: 9px; border: 1px solid #353732; border-radius: 7px; background: #151613; }
+        .admin-room-animation-hint { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
+        .admin-room-animation label { display: grid; gap: 4px; color: var(--muted); font-size: 9px; }
+        .admin-room-animation input { width: 100%; min-width: 0; min-height: 30px; padding: 5px 7px; border: 1px solid #3b3e36; border-radius: 5px; background: #151613; color: #f2f0e9; font: inherit; font-size: 10px; }
+        .admin-room-upload-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+        .admin-room-bg-status { flex: 1 1 180px; min-width: 0; color: var(--muted); font-size: 9px; line-height: 1.45; }
+        .admin-room-overlay-tools { display: flex; flex-wrap: wrap; gap: 6px; }
         .admin-room-overlay-transform { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; align-items: end; gap: 6px; flex: 1 0 100%; }
         .admin-room-overlay-transform label { display: grid; gap: 3px; color: var(--muted); font-size: 9px; }
         .admin-room-overlay-transform input { width: 100%; min-width: 0; min-height: 29px; padding: 5px 7px; border: 1px solid #3b3e36; border-radius: 5px; background: #151613; color: #f2f0e9; font: inherit; font-size: 10px; }
-        .admin-room-overlay-hint { flex: 1 0 100%; margin: 0; color: var(--muted); font-size: 9px; }
+        .admin-room-overlay-hint { flex: 1 0 100%; margin: 0; color: var(--muted); font-size: 9px; line-height: 1.45; }
         .admin-clothing-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin: 12px 0; }
         .admin-clothing-form label { display: grid; min-width: 0; gap: 4px; color: var(--muted); font-size: 10px; }
         .admin-clothing-form label[hidden] { display: none; }
@@ -1471,9 +1486,9 @@
             #level-message-progress { width: 96px; }
             .level-topbar-total { font-size: 9px; }
             .room-strip-user { max-width: 86px; }
-            .admin-room-create { grid-template-columns: minmax(0, 1fr) 72px; }
-            .admin-room-create #admin-room-name { grid-column: 1 / -1; }
-            .admin-room-create button { grid-column: 1 / -1; }
+            .admin-room-create { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+            .admin-room-create .admin-room-create-field:first-child { grid-column: 1 / -1; }
+            .admin-room-create-options, .admin-room-create > button { grid-column: 1 / -1; }
             .admin-clothing-form { grid-template-columns: 1fr; }
             .admin-clothing-form .wide, .admin-clothing-preview-wrap { grid-column: 1; }
             .admin-clothing-transform { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1483,6 +1498,7 @@
             .admin-room-row .admin-row-actions { justify-content: flex-end; }
             .admin-room-details { grid-template-columns: 82px minmax(0, 1fr); }
             .admin-room-preview-stack { width: 81px; height: 54px; }
+            .admin-room-animation { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .admin-room-overlay-transform { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
     </style>
@@ -1911,14 +1927,24 @@
                             <section class="admin-section" id="admin-rooms-view" aria-labelledby="admin-rooms-title" hidden>
                                 <h3 class="visually-hidden" id="admin-rooms-title">Navigator - etager og rum</h3>
                                 <p class="admin-status">Opret og rediger offentlige rum, upload baggrunde og læg gennemsigtige overlays oven på figurerne. Overlays tilpasses rummets 3:2-format. Fællesrum og Diskoteket er faste rum.</p>
+                                <h4 class="admin-subsection-title">Opret et offentligt rum</h4>
+                                <p class="admin-status">Giv rummet navn og etage. Rumnummer udfyldes automatisk, hvis feltet står tomt.</p>
                                 <form class="admin-room-create" id="admin-room-create-form">
-                                    <input id="admin-room-name" type="text" maxlength="60" placeholder="Nyt rumnavn" aria-label="Nyt rumnavn" required>
-                                    <input id="admin-room-number" type="number" min="3" max="100" placeholder="Rum nr." aria-label="Rumnummer (3–100, valgfrit)">
-                                    <input id="admin-room-floor" type="number" min="1" max="100" value="1" placeholder="Etage" aria-label="Etagenummer" required>
-                                    <label class="admin-room-check"><input id="admin-room-create-locked" type="checkbox"> Låst for ikke-admins</label>
-                                    <label class="admin-room-check"><input id="admin-room-create-hidden" type="checkbox"> Skjul for ikke-admins</label>
-                                    <label class="admin-room-check"><input id="admin-room-create-shop" type="checkbox"> Dette rum er en butik</label>
-                                    <button class="admin-row-button" type="submit">Tilføj rum</button>
+                                    <label class="admin-room-create-field">Rummets navn
+                                        <input id="admin-room-name" type="text" maxlength="60" placeholder="Fx Spillerummet" aria-label="Nyt rumnavn" required>
+                                    </label>
+                                    <label class="admin-room-create-field">Rumnummer (valgfrit)
+                                        <input id="admin-room-number" type="number" min="3" max="100" placeholder="Automatisk" aria-label="Rumnummer (3–100, valgfrit)">
+                                    </label>
+                                    <label class="admin-room-create-field">Etage
+                                        <input id="admin-room-floor" type="number" min="1" max="100" value="1" placeholder="1" aria-label="Etagenummer" required>
+                                    </label>
+                                    <div class="admin-room-create-options">
+                                        <label class="admin-room-check"><input id="admin-room-create-locked" type="checkbox"> Låst for ikke-admins</label>
+                                        <label class="admin-room-check"><input id="admin-room-create-hidden" type="checkbox"> Skjul for ikke-admins</label>
+                                        <label class="admin-room-check"><input id="admin-room-create-shop" type="checkbox"> Opret som butik</label>
+                                    </div>
+                                    <button class="admin-row-button" type="submit">Opret rum</button>
                                 </form>
                                 <p class="admin-status" id="admin-rooms-status" aria-live="polite"></p>
                                 <div class="admin-list" id="admin-public-rooms" role="list"></div>
@@ -2201,14 +2227,27 @@
             let roomBackgroundImageLoaded = false;
             let roomBackgroundImageRequested = false;
             let roomBackgroundImageUrl = '';
-            function setRoomBackground(roomId, url = '') {
+            let roomBackgroundAnimation = { columns: 1, rows: 1, frames: 1, fps: 8 };
+            function setRoomBackground(roomId, url = '', animation = null) {
                 const isPublicRoom = roomId === 'common' || roomId === 'disco' || (typeof roomId === 'string' && roomId.startsWith('public:'));
                 const nextUrl = typeof url === 'string' && url ? url : isPublicRoom ? '/images/test-room-background.png' : '';
-                if (nextUrl === roomBackgroundImageUrl) return;
+                const nextAnimation = normalizeClothingAnimation(animation || {});
+                const animationChanged = Object.keys(nextAnimation).some((key) => nextAnimation[key] !== roomBackgroundAnimation[key]);
+                roomBackgroundAnimation = nextAnimation;
+                if (nextUrl === roomBackgroundImageUrl && !animationChanged) return;
+                if (animationChanged) {
+                    boardBackgroundDirty = true;
+                    renderApartmentEditorGrid();
+                }
+                if (nextUrl === roomBackgroundImageUrl) {
+                    requestBoardRender();
+                    return;
+                }
                 roomBackgroundImageUrl = nextUrl;
                 roomBackgroundImageLoaded = false;
                 roomBackgroundImageRequested = true;
                 boardBackgroundDirty = true;
+                renderApartmentEditorGrid();
                 if (nextUrl) roomBackgroundImage.src = nextUrl;
                 else requestBoardRender();
             }
@@ -2216,6 +2255,7 @@
                 if (!roomBackgroundImageUrl) return;
                 roomBackgroundImageLoaded = true;
                 boardBackgroundDirty = true;
+                renderApartmentEditorGrid();
                 requestBoardRender();
             });
             const roomOverlayImage = new Image();
@@ -3352,6 +3392,18 @@
                 return color || '';
             }
 
+            function updateRoomEditorBackgroundFrame(now = Date.now()) {
+                if (activeRoomEditorKind !== 'public' || !roomBackgroundImageUrl) return;
+                const frame = roomBackgroundAnimation.frames > 1
+                    ? Math.floor(now / (1000 / roomBackgroundAnimation.fps)) % roomBackgroundAnimation.frames
+                    : 0;
+                const col = frame % roomBackgroundAnimation.columns;
+                const row = Math.floor(frame / roomBackgroundAnimation.columns);
+                const x = roomBackgroundAnimation.columns > 1 ? col / (roomBackgroundAnimation.columns - 1) * 100 : 0;
+                const y = roomBackgroundAnimation.rows > 1 ? row / (roomBackgroundAnimation.rows - 1) * 100 : 0;
+                apartmentEditorGrid.style.backgroundPosition = `${x}% ${y}%`;
+            }
+
             function renderApartmentEditorGrid() {
                 apartmentEditorGrid.replaceChildren();
                 const publicRoomEditor = activeRoomEditorKind === 'public';
@@ -3359,6 +3411,10 @@
                 apartmentEditorGrid.style.backgroundImage = publicRoomEditor && roomBackgroundImageUrl
                     ? `url("${roomBackgroundImageUrl.replace(/["\\]/g, '\\$&')}")`
                     : 'none';
+                apartmentEditorGrid.style.backgroundSize = publicRoomEditor && roomBackgroundImageUrl
+                    ? `${roomBackgroundAnimation.columns * 100}% ${roomBackgroundAnimation.rows * 100}%`
+                    : '';
+                updateRoomEditorBackgroundFrame();
                 const tileSide = cellSize / Math.SQRT2;
                 for (const cell of gridCells) {
                     const key = `${cell.col}:${cell.row}`;
@@ -3428,7 +3484,7 @@
                 activeRoom = roomId;
                 activeRoomIsShop = welcome.isShop === true;
                 shopIsOpen = welcome.shopIsOpen === true;
-                setRoomBackground(roomId, welcome.roomBackgroundUrl);
+                setRoomBackground(roomId, welcome.roomBackgroundUrl, welcome.roomBackgroundAnimation);
                 setRoomOverlay(welcome.roomOverlayUrl, welcome.roomOverlayTransform);
                 roomStripName.textContent = roomName;
                 roomStripName.setAttribute('aria-label', `Vis velkomst for ${roomName}`);
@@ -4530,7 +4586,7 @@
             });
             adminClothingCancelEditButton.addEventListener('click', () => resetAdminClothingForm('Redigeringen blev annulleret.'));
 
-            async function uploadAdminRoomBackground(roomId, file, statusElement) {
+            async function uploadAdminRoomBackground(roomId, file, statusElement, animationInput) {
                 if (!file || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
                     statusElement.textContent = 'Vælg en PNG-, JPG- eller WebP-fil.';
                     return;
@@ -4540,6 +4596,13 @@
                     return;
                 }
                 statusElement.textContent = 'Tilpasser billedet til rummets 3:2-format…';
+                const animation = normalizeClothingAnimation(animationInput);
+                if (![animationInput.columns, animationInput.rows, animationInput.frames, animationInput.fps].every(Number.isFinite)
+                    || animationInput.columns !== animation.columns || animationInput.rows !== animation.rows
+                    || animationInput.frames !== animation.frames || animationInput.fps !== animation.fps) {
+                    statusElement.textContent = 'Kontrollér kolonner, rækker, antal frames og FPS.';
+                    return;
+                }
                 const objectUrl = URL.createObjectURL(file);
                 try {
                     const source = new Image();
@@ -4549,22 +4612,37 @@
                         statusElement.textContent = 'Billedet skal være mindre end 8000 × 8000 px.';
                         return;
                     }
+                    if (source.naturalWidth % animation.columns !== 0 || source.naturalHeight % animation.rows !== 0) {
+                        statusElement.textContent = 'Spritesheetets bredde og højde skal kunne deles ligeligt i kolonner og rækker.';
+                        return;
+                    }
+                    const isSpriteSheet = animation.columns > 1 || animation.rows > 1 || animation.frames > 1;
+                    const frameWidth = source.naturalWidth / animation.columns;
+                    const frameHeight = source.naturalHeight / animation.rows;
                     const output = document.createElement('canvas');
-                    output.width = 1536;
-                    output.height = 1024;
+                    const cellWidth = isSpriteSheet
+                        ? Math.max(256, Math.min(768, Math.floor(4096 / animation.columns), Math.floor(6144 / animation.rows)))
+                        : 1536;
+                    const cellHeight = isSpriteSheet ? Math.round(cellWidth * 2 / 3) : 1024;
+                    output.width = cellWidth * animation.columns;
+                    output.height = cellHeight * animation.rows;
                     const context = output.getContext('2d');
                     context.fillStyle = '#080a08';
                     context.fillRect(0, 0, output.width, output.height);
-                    const scale = Math.max(output.width / source.naturalWidth, output.height / source.naturalHeight);
-                    const cropWidth = output.width / scale;
-                    const cropHeight = output.height / scale;
-                    context.drawImage(source,
-                        (source.naturalWidth - cropWidth) / 2,
-                        (source.naturalHeight - cropHeight) / 2,
-                        cropWidth, cropHeight, 0, 0, output.width, output.height);
+                    for (let frame = 0; frame < animation.frames; frame += 1) {
+                        const sx = (frame % animation.columns) * frameWidth;
+                        const sy = Math.floor(frame / animation.columns) * frameHeight;
+                        const targetX = (frame % animation.columns) * cellWidth;
+                        const targetY = Math.floor(frame / animation.columns) * cellHeight;
+                        const scale = Math.max(cellWidth / frameWidth, cellHeight / frameHeight);
+                        const cropWidth = cellWidth / scale;
+                        const cropHeight = cellHeight / scale;
+                        context.drawImage(source, sx + (frameWidth - cropWidth) / 2, sy + (frameHeight - cropHeight) / 2,
+                            cropWidth, cropHeight, targetX, targetY, cellWidth, cellHeight);
+                    }
                     let blob = null;
-                    for (const quality of [0.9, 0.82, 0.74, 0.66]) {
-                        blob = await new Promise((resolve) => output.toBlob(resolve, 'image/jpeg', quality));
+                    for (const quality of [0.9, 0.82, 0.74, 0.66, 0.58]) {
+                        blob = await new Promise((resolve) => output.toBlob(resolve, 'image/webp', quality));
                         if (blob && blob.size <= 950_000) break;
                     }
                     if (!blob || blob.size > 950_000) {
@@ -4578,7 +4656,8 @@
                     statusElement.textContent = 'Uploader baggrund…';
                     socket.emit('admin-public-room-background-upload', {
                         id: roomId,
-                        image: new Uint8Array(await blob.arrayBuffer())
+                        image: new Uint8Array(await blob.arrayBuffer()),
+                        animation
                     });
                 } catch (error) {
                     statusElement.textContent = 'Billedet kunne ikke læses. Prøv en anden fil.';
@@ -4660,12 +4739,18 @@
                     row.setAttribute('role', 'listitem');
                     const form = document.createElement('form');
                     form.className = 'admin-room-edit';
+                    const nameLabel = document.createElement('label');
+                    nameLabel.append(document.createTextNode('Rummets navn'));
                     const name = document.createElement('input');
                     name.type = 'text'; name.maxLength = 60; name.required = true; name.value = room.name;
                     name.setAttribute('aria-label', `Navn på rum #${room.roomNumber}`);
+                    nameLabel.append(name);
+                    const floorLabel = document.createElement('label');
+                    floorLabel.append(document.createTextNode('Etage'));
                     const floor = document.createElement('input');
                     floor.type = 'number'; floor.min = '1'; floor.max = '100'; floor.required = true; floor.value = String(room.floorNumber);
                     floor.setAttribute('aria-label', `Etage for rum #${room.roomNumber}`);
+                    floorLabel.append(floor);
                     const policy = document.createElement('div');
                     policy.className = 'admin-room-policy';
                     const lockedLabel = document.createElement('label');
@@ -4697,6 +4782,9 @@
                     previewBackground.className = 'admin-room-preview';
                     previewBackground.src = room.backgroundUrl || '/images/test-room-background.png';
                     previewBackground.alt = '';
+                    const roomAnimation = normalizeClothingAnimation(room.backgroundAnimation || {});
+                    previewBackground.style.width = `${roomAnimation.columns * 100}%`;
+                    previewBackground.style.height = `${roomAnimation.rows * 100}%`;
                     const previewOverlay = document.createElement('img');
                     previewOverlay.className = 'admin-room-preview-overlay';
                     previewOverlay.alt = '';
@@ -4708,6 +4796,29 @@
                     details.append(preview, editFields);
                     const backgroundTools = document.createElement('div');
                     backgroundTools.className = 'admin-room-bg-tools';
+                    const animationControls = document.createElement('div');
+                    animationControls.className = 'admin-room-animation';
+                    const animationTitle = document.createElement('strong');
+                    animationTitle.textContent = 'Spritesheet til rummets baggrund';
+                    const animationHint = document.createElement('small');
+                    animationHint.textContent = 'Ét billede pr. frame, læst fra venstre mod højre og derefter næste række. Brug 1 × 1 til en fast baggrund.';
+                    const animationFields = {};
+                    for (const [key, labelText, value, max] of [
+                        ['columns', 'Kolonner', roomAnimation.columns, 16],
+                        ['rows', 'Rækker', roomAnimation.rows, 16],
+                        ['frames', 'Frames', roomAnimation.frames, 256],
+                        ['fps', 'FPS', roomAnimation.fps, 24]
+                    ]) {
+                        const label = document.createElement('label');
+                        label.textContent = labelText;
+                        const input = document.createElement('input');
+                        input.type = 'number'; input.min = '1'; input.max = String(max); input.step = '1'; input.value = String(value);
+                        input.setAttribute('aria-label', `${labelText} i baggrundens spritesheet`);
+                        animationFields[key] = input;
+                        label.append(input);
+                        animationControls.append(label);
+                    }
+                    animationControls.prepend(animationTitle, animationHint);
                     const fileInput = document.createElement('input');
                     fileInput.className = 'admin-room-file';
                     fileInput.type = 'file';
@@ -4719,12 +4830,20 @@
                     chooseBackground.textContent = 'Upload baggrund';
                     const backgroundStatus = document.createElement('span');
                     backgroundStatus.className = 'admin-room-bg-status';
+                    backgroundStatus.dataset.roomBackgroundStatus = room.id;
                     chooseBackground.addEventListener('click', () => fileInput.click());
                     fileInput.addEventListener('change', () => {
-                        if (fileInput.files?.[0]) uploadAdminRoomBackground(room.id, fileInput.files[0], backgroundStatus);
+                        if (fileInput.files?.[0]) {
+                            uploadAdminRoomBackground(room.id, fileInput.files[0], backgroundStatus, {
+                                columns: Number(animationFields.columns.value),
+                                rows: Number(animationFields.rows.value),
+                                frames: Number(animationFields.frames.value),
+                                fps: Number(animationFields.fps.value)
+                            });
+                        }
                         fileInput.value = '';
                     });
-                    backgroundTools.append(fileInput, chooseBackground);
+                    backgroundTools.append(fileInput, animationControls, chooseBackground);
                     if (room.hasBackground) {
                         const resetBackground = document.createElement('button');
                         resetBackground.className = 'admin-row-button';
@@ -4737,7 +4856,21 @@
                         backgroundTools.append(resetBackground);
                     }
                     backgroundTools.append(backgroundStatus);
-                    editFields.append(backgroundTools);
+                    const backgroundSection = document.createElement('details');
+                    backgroundSection.className = 'admin-room-config';
+                    const backgroundSummary = document.createElement('summary');
+                    backgroundSummary.append(document.createTextNode('Baggrund og spritesheet'));
+                    const backgroundState = document.createElement('span');
+                    backgroundState.className = 'admin-room-config-state';
+                    backgroundState.textContent = room.hasBackground
+                        ? `Spritesheet · ${roomAnimation.frames} frames · ${roomAnimation.fps} FPS`
+                        : 'Standardbaggrund';
+                    backgroundSummary.append(backgroundState);
+                    const backgroundContent = document.createElement('div');
+                    backgroundContent.className = 'admin-room-config-content';
+                    backgroundContent.append(backgroundTools);
+                    backgroundSection.append(backgroundSummary, backgroundContent);
+                    editFields.append(backgroundSection);
                     const overlayTools = document.createElement('div');
                     overlayTools.className = 'admin-room-overlay-tools';
                     const overlayFileInput = document.createElement('input');
@@ -4841,7 +4974,19 @@
                     overlayTools.append(transformForm, transformHint);
                     updateOverlayPreview();
                     overlayTools.append(overlayStatus);
-                    editFields.append(overlayTools);
+                    const overlaySection = document.createElement('details');
+                    overlaySection.className = 'admin-room-config';
+                    const overlaySummary = document.createElement('summary');
+                    overlaySummary.append(document.createTextNode('Overlay oven på figurer'));
+                    const overlayState = document.createElement('span');
+                    overlayState.className = 'admin-room-config-state';
+                    overlayState.textContent = room.hasOverlay ? 'Overlay tilføjet' : 'Intet overlay';
+                    overlaySummary.append(overlayState);
+                    const overlayContent = document.createElement('div');
+                    overlayContent.className = 'admin-room-config-content';
+                    overlayContent.append(overlayTools);
+                    overlaySection.append(overlaySummary, overlayContent);
+                    editFields.append(overlaySection);
                     const actions = document.createElement('div');
                     actions.className = 'admin-row-actions';
                     const save = document.createElement('button');
@@ -4850,7 +4995,7 @@
                     remove.className = 'admin-row-button ban'; remove.type = 'button'; remove.textContent = 'Fjern';
                     remove.disabled = room.isSystem || room.count > 0;
                     remove.title = room.isSystem ? 'Faste systemrum kan ikke slettes' : room.count ? 'Rummet skal være tomt før det kan slettes' : 'Fjern rum';
-                    form.append(name, floor, policy);
+                    form.append(nameLabel, floorLabel, policy);
                     actions.append(save, remove);
                     const welcomeEditor = document.createElement('details');
                     welcomeEditor.className = 'admin-room-welcome';
@@ -5900,7 +6045,9 @@
                 backgroundCtx.fillStyle = discoRoom ? '#090812' : apartmentRoom ? '#000000' : '#080a08';
                 backgroundCtx.fillRect(0, 0, gridLayout.width, gridLayout.height);
                 if (roomBackgroundImageLoaded) {
-                    backgroundCtx.drawImage(roomBackgroundImage, 0, 0, gridLayout.width, gridLayout.height);
+                    const frame = getClothingSpriteFrame(roomBackgroundImage, roomBackgroundAnimation, Date.now());
+                    backgroundCtx.drawImage(roomBackgroundImage, frame.sx, frame.sy, frame.sw, frame.sh,
+                        0, 0, gridLayout.width, gridLayout.height);
                 }
 
                 // Preserve saved apartment tile colors over the room background, including under locks and doors.
@@ -6217,6 +6364,10 @@
                 let animate = false;
                 let nextAt = Infinity;
                 let clothingFps = 0;
+                if (roomBackgroundImageLoaded && roomBackgroundAnimation.frames > 1) {
+                    clothingFps = Math.max(clothingFps, roomBackgroundAnimation.fps);
+                    boardBackgroundDirty = true;
+                }
                 if (isAdminInvisible) nextAt = now + 60;
                 for (const player of Object.values(players)) {
                     for (const item of Array.isArray(player.clothing) ? player.clothing : []) {
@@ -6259,6 +6410,7 @@
                 boardRenderTimer = null;
                 if (document.hidden || gameSection.classList.contains('hidden')) return;
                 drawBoard();
+                updateRoomEditorBackgroundFrame();
                 if (activeSidePanel === 'wardrobe' && !wardrobePanel.hidden) drawWardrobeAvatarPreview();
                 if (!adminClothingView.hidden && adminClothingPreviewImage?.naturalWidth) drawAdminClothingPreview();
                 const framePlan = getBoardFramePlan(Date.now());
@@ -7259,7 +7411,7 @@
                 socket.disconnect();
             });
 
-            socket.on('join-success', ({ players: serverPlayers, mutedUsernames: initialMutedUsernames = [], roomId = 'common', roomName, welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl, roomOverlayTransform, apartmentTiles, canEditApartment, canEditPublicRoom, ownApartmentId, ownApartmentNumber, isShop, shopIsOpen: roomShopIsOpen }) => {
+            socket.on('join-success', ({ players: serverPlayers, mutedUsernames: initialMutedUsernames = [], roomId = 'common', roomName, welcomeTitle, welcomeText, roomBackgroundUrl, roomBackgroundAnimation, roomOverlayUrl, roomOverlayTransform, apartmentTiles, canEditApartment, canEditPublicRoom, ownApartmentId, ownApartmentNumber, isShop, shopIsOpen: roomShopIsOpen }) => {
                 players = {};
                 myId = socket.id;
                 ownApartment = ownApartmentId
@@ -7268,7 +7420,7 @@
                 activeRoom = roomId;
                 activeRoomIsShop = isShop === true;
                 shopIsOpen = roomShopIsOpen === true;
-                setRoomBackground(roomId, roomBackgroundUrl);
+                setRoomBackground(roomId, roomBackgroundUrl, roomBackgroundAnimation);
                 setRoomOverlay(roomOverlayUrl, roomOverlayTransform);
                 roomStripName.textContent = roomName;
                 roomStripName.setAttribute('aria-label', `Vis velkomst for ${roomName}`);
@@ -7305,11 +7457,11 @@
                 canvas.focus();
             });
 
-            socket.on('room-changed', ({ roomId, roomName, players: serverPlayers = {}, welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl, roomOverlayTransform, apartmentTiles, canEditApartment, canEditPublicRoom, isShop, shopIsOpen: roomShopIsOpen } = {}) => {
+            socket.on('room-changed', ({ roomId, roomName, players: serverPlayers = {}, welcomeTitle, welcomeText, roomBackgroundUrl, roomBackgroundAnimation, roomOverlayUrl, roomOverlayTransform, apartmentTiles, canEditApartment, canEditPublicRoom, isShop, shopIsOpen: roomShopIsOpen } = {}) => {
                 if (!roomId || !roomName) return;
                 const wasNavigatorOpen = !navigatorPanel.hidden;
                 const wasMembersOpen = !membersPanel.hidden;
-                applyRoomState(roomId, roomName, serverPlayers, { welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl, roomOverlayTransform, isShop, shopIsOpen: roomShopIsOpen }, { apartmentTiles, canEditApartment, canEditPublicRoom });
+                applyRoomState(roomId, roomName, serverPlayers, { welcomeTitle, welcomeText, roomBackgroundUrl, roomBackgroundAnimation, roomOverlayUrl, roomOverlayTransform, isShop, shopIsOpen: roomShopIsOpen }, { apartmentTiles, canEditApartment, canEditPublicRoom });
                 sidePanelHistory.length = 0;
                 showCurrentRoomLandingPanel();
                 if (wasNavigatorOpen) socket.emit('navigator-request');
@@ -7320,12 +7472,12 @@
                 updateRoomWelcome(welcomeTitle, welcomeText);
             });
 
-            socket.on('public-room-metadata', ({ roomId, roomName, welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl, roomOverlayTransform, isShop, shopIsOpen: roomShopIsOpen } = {}) => {
+            socket.on('public-room-metadata', ({ roomId, roomName, welcomeTitle, welcomeText, roomBackgroundUrl, roomBackgroundAnimation, roomOverlayUrl, roomOverlayTransform, isShop, shopIsOpen: roomShopIsOpen } = {}) => {
                 if (roomId !== activeRoom) return;
                 const shopTypeChanged = typeof isShop === 'boolean' && isShop !== activeRoomIsShop;
                 if (typeof isShop === 'boolean') activeRoomIsShop = isShop;
                 if (typeof roomShopIsOpen === 'boolean') shopIsOpen = roomShopIsOpen;
-                setRoomBackground(roomId, roomBackgroundUrl);
+                setRoomBackground(roomId, roomBackgroundUrl, roomBackgroundAnimation);
                 setRoomOverlay(roomOverlayUrl, roomOverlayTransform);
                 updateApartmentRoomTitle(roomName, welcomeTitle);
                 updateRoomWelcome(welcomeTitle, welcomeText);
@@ -7593,6 +7745,9 @@
             });
             socket.on('admin-room-background-result', ({ success, message } = {}) => {
                 adminRoomsStatus.textContent = message || (success ? 'Baggrunden er gemt.' : 'Baggrunden kunne ikke gemmes.');
+                for (const status of adminPublicRooms.querySelectorAll('[data-room-background-status]')) {
+                    status.textContent = message || (success ? 'Baggrunden er gemt.' : 'Baggrunden kunne ikke gemmes.');
+                }
                 if (success && adminSectionSelect.value === 'rooms') socket.emit('admin-public-rooms-request');
             });
             socket.on('admin-room-overlay-result', ({ id, success, message } = {}) => {
