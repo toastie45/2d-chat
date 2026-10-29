@@ -641,7 +641,7 @@ async function startServer() {
             SELECT id, room_number, floor_number, name, is_system, welcome_title, welcome_text,
                    background_image IS NOT NULL AS has_background, background_version,
                    overlay_image IS NOT NULL AS has_overlay, overlay_version, overlay_transform,
-                   is_locked, is_hidden
+                   is_locked, is_hidden, is_shop, shop_is_open
             FROM chat_public_rooms ORDER BY floor_number, room_number
         `);
         return rows;
@@ -809,6 +809,8 @@ async function startServer() {
             is_system BOOLEAN NOT NULL DEFAULT FALSE,
             is_locked BOOLEAN NOT NULL DEFAULT FALSE,
             is_hidden BOOLEAN NOT NULL DEFAULT FALSE,
+            is_shop BOOLEAN NOT NULL DEFAULT FALSE,
+            shop_is_open BOOLEAN NOT NULL DEFAULT FALSE,
             welcome_title VARCHAR(100),
             welcome_text VARCHAR(500),
             layout_json JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -835,6 +837,8 @@ async function startServer() {
     await pool.query("ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS overlay_transform JSONB NOT NULL DEFAULT '{\"x\":0,\"y\":0,\"rotation\":0,\"scale\":1}'::jsonb");
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS is_locked BOOLEAN NOT NULL DEFAULT FALSE');
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS is_hidden BOOLEAN NOT NULL DEFAULT FALSE');
+    await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS is_shop BOOLEAN NOT NULL DEFAULT FALSE');
+    await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS shop_is_open BOOLEAN NOT NULL DEFAULT FALSE');
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS welcome_title VARCHAR(100)');
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS welcome_text VARCHAR(500)');
     await pool.query("ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS layout_json JSONB NOT NULL DEFAULT '{}'::jsonb");
@@ -892,6 +896,43 @@ async function startServer() {
         )
     `);
     await pool.query('INSERT INTO chat_shop_settings (singleton, is_open) VALUES (TRUE, FALSE) ON CONFLICT (singleton) DO NOTHING');
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS chat_shop_room_items (
+            room_id TEXT NOT NULL REFERENCES chat_public_rooms(id) ON DELETE CASCADE,
+            clothing_item_id BIGINT NOT NULL REFERENCES chat_clothing_catalog(id) ON DELETE CASCADE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (room_id, clothing_item_id)
+        )
+    `);
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS chat_app_migrations (
+            migration_key TEXT PRIMARY KEY,
+            completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    const { rows: [shopMigration] } = await pool.query(
+        "SELECT migration_key FROM chat_app_migrations WHERE migration_key = 'room-based-shops-v1'"
+    );
+    if (!shopMigration) {
+        // Carry the old single-shop setup into its first matching public room once.
+        await pool.query(`
+            UPDATE chat_public_rooms
+            SET is_shop = TRUE,
+                shop_is_open = COALESCE((SELECT is_open FROM chat_shop_settings WHERE singleton = TRUE), FALSE)
+            WHERE id = 'public:4' OR lower(name) LIKE '%tøjbutik%' OR lower(name) LIKE '%toejbutik%' OR lower(name) LIKE '%tojbutik%'
+        `);
+        await pool.query(`
+            INSERT INTO chat_shop_room_items (room_id, clothing_item_id)
+            SELECT room.id, item.id
+            FROM chat_public_rooms room CROSS JOIN chat_clothing_catalog item
+            WHERE room.is_shop
+              AND (room.id = 'public:4' OR lower(room.name) LIKE '%tøjbutik%' OR lower(room.name) LIKE '%toejbutik%' OR lower(room.name) LIKE '%tojbutik%')
+              AND item.is_shop_listed = TRUE
+            ON CONFLICT DO NOTHING
+        `);
+        await pool.query('UPDATE chat_clothing_catalog SET is_shop_listed = FALSE WHERE is_shop_listed = TRUE');
+        await pool.query("INSERT INTO chat_app_migrations (migration_key) VALUES ('room-based-shops-v1') ON CONFLICT DO NOTHING");
+    }
     await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_clothing_assignments (
             id BIGSERIAL PRIMARY KEY,
@@ -2165,7 +2206,8 @@ async function startServer() {
         const { rows: [publicRoom] = [] } = await pool.query(`
             SELECT id, room_number, name, welcome_title, welcome_text,
                    background_image IS NOT NULL AS has_background, background_version,
-                   overlay_image IS NOT NULL AS has_overlay, overlay_version, overlay_transform
+                   overlay_image IS NOT NULL AS has_overlay, overlay_version, overlay_transform,
+                   is_shop, shop_is_open
             FROM chat_public_rooms WHERE id = $1
         `, [roomId]);
         const roomName = publicRoom ? formatPublicRoomName(publicRoom) : PUBLIC_ROOM_NAMES[roomId] || 'chatten';
@@ -2174,7 +2216,9 @@ async function startServer() {
             welcomeText: publicRoom?.welcome_text || 'Her kan du møde andre og chatte sammen. God fornøjelse!',
             roomBackgroundUrl: getPublicRoomBackgroundUrl(publicRoom),
             roomOverlayUrl: getPublicRoomOverlayUrl(publicRoom),
-            roomOverlayTransform: normalizePublicRoomOverlayTransform(publicRoom?.overlay_transform)
+            roomOverlayTransform: normalizePublicRoomOverlayTransform(publicRoom?.overlay_transform),
+            isShop: publicRoom?.is_shop === true,
+            shopIsOpen: publicRoom?.shop_is_open === true
         };
     }
 
@@ -2351,6 +2395,8 @@ async function startServer() {
                 isSystem: room.is_system,
                 isLocked: room.is_locked,
                 isHidden: room.is_hidden,
+                isShop: room.is_shop === true,
+                shopIsOpen: room.shop_is_open === true,
                 hasBackground: room.has_background,
                 backgroundUrl: getPublicRoomBackgroundUrl(room),
                 hasOverlay: room.has_overlay,
@@ -2458,22 +2504,120 @@ async function startServer() {
             }
         });
 
+        socket.on('admin-shop-rooms-request', async () => {
+            if (!socket.data.canManageClothing || !activeSocketIds.has(socket.id)) return;
+            try {
+                const { rows } = await pool.query(`
+                    SELECT id, room_number, name, shop_is_open
+                    FROM chat_public_rooms WHERE is_shop = TRUE ORDER BY floor_number, room_number
+                `);
+                socket.emit('admin-shop-rooms', { rooms: rows.map((room) => ({
+                    id: room.id, name: formatPublicRoomName(room), isOpen: room.shop_is_open === true
+                })) });
+            } catch (error) {
+                console.error('Could not list shop rooms:', getSafeErrorCode(error));
+                socket.emit('admin-shop-rooms', { rooms: [], error: 'Butiksrummene kunne ikke hentes.' });
+            }
+        });
+
+        socket.on('admin-shop-room-data-request', async ({ roomId } = {}) => {
+            if (!socket.data.canManageClothing || !activeSocketIds.has(socket.id)) return;
+            if (typeof roomId !== 'string' || !/^(common|disco|public:[1-9]\d{0,18})$/.test(roomId)) return;
+            try {
+                const { rows: [room] } = await pool.query(
+                    'SELECT id, shop_is_open FROM chat_public_rooms WHERE id = $1 AND is_shop = TRUE', [roomId]
+                );
+                if (!room) {
+                    socket.emit('admin-shop-room-data', { roomId, error: 'Vælg et rum, der er markeret som butik.' });
+                    return;
+                }
+                const { rows } = await pool.query(`
+                    SELECT item.id, item.name, item.description, item.category, item.target_avatar_type,
+                           item.required_level, item.price, item.transform_json, item.image_version,
+                           EXISTS (SELECT 1 FROM chat_shop_room_items listed
+                                   WHERE listed.room_id = $1 AND listed.clothing_item_id = item.id) AS is_shop_listed,
+                           COUNT(assignment.id)::integer AS assignment_count
+                    FROM chat_clothing_catalog item
+                    LEFT JOIN chat_clothing_assignments assignment ON assignment.clothing_item_id = item.id
+                    GROUP BY item.id ORDER BY item.created_at DESC, item.id DESC LIMIT 200
+                `, [roomId]);
+                socket.emit('admin-shop-room-data', { roomId, isOpen: room.shop_is_open === true, items: rows.map((item) => ({
+                    id: String(item.id), name: item.name, description: item.description, category: item.category,
+                    avatarType: item.target_avatar_type, requiredLevel: Number(item.required_level), price: Number(item.price),
+                    imageVersion: Number(item.image_version || 1), imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.image_version || 1}`,
+                    shopListed: item.is_shop_listed === true
+                })) });
+            } catch (error) {
+                console.error('Could not load shop room data:', getSafeErrorCode(error));
+                socket.emit('admin-shop-room-data', { roomId, error: 'Butikkens varer kunne ikke hentes.' });
+            }
+        });
+
+        socket.on('admin-shop-room-item-set', async ({ roomId, id, listed } = {}) => {
+            if (!socket.data.canManageClothing || !activeSocketIds.has(socket.id)) return;
+            if (typeof roomId !== 'string' || !/^(common|disco|public:[1-9]\d{0,18})$/.test(roomId)
+                || typeof id !== 'string' || !/^[1-9]\d{0,18}$/.test(id) || typeof listed !== 'boolean') return;
+            try {
+                const { rows: [room] } = await pool.query('SELECT id FROM chat_public_rooms WHERE id = $1 AND is_shop = TRUE', [roomId]);
+                if (!room) {
+                    socket.emit('admin-shop-action-result', { success: false, message: 'Rummet er ikke markeret som butik.' });
+                    return;
+                }
+                const result = listed
+                    ? await pool.query(`INSERT INTO chat_shop_room_items (room_id, clothing_item_id) SELECT $1, id FROM chat_clothing_catalog WHERE id = $2 ON CONFLICT DO NOTHING RETURNING clothing_item_id`, [roomId, id])
+                    : await pool.query('DELETE FROM chat_shop_room_items WHERE room_id = $1 AND clothing_item_id = $2 RETURNING clothing_item_id', [roomId, id]);
+                if (listed && !result.rowCount) {
+                    const { rowCount } = await pool.query('SELECT 1 FROM chat_clothing_catalog WHERE id = $1', [id]);
+                    if (!rowCount) {
+                        socket.emit('admin-shop-action-result', { success: false, message: 'Tøjdelen findes ikke længere.' });
+                        return;
+                    }
+                }
+                socket.emit('admin-shop-action-result', { success: true, message: listed ? 'Tøjdelen er lagt i denne butik.' : 'Tøjdelen er fjernet fra denne butik.' });
+                socket.emit('admin-shop-room-data-refresh', { roomId });
+            } catch (error) {
+                console.error('Could not update room shop item:', getSafeErrorCode(error));
+                socket.emit('admin-shop-action-result', { success: false, message: 'Butikken kunne ikke opdateres.' });
+            }
+        });
+
+        socket.on('admin-shop-room-status-set', async ({ roomId, isOpen } = {}) => {
+            if (!socket.data.canManageClothing || !activeSocketIds.has(socket.id)
+                || typeof roomId !== 'string' || !/^(common|disco|public:[1-9]\d{0,18})$/.test(roomId)
+                || typeof isOpen !== 'boolean') return;
+            try {
+                const { rowCount } = await pool.query('UPDATE chat_public_rooms SET shop_is_open = $2 WHERE id = $1 AND is_shop = TRUE', [roomId, isOpen]);
+                if (!rowCount) {
+                    socket.emit('admin-shop-status-result', { success: false, message: 'Rummet er ikke markeret som butik.' });
+                    return;
+                }
+                io.to(roomChannel(roomId)).emit('shop-status', { roomId, isOpen });
+                socket.emit('admin-shop-status-result', { success: true, message: isOpen ? 'Butikken er åben for gæster.' : 'Butikken er lukket for gæster.' });
+                socket.emit('admin-shop-room-data-refresh', { roomId });
+                io.emit('navigator-refresh');
+            } catch (error) {
+                console.error('Could not update room shop status:', getSafeErrorCode(error));
+                socket.emit('admin-shop-status-result', { success: false, message: 'Butikkens status kunne ikke gemmes.' });
+            }
+        });
+
         socket.on('shop-request', async () => {
             if (!activeSocketIds.has(socket.id)) return;
             try {
-                const { rows: [status] } = await pool.query('SELECT is_open FROM chat_shop_settings WHERE singleton = TRUE');
-                if (status?.is_open !== true) {
+                const roomId = socket.data.roomId;
+                const { rows: [status] } = await pool.query('SELECT is_shop, shop_is_open FROM chat_public_rooms WHERE id = $1', [roomId]);
+                if (status?.is_shop !== true || status.shop_is_open !== true) {
                     socket.emit('shop-items', { items: [], closed: true });
                     return;
                 }
                 const { rows } = await pool.query(`
-                    SELECT id, name, description, category, target_avatar_type, required_level, price, image_version
-                    FROM chat_clothing_catalog
-                    WHERE is_shop_listed = TRUE
-                      AND target_avatar_type = (SELECT avatar_type FROM chat_users WHERE id = $1)
+                    SELECT item.id, item.name, item.description, item.category, item.target_avatar_type, item.required_level, item.price, item.image_version
+                    FROM chat_clothing_catalog item
+                    JOIN chat_shop_room_items listed ON listed.clothing_item_id = item.id AND listed.room_id = $2
+                    WHERE item.target_avatar_type = (SELECT avatar_type FROM chat_users WHERE id = $1)
                     ORDER BY category, required_level, name, id
                     LIMIT 300
-                `, [socket.data.user.id]);
+                `, [socket.data.user.id, roomId]);
                 socket.emit('shop-items', { items: rows.map((item) => ({
                     id: String(item.id), name: item.name, description: item.description,
                     category: item.category, avatarType: item.target_avatar_type, requiredLevel: Number(item.required_level),
@@ -3014,7 +3158,7 @@ async function startServer() {
                     return;
                 }
                 const { rows: [room] } = await pool.query(`
-                    SELECT id, room_number, name, welcome_title, welcome_text,
+                    SELECT id, room_number, name, welcome_title, welcome_text, is_shop, shop_is_open,
                            background_image IS NOT NULL AS has_background, background_version,
                            TRUE AS has_overlay, overlay_version, overlay_transform
                     FROM chat_public_rooms WHERE id = $1
@@ -3123,7 +3267,7 @@ async function startServer() {
             }
         });
 
-        socket.on('admin-public-room-create', async ({ name, roomNumber, floorNumber, isLocked = false, isHidden = false } = {}) => {
+        socket.on('admin-public-room-create', async ({ name, roomNumber, floorNumber, isLocked = false, isHidden = false, isShop = false } = {}) => {
             if (!socket.data.canManagePublicRooms || !activeSocketIds.has(socket.id)) return;
             const cleanName = typeof name === 'string' ? name.normalize('NFKC').trim() : '';
             const requestedRoomNumber = roomNumber === null || roomNumber === undefined || roomNumber === '' ? null : Number(roomNumber);
@@ -3131,7 +3275,7 @@ async function startServer() {
             if (!cleanName || cleanName.length > 60 || /[\u0000-\u001f\u007f]/.test(cleanName)
                 || !Number.isInteger(floor) || floor < 1 || floor > 100
                 || requestedRoomNumber !== null && (!Number.isInteger(requestedRoomNumber) || requestedRoomNumber < 3 || requestedRoomNumber > 100)
-                || typeof isLocked !== 'boolean' || typeof isHidden !== 'boolean') {
+                || typeof isLocked !== 'boolean' || typeof isHidden !== 'boolean' || typeof isShop !== 'boolean') {
                 socket.emit('admin-room-action-result', { success: false, message: 'Angiv et rumnavn, en etage og eventuelt et ledigt rumnummer fra 3 til 100.' });
                 return;
             }
@@ -3166,9 +3310,9 @@ async function startServer() {
                 const selectedRoomNumber = Number(numberRow.room_number);
                 const id = `public:${selectedRoomNumber}`;
                 await client.query(`
-                    INSERT INTO chat_public_rooms (id, room_number, floor_number, name, is_locked, is_hidden)
-                    VALUES ($1, $2, $3, $4, $5, $6)
-                `, [id, selectedRoomNumber, floor, cleanName, isLocked, isHidden]);
+                    INSERT INTO chat_public_rooms (id, room_number, floor_number, name, is_locked, is_hidden, is_shop)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                `, [id, selectedRoomNumber, floor, cleanName, isLocked, isHidden, isShop]);
                 await client.query('COMMIT');
                 socket.emit('admin-room-action-result', { success: true, message: `Rum #${selectedRoomNumber} blev oprettet på etage ${floor}.` });
                 await sendAdminPublicRooms();
@@ -3182,27 +3326,27 @@ async function startServer() {
             }
         });
 
-        socket.on('admin-public-room-update', async ({ id, name, floorNumber, isLocked, isHidden } = {}) => {
+        socket.on('admin-public-room-update', async ({ id, name, floorNumber, isLocked, isHidden, isShop } = {}) => {
             if (!socket.data.canManagePublicRooms || !activeSocketIds.has(socket.id)) return;
             const cleanName = typeof name === 'string' ? name.normalize('NFKC').trim() : '';
             const floor = Number(floorNumber);
             if (typeof id !== 'string' || cleanName.length < 1 || cleanName.length > 60
                 || /[\u0000-\u001f\u007f]/.test(cleanName) || !Number.isInteger(floor) || floor < 1 || floor > 100
-                || typeof isLocked !== 'boolean' || typeof isHidden !== 'boolean') {
+                || typeof isLocked !== 'boolean' || typeof isHidden !== 'boolean' || typeof isShop !== 'boolean') {
                 socket.emit('admin-room-action-result', { success: false, message: 'Kontrollér rumnavn og etagenummer (1–100).' });
                 return;
             }
             try {
                 const { rowCount } = await pool.query(
-                    'UPDATE chat_public_rooms SET name = $2, floor_number = $3, is_locked = $4, is_hidden = $5 WHERE id = $1',
-                    [id, cleanName, floor, isLocked, isHidden]
+                    'UPDATE chat_public_rooms SET name = $2, floor_number = $3, is_locked = $4, is_hidden = $5, is_shop = $6, shop_is_open = CASE WHEN $6 THEN shop_is_open ELSE FALSE END WHERE id = $1',
+                    [id, cleanName, floor, isLocked, isHidden, isShop]
                 );
                 if (!rowCount) {
                     socket.emit('admin-room-action-result', { success: false, message: 'Rummet findes ikke længere.' });
                     return;
                 }
                 const { rows: [updatedRoom] } = await pool.query(`
-                    SELECT id, room_number, name, welcome_title, welcome_text,
+                    SELECT id, room_number, name, welcome_title, welcome_text, is_shop, shop_is_open,
                            background_image IS NOT NULL AS has_background, background_version,
                            overlay_image IS NOT NULL AS has_overlay, overlay_version, overlay_transform
                     FROM chat_public_rooms WHERE id = $1
@@ -3215,7 +3359,9 @@ async function startServer() {
                     welcomeText: updatedRoom.welcome_text || 'Her kan du møde andre og chatte sammen. God fornøjelse!',
                     roomBackgroundUrl: getPublicRoomBackgroundUrl(updatedRoom),
                     roomOverlayUrl: getPublicRoomOverlayUrl(updatedRoom),
-                    roomOverlayTransform: normalizePublicRoomOverlayTransform(updatedRoom.overlay_transform)
+                    roomOverlayTransform: normalizePublicRoomOverlayTransform(updatedRoom.overlay_transform),
+                    isShop: updatedRoom.is_shop === true,
+                    shopIsOpen: updatedRoom.shop_is_open === true
                 });
                 socket.emit('admin-room-action-result', { success: true, message: 'Rummets navn og etage er gemt.' });
                 await sendAdminPublicRooms();
@@ -4158,7 +4304,8 @@ async function startServer() {
                     type: 'public',
                     roomNumber: Number(room.room_number),
                     floorNumber: Number(room.floor_number),
-                    isLocked: room.is_locked
+                    isLocked: room.is_locked,
+                    isShop: room.is_shop === true
                 }));
                 const { rows: apartmentRows } = await pool.query(`
                     SELECT DISTINCT a.id, a.apartment_number, a.apartment_name, a.owner_id::text AS owner_id, u.username

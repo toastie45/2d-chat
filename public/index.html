@@ -1891,6 +1891,7 @@
                                     <input id="admin-room-floor" type="number" min="1" max="100" value="1" placeholder="Etage" aria-label="Etagenummer" required>
                                     <label class="admin-room-check"><input id="admin-room-create-locked" type="checkbox"> Låst for ikke-admins</label>
                                     <label class="admin-room-check"><input id="admin-room-create-hidden" type="checkbox"> Skjul for ikke-admins</label>
+                                    <label class="admin-room-check"><input id="admin-room-create-shop" type="checkbox"> Dette rum er en butik</label>
                                     <button class="admin-row-button" type="submit">Tilføj rum</button>
                                 </form>
                                 <p class="admin-status" id="admin-rooms-status" aria-live="polite"></p>
@@ -1977,9 +1978,11 @@
                                 <div class="admin-list" id="admin-clothing-catalog" role="list"></div>
                             </section>
                             <section class="admin-section" id="admin-shop-view" aria-labelledby="admin-shop-title" hidden>
-                                <h3 id="admin-shop-title">Butik</h3>
-                                <p class="admin-shop-note">Vælg tøjdele, hår, skæg, briller eller tilbehør fra kataloget, som skal vises i brugerbutikken. Herfra kan du fjerne dem igen. Køb er slået fra, indtil valuta er klar.</p>
-                                <button class="admin-row-button" id="admin-shop-open-toggle" type="button">Åbn butik for brugere</button>
+                                <h3 id="admin-shop-title">Butikker</h3>
+                                <p class="admin-shop-note">Vælg en butik, åbn den for gæster, og læg de katalogvarer i den, som skal vises netop dér. Opret butikker ved at markere offentlige rum som butikker under Navigator.</p>
+                                <label for="admin-shop-room-select">Butiksrum</label>
+                                <select class="profile-page-select" id="admin-shop-room-select"><option value="">Henter butikker…</option></select>
+                                <button class="admin-row-button" id="admin-shop-open-toggle" type="button" disabled>Åbn butik for gæster</button>
                                 <p class="admin-status" id="admin-shop-status" aria-live="polite"></p>
                                 <div class="admin-list" id="admin-shop-catalog" role="list"></div>
                             </section>
@@ -2378,6 +2381,7 @@
             const shopBackButton = document.getElementById('shop-back-button');
             const adminShopOpenToggle = document.getElementById('admin-shop-open-toggle');
             let shopIsOpen = false;
+            let activeRoomIsShop = false;
             let shopItemsCache = [];
             let activeShopCategory = '';
             const wardrobeLeftCategories = document.getElementById('wardrobe-left-categories');
@@ -2460,6 +2464,9 @@
             const adminRoomFloor = document.getElementById('admin-room-floor');
             const adminRoomCreateLocked = document.getElementById('admin-room-create-locked');
             const adminRoomCreateHidden = document.getElementById('admin-room-create-hidden');
+            const adminRoomCreateShop = document.getElementById('admin-room-create-shop');
+            const adminShopRoomSelect = document.getElementById('admin-shop-room-select');
+            let adminSelectedShopRoomId = '';
             const adminUserSearch = document.getElementById('admin-user-search');
             const adminUsersRefresh = document.getElementById('admin-users-refresh');
             const adminBansRefresh = document.getElementById('admin-bans-refresh');
@@ -3042,8 +3049,7 @@
             }
 
             function isClothingShopRoom(roomId = activeRoom, roomName = roomStripName.textContent) {
-                const normalizedName = String(roomName || '').toLocaleLowerCase('da-DK');
-                return roomId === 'public:4' || /tøjbutik|toejbutik|tojbutik/.test(normalizedName);
+                return roomId === activeRoom && activeRoomIsShop;
             }
 
             function updateShopNavigationVisibility() {
@@ -3254,6 +3260,9 @@
 
             function applyRoomState(roomId, roomName, serverPlayers = {}, welcome = {}, apartmentState = {}) {
                 activeRoom = roomId;
+                activeRoomIsShop = welcome.isShop === true;
+                shopIsOpen = welcome.shopIsOpen === true;
+                updateShopNavigationVisibility();
                 setRoomBackground(roomId, welcome.roomBackgroundUrl);
                 setRoomOverlay(welcome.roomOverlayUrl, welcome.roomOverlayTransform);
                 roomStripName.textContent = roomName;
@@ -3297,7 +3306,7 @@
                         const lockedForUser = room.isLocked && !isAdminUser;
                         detail.textContent = lockedForUser
                             ? 'Låst for deltagere'
-                            : room.id === activeRoomId ? 'Du er her nu' : 'Offentligt rum';
+                            : room.isShop ? 'Butik' : room.id === activeRoomId ? 'Du er her nu' : 'Offentligt rum';
                         if (lockedForUser) {
                             button.disabled = true;
                             button.title = 'Rummet er låst for deltagere lige nu.';
@@ -3913,8 +3922,8 @@
                     socket.emit('admin-ip-bans-request');
                 }
                 if (showRooms) socket.emit('admin-public-rooms-request');
-                if (showClothing || showAdminShop) socket.emit('admin-clothing-items-request');
-                if (showAdminShop) socket.emit('admin-shop-status-request');
+                if (showClothing) socket.emit('admin-clothing-items-request');
+                if (showAdminShop) socket.emit('admin-shop-rooms-request');
             }
 
             let adminClothingPreviewImage = null;
@@ -4470,7 +4479,12 @@
                     hidden.type = 'checkbox';
                     hidden.checked = Boolean(room.isHidden);
                     hiddenLabel.append(hidden, document.createTextNode(' Skjul for ikke-admins'));
-                    policy.append(lockedLabel, hiddenLabel);
+                    const shopLabel = document.createElement('label');
+                    const shop = document.createElement('input');
+                    shop.type = 'checkbox';
+                    shop.checked = Boolean(room.isShop);
+                    shopLabel.append(shop, document.createTextNode(' Butik med vareside'));
+                    policy.append(lockedLabel, hiddenLabel, shopLabel);
                     const details = document.createElement('div');
                     details.className = 'admin-room-details';
                     const meta = document.createElement('div');
@@ -4686,7 +4700,8 @@
                             name: name.value,
                             floorNumber: Number(floor.value),
                             isLocked: locked.checked,
-                            isHidden: hidden.checked
+                            isHidden: hidden.checked,
+                            isShop: shop.checked
                         });
                     });
                     save.addEventListener('click', () => form.requestSubmit());
@@ -5063,7 +5078,7 @@
                     toggle.setAttribute('aria-label', `${item.shopListed ? 'Fjern' : 'Sæt'} ${item.name} ${item.shopListed ? 'fra' : 'i'} butikken`);
                     toggle.addEventListener('click', () => {
                         adminShopStatus.textContent = item.shopListed ? 'Fjerner fra butikken…' : 'Lægger i butikken…';
-                        socket.emit('admin-shop-item-set', { id: item.id, listed: !item.shopListed });
+                        socket.emit('admin-shop-room-item-set', { roomId: adminShopRoomSelect.value, id: item.id, listed: !item.shopListed });
                     });
                     row.append(image, details, toggle);
                         list.append(row);
@@ -5983,11 +5998,6 @@
                 activeShopCategory = '';
                 renderShopItems(shopItemsCache);
             });
-            adminShopOpenToggle.addEventListener('click', () => {
-                adminShopOpenToggle.disabled = true;
-                adminShopStatus.textContent = shopIsOpen ? 'Lukker butikken…' : 'Åbner butikken…';
-                socket.emit('admin-shop-status-set', { isOpen: !shopIsOpen });
-            });
             wardrobeSaveButton.addEventListener('click', () => {
                 if (!socket.connected || wardrobeSaveButton.disabled) return;
                 wardrobeSaveButton.disabled = true;
@@ -6032,6 +6042,18 @@
                 adminAvatarsView.hidden = true;
             });
             adminSectionSelect.addEventListener('change', selectAdminSection);
+            adminShopRoomSelect.addEventListener('change', () => {
+                adminSelectedShopRoomId = adminShopRoomSelect.value;
+                if (adminSelectedShopRoomId) socket.emit('admin-shop-room-data-request', { roomId: adminSelectedShopRoomId });
+            });
+            adminShopOpenToggle.addEventListener('click', () => {
+                if (!adminShopRoomSelect.value) return;
+                adminShopOpenToggle.disabled = true;
+                socket.emit('admin-shop-room-status-set', {
+                    roomId: adminShopRoomSelect.value,
+                    isOpen: adminShopOpenToggle.getAttribute('aria-pressed') !== 'true'
+                });
+            });
             adminAvatarForm.addEventListener('submit', async (event) => {
                 event.preventDefault();
                 const file = adminGirlAvatarFile.files?.[0];
@@ -6072,7 +6094,8 @@
                     roomNumber: adminRoomNumber.value ? Number(adminRoomNumber.value) : null,
                     floorNumber: Number(adminRoomFloor.value),
                     isLocked: adminRoomCreateLocked.checked,
-                    isHidden: adminRoomCreateHidden.checked
+                    isHidden: adminRoomCreateHidden.checked,
+                    isShop: adminRoomCreateShop.checked
                 });
             });
             adminUsersRefresh.addEventListener('click', requestAdminUserList);
@@ -6738,7 +6761,6 @@
             socket.on('connect', () => {
                 if (currentUser) {
                     socket.emit('join');
-                    socket.emit('shop-status-request');
                 }
             });
 
@@ -6844,13 +6866,15 @@
                 socket.disconnect();
             });
 
-            socket.on('join-success', ({ players: serverPlayers, mutedUsernames: initialMutedUsernames = [], roomId = 'common', roomName, welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl, roomOverlayTransform, apartmentTiles, canEditApartment, canEditPublicRoom, ownApartmentId, ownApartmentNumber }) => {
+            socket.on('join-success', ({ players: serverPlayers, mutedUsernames: initialMutedUsernames = [], roomId = 'common', roomName, welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl, roomOverlayTransform, apartmentTiles, canEditApartment, canEditPublicRoom, ownApartmentId, ownApartmentNumber, isShop, shopIsOpen: roomShopIsOpen }) => {
                 players = {};
                 myId = socket.id;
                 ownApartment = ownApartmentId
                     ? { id: String(ownApartmentId), number: Number(ownApartmentNumber) }
                     : null;
                 activeRoom = roomId;
+                activeRoomIsShop = isShop === true;
+                shopIsOpen = roomShopIsOpen === true;
                 setRoomBackground(roomId, roomBackgroundUrl);
                 setRoomOverlay(roomOverlayUrl, roomOverlayTransform);
                 roomStripName.textContent = roomName;
@@ -6888,11 +6912,11 @@
                 canvas.focus();
             });
 
-            socket.on('room-changed', ({ roomId, roomName, players: serverPlayers = {}, welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl, roomOverlayTransform, apartmentTiles, canEditApartment, canEditPublicRoom } = {}) => {
+            socket.on('room-changed', ({ roomId, roomName, players: serverPlayers = {}, welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl, roomOverlayTransform, apartmentTiles, canEditApartment, canEditPublicRoom, isShop, shopIsOpen: roomShopIsOpen } = {}) => {
                 if (!roomId || !roomName) return;
                 const wasNavigatorOpen = !navigatorPanel.hidden;
                 const wasMembersOpen = !membersPanel.hidden;
-                applyRoomState(roomId, roomName, serverPlayers, { welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl, roomOverlayTransform }, { apartmentTiles, canEditApartment, canEditPublicRoom });
+                applyRoomState(roomId, roomName, serverPlayers, { welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl, roomOverlayTransform, isShop, shopIsOpen: roomShopIsOpen }, { apartmentTiles, canEditApartment, canEditPublicRoom });
                 sidePanelHistory.length = 0;
                 showCurrentRoomLandingPanel();
                 if (wasNavigatorOpen) socket.emit('navigator-request');
@@ -6903,12 +6927,17 @@
                 updateRoomWelcome(welcomeTitle, welcomeText);
             });
 
-            socket.on('public-room-metadata', ({ roomId, roomName, welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl, roomOverlayTransform } = {}) => {
+            socket.on('public-room-metadata', ({ roomId, roomName, welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl, roomOverlayTransform, isShop, shopIsOpen: roomShopIsOpen } = {}) => {
                 if (roomId !== activeRoom) return;
+                const shopTypeChanged = typeof isShop === 'boolean' && isShop !== activeRoomIsShop;
+                if (typeof isShop === 'boolean') activeRoomIsShop = isShop;
+                if (typeof roomShopIsOpen === 'boolean') shopIsOpen = roomShopIsOpen;
+                updateShopNavigationVisibility();
                 setRoomBackground(roomId, roomBackgroundUrl);
                 setRoomOverlay(roomOverlayUrl, roomOverlayTransform);
                 updateApartmentRoomTitle(roomName, welcomeTitle);
                 updateRoomWelcome(welcomeTitle, welcomeText);
+                if (shopTypeChanged && (activeSidePanel === 'welcome' || activeSidePanel === 'shop')) showCurrentRoomLandingPanel();
             });
 
             socket.on('apartment-layout-data', ({ roomId, tiles, name, welcomeMessage, roomName, editorKind } = {}) => {
@@ -7068,31 +7097,54 @@
                 if (!isAdminUser) return;
                 const items = Array.isArray(catalog) ? catalog : [];
                 renderAdminClothingCatalog(items);
-                renderAdminShopCatalog(items);
+            });
+            socket.on('admin-shop-rooms', ({ rooms = [], error = '' } = {}) => {
+                if (!canManageClothing || adminSectionSelect.value !== 'shop') return;
+                const previous = adminShopRoomSelect.value || adminSelectedShopRoomId;
+                adminShopRoomSelect.replaceChildren();
+                if (!Array.isArray(rooms) || rooms.length === 0) {
+                    adminSelectedShopRoomId = '';
+                    adminShopRoomSelect.add(new Option('Ingen rum er markeret som butikker', ''));
+                    adminShopOpenToggle.disabled = true;
+                    adminShopCatalog.replaceChildren();
+                    adminShopStatus.textContent = error || 'Markér et offentligt rum som butik under Navigator - etager og rum.';
+                    return;
+                }
+                rooms.forEach((room) => adminShopRoomSelect.add(new Option(room.name, room.id)));
+                adminSelectedShopRoomId = rooms.some((room) => room.id === previous) ? previous : rooms[0].id;
+                adminShopRoomSelect.value = adminSelectedShopRoomId;
+                socket.emit('admin-shop-room-data-request', { roomId: adminSelectedShopRoomId });
+            });
+            socket.on('admin-shop-room-data', ({ roomId, isOpen = false, items = [], error = '' } = {}) => {
+                if (!canManageClothing || roomId !== adminShopRoomSelect.value) return;
+                adminSelectedShopRoomId = roomId;
+                adminShopOpenToggle.disabled = false;
+                adminShopOpenToggle.textContent = isOpen ? 'Luk butik for gæster' : 'Åbn butik for gæster';
+                adminShopOpenToggle.setAttribute('aria-pressed', String(isOpen));
+                adminShopStatus.textContent = error || '';
+                if (error) {
+                    adminShopCatalog.replaceChildren();
+                    return;
+                }
+                renderAdminShopCatalog(Array.isArray(items) ? items : []);
+            });
+            socket.on('admin-shop-room-data-refresh', ({ roomId } = {}) => {
+                if (roomId && roomId === adminShopRoomSelect.value) socket.emit('admin-shop-room-data-request', { roomId });
             });
             socket.on('admin-shop-action-result', ({ success, message } = {}) => {
                 if (!canManageClothing) return;
                 adminShopStatus.textContent = message || (success ? 'Butikken er opdateret.' : 'Butikken kunne ikke opdateres.');
                 if (success && !shopPanel.hidden) socket.emit('shop-request');
             });
-            socket.on('admin-shop-status', ({ isOpen = false } = {}) => {
-                if (!canManageClothing) return;
-                adminShopOpenToggle.disabled = false;
-                adminShopOpenToggle.textContent = isOpen ? 'Luk butik for brugere' : 'Åbn butik for brugere';
-                adminShopOpenToggle.setAttribute('aria-pressed', String(isOpen));
-            });
             socket.on('admin-shop-status-result', ({ success, message } = {}) => {
                 adminShopStatus.textContent = message || (success ? 'Butikkens status er gemt.' : 'Butikkens status kunne ikke gemmes.');
                 adminShopOpenToggle.disabled = false;
+                if (success && adminShopRoomSelect.value) socket.emit('admin-shop-room-data-request', { roomId: adminShopRoomSelect.value });
             });
-            socket.on('shop-status', ({ isOpen = false } = {}) => {
+            socket.on('shop-status', ({ roomId, isOpen = false } = {}) => {
+                if (roomId !== activeRoom) return;
                 shopIsOpen = isOpen === true;
                 updateShopNavigationVisibility();
-                if (canManageClothing) {
-                    adminShopOpenToggle.textContent = shopIsOpen ? 'Luk butik for brugere' : 'Åbn butik for brugere';
-                    adminShopOpenToggle.setAttribute('aria-pressed', String(shopIsOpen));
-                    adminShopOpenToggle.disabled = false;
-                }
                 if (!shopIsOpen) {
                     shopList.replaceChildren();
                     if (activeSidePanel === 'shop') shopStatus.textContent = 'Butikken er lukket lige nu.';
