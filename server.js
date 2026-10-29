@@ -2032,25 +2032,14 @@ async function startServer() {
         }
 
         async function sendAdminClothingItems() {
-            const [catalogResult, assignmentResult] = await Promise.all([
-                pool.query(`
-                    SELECT item.id, item.name, item.description, item.category, item.required_level, item.price,
-                           item.transform_json, item.image_version, item.created_at, COUNT(assignment.id)::integer AS assignment_count
-                    FROM chat_clothing_catalog item
-                    LEFT JOIN chat_clothing_assignments assignment ON assignment.clothing_item_id = item.id
-                    GROUP BY item.id ORDER BY item.created_at DESC, item.id DESC LIMIT 200
-                `),
-                pool.query(`
-                    SELECT assignment.id AS assignment_id, item.id AS item_id,
-                           assignment.target_user_id::text AS target_user_id, target.username AS target_username,
-                           item.name, item.description, item.category, item.required_level, item.price,
-                           item.transform_json, item.image_version, assignment.assigned_at
-                    FROM chat_clothing_assignments assignment
-                    JOIN chat_clothing_catalog item ON item.id = assignment.clothing_item_id
-                    JOIN chat_users target ON target.id = assignment.target_user_id
-                    ORDER BY assignment.assigned_at DESC, assignment.id DESC LIMIT 300
-                `)
-            ]);
+            const { rows } = await pool.query(`
+                SELECT item.id, item.name, item.description, item.category, item.required_level, item.price,
+                       item.transform_json, item.image_version, item.created_at,
+                       COUNT(assignment.id)::integer AS assignment_count
+                FROM chat_clothing_catalog item
+                LEFT JOIN chat_clothing_assignments assignment ON assignment.clothing_item_id = item.id
+                GROUP BY item.id ORDER BY item.created_at DESC, item.id DESC LIMIT 200
+            `);
             const mapItem = (item) => ({
                 id: String(item.id), name: item.name, description: item.description, category: item.category,
                 requiredLevel: Number(item.required_level), price: Number(item.price),
@@ -2059,11 +2048,7 @@ async function startServer() {
                 transform: normalizeClothingTransform(item.transform_json)
             });
             socket.emit('admin-clothing-items', {
-                catalog: catalogResult.rows.map((item) => ({ ...mapItem(item), assignmentCount: Number(item.assignment_count) })),
-                items: assignmentResult.rows.map((item) => ({
-                    ...mapItem({ ...item, id: item.item_id }), id: String(item.assignment_id),
-                    catalogId: String(item.item_id), targetUserId: item.target_user_id, targetUsername: item.target_username
-                }))
+                catalog: rows.map((item) => ({ ...mapItem(item), assignmentCount: Number(item.assignment_count) }))
             });
         }
 
@@ -2073,6 +2058,34 @@ async function startServer() {
             catch (error) {
                 console.error('Could not list admin clothing items:', getSafeErrorCode(error));
                 socket.emit('admin-clothing-action-result', { success: false, message: 'Tøjlisten kunne ikke hentes.' });
+            }
+        });
+
+        socket.on('admin-clothing-owners-request', async ({ id } = {}) => {
+            if (!socket.data.canManageClothing || !activeSocketIds.has(socket.id)) return;
+            if (typeof id !== 'string' || !/^[1-9]\d{0,18}$/.test(id)) return;
+            try {
+                const { rows } = await pool.query(`
+                    SELECT item.name AS item_name, assignment.id::text AS assignment_id,
+                           target.username, assignment.assigned_at
+                    FROM chat_clothing_catalog item
+                    LEFT JOIN chat_clothing_assignments assignment ON assignment.clothing_item_id = item.id
+                    LEFT JOIN chat_users target ON target.id = assignment.target_user_id
+                    WHERE item.id = $1
+                    ORDER BY assignment.assigned_at DESC, assignment.id DESC
+                `, [id]);
+                socket.emit('admin-clothing-owners', {
+                    itemId: id,
+                    itemName: rows[0]?.item_name || '',
+                    assignments: rows.filter((row) => row.assignment_id).map((row) => ({
+                        id: row.assignment_id,
+                        username: row.username,
+                        assignedAt: row.assigned_at
+                    }))
+                });
+            } catch (error) {
+                console.error('Could not load clothing owners:', getSafeErrorCode(error));
+                socket.emit('admin-clothing-action-result', { success: false, message: 'Tildelingerne kunne ikke hentes.' });
             }
         });
 
