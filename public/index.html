@@ -2187,12 +2187,9 @@
             function drawAvatarMoodFace(context, moodImage, isGirl, centerX, centerY, width, height) {
                 if (!context || !moodImage || !width || !height) return;
                 if (isGirl) {
-                    // Female mood assets are complete head layers. Keep their native proportions
-                    // and align them over the fixed body, avoiding an oval edge through the face.
-                    const headWidth = width * 0.88;
-                    const headHeight = headWidth * (moodImage.naturalHeight / moodImage.naturalWidth);
-                    const headCenterY = centerY - height * 0.19;
-                    context.drawImage(moodImage, centerX - headWidth / 2, headCenterY - headHeight / 2, headWidth, headHeight);
+                    // Female mood assets are full-body sprites with identical dimensions and framing.
+                    // Draw each into the exact same avatar box so face, ears, and body stay aligned.
+                    context.drawImage(moodImage, centerX - width / 2, centerY - height / 2, width, height);
                     return;
                 }
                 context.save();
