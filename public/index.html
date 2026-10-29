@@ -6396,14 +6396,18 @@
                 socket.emit('admin-ip-bans-request');
             });
 
+            let navigatorRefreshTimer = null;
             socket.on('navigator-refresh', () => {
-                if (!navigatorPanel.hidden) socket.emit('navigator-request');
-                if (!membersPanel.hidden) socket.emit('online-users-request');
-                if (!adminPanel.hidden && adminSectionSelect.value === 'rooms') socket.emit('admin-public-rooms-request');
-                if (!adminPanel.hidden && adminSectionSelect.value === 'users') {
-                    requestAdminUserList();
-                    socket.emit('admin-ip-bans-request');
-                }
+                // Room joins and departures can emit several refreshes at once.
+                // Coalesce them so open panels only make one request per burst.
+                if (navigatorRefreshTimer !== null) return;
+                navigatorRefreshTimer = setTimeout(() => {
+                    navigatorRefreshTimer = null;
+                    if (!navigatorPanel.hidden) socket.emit('navigator-request');
+                    if (!membersPanel.hidden) socket.emit('online-users-request');
+                    if (!adminPanel.hidden && adminSectionSelect.value === 'rooms') socket.emit('admin-public-rooms-request');
+                    if (!adminPanel.hidden && adminSectionSelect.value === 'users') requestAdminUserList();
+                }, 150);
             });
 
             socket.on('online-users', ({ users = [] } = {}) => renderOnlineUsers(users));
