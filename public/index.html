@@ -433,8 +433,12 @@
         .wardrobe-category-empty { margin: 0; padding: 4px; color: #85887c; font-size: 9px; }
         .wardrobe-preview-column { grid-area: preview; display: grid; justify-items: center; gap: 6px; padding: 8px 0 4px; }
         .wardrobe-preview-label { margin: 0; color: #dce6cc; font-size: 10px; font-weight: 700; }
-        .wardrobe-avatar-stage { display: grid; width: 176px; max-width: 100%; aspect-ratio: 216 / 300; place-items: center; overflow: hidden; border: 1px solid #3d4930; border-radius: 14px; background: radial-gradient(ellipse at 50% 45%, #293120 0%, #181b17 62%, #111310 100%); box-shadow: inset 0 0 24px #0005, 0 8px 24px #0003; }
+        .wardrobe-avatar-stage { position: relative; display: grid; width: 176px; max-width: 100%; aspect-ratio: 216 / 300; place-items: center; overflow: hidden; border: 1px solid #3d4930; border-radius: 14px; background: radial-gradient(ellipse at 50% 45%, #293120 0%, #181b17 62%, #111310 100%); box-shadow: inset 0 0 24px #0005, 0 8px 24px #0003; }
         .wardrobe-avatar-preview { display: block; width: 100%; height: 100%; object-fit: contain; }
+        .wardrobe-hand-layer-toggle { position: absolute; z-index: 2; top: 7px; right: 7px; display: grid; width: 29px; height: 29px; place-items: center; padding: 0; border: 1px solid #566348; border-radius: 8px; background: #171a15eF; color: #c1f078; cursor: pointer; transition: background .15s ease, border-color .15s ease, opacity .15s ease; }
+        .wardrobe-hand-layer-toggle:hover:not(:disabled), .wardrobe-hand-layer-toggle[aria-pressed="true"] { border-color: #a8c879; background: #303b27; }
+        .wardrobe-hand-layer-toggle:disabled { opacity: .35; cursor: not-allowed; }
+        .wardrobe-hand-layer-toggle svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
         .wardrobe-preview-level { color: #a8c879; font-size: 9px; font-weight: 650; }
         .wardrobe-status { min-height: 16px; margin: 8px 0; color: var(--muted); font-size: 10px; }
         .wardrobe-actions { display: flex; gap: 8px; margin-top: 12px; }
@@ -1598,6 +1602,9 @@
                                     <p class="wardrobe-preview-label">Din figur</p>
                                     <div class="wardrobe-avatar-stage">
                                         <canvas class="wardrobe-avatar-preview" id="wardrobe-avatar-preview" width="216" height="300" aria-label="Preview af din avatar med tøjet på"></canvas>
+                                        <button class="wardrobe-hand-layer-toggle" id="wardrobe-hand-layer-toggle" type="button" aria-label="Vis håndting foran tøjet" aria-pressed="true" title="Vis håndting foran tøjet" disabled hidden>
+                                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 4.5-8 4.5-8-4.5L12 3Z"/><path d="m4 12 8 4.5 8-4.5"/><path d="m4 16.5 8 4.5 8-4.5"/></svg>
+                                        </button>
                                     </div>
                                     <span class="wardrobe-preview-level" id="wardrobe-preview-level">Level 1</span>
                                 </div>
@@ -2362,6 +2369,10 @@
             const wardrobeLeftCategories = document.getElementById('wardrobe-left-categories');
             const wardrobeRightCategories = document.getElementById('wardrobe-right-categories');
             const wardrobeAvatarPreview = document.getElementById('wardrobe-avatar-preview');
+            const wardrobeHandLayerToggle = document.getElementById('wardrobe-hand-layer-toggle');
+            const wardrobePreviewRenderCanvas = document.createElement('canvas');
+            wardrobePreviewRenderCanvas.width = 640;
+            wardrobePreviewRenderCanvas.height = 600;
             const wardrobePreviewLevel = document.getElementById('wardrobe-preview-level');
             const wardrobeEmpty = document.getElementById('wardrobe-empty');
             const wardrobeStatus = document.getElementById('wardrobe-status');
@@ -4675,19 +4686,23 @@
 
             function drawWardrobeAvatarPreview() {
                 const context = wardrobeAvatarPreview.getContext('2d');
+                const renderContext = wardrobePreviewRenderCanvas.getContext('2d', { willReadFrequently: true });
                 context.clearRect(0, 0, wardrobeAvatarPreview.width, wardrobeAvatarPreview.height);
                 context.fillStyle = '#11130f';
                 context.fillRect(0, 0, wardrobeAvatarPreview.width, wardrobeAvatarPreview.height);
+                renderContext.clearRect(0, 0, wardrobePreviewRenderCanvas.width, wardrobePreviewRenderCanvas.height);
                 const ownPlayer = players[myId] || currentUser;
                 const ownAvatarImage = getAvatarImageForPlayer(ownPlayer);
                 if (!ownAvatarImage) return;
                 const width = wardrobeAvatarPreview.width;
                 const height = wardrobeAvatarPreview.height;
-                context.save();
-                context.translate(width / 2, height / 2);
-                context.scale(0.738, 0.738);
-                context.translate(-width / 2, -height / 2);
-                context.drawImage(ownAvatarImage, 0, 0, width, height);
+                const renderWidth = wardrobePreviewRenderCanvas.width;
+                const renderHeight = wardrobePreviewRenderCanvas.height;
+                const avatarLeft = (renderWidth - width) / 2;
+                const avatarTop = (renderHeight - height) / 2;
+                const avatarCenterX = renderWidth / 2;
+                const avatarCenterY = renderHeight / 2;
+                renderContext.drawImage(ownAvatarImage, avatarLeft, avatarTop, width, height);
                 const mood = players[myId]?.mood || 'glad';
                 const moodImages = ownPlayer?.avatarType === 'girl' ? {
                     mobset: girlMobsetAvatarImageLoaded ? girlMobsetAvatarImage : null,
@@ -4702,22 +4717,22 @@
                 };
                 const moodImage = moodImages[mood];
                 if (moodImage && moodImage !== ownAvatarImage) {
-                    context.save();
-                    context.beginPath();
-                    context.ellipse(width / 2, height / 2 - height * 0.19, width * 0.275, height * 0.255, 0, 0, Math.PI * 2);
-                    context.clip();
+                    renderContext.save();
+                    renderContext.beginPath();
+                    renderContext.ellipse(avatarCenterX, avatarCenterY - height * 0.19, width * 0.275, height * 0.255, 0, 0, Math.PI * 2);
+                    renderContext.clip();
                     if (ownPlayer?.avatarType === 'girl') {
                         const faceWidth = width * 0.66;
                         const faceHeight = height * 0.66;
-                        context.drawImage(moodImage,
-                            width / 2 - faceWidth / 2,
-                            height / 2 - height * 0.12 - faceHeight / 2,
+                        renderContext.drawImage(moodImage,
+                            avatarCenterX - faceWidth / 2,
+                            avatarCenterY - height * 0.12 - faceHeight / 2,
                             faceWidth,
                             faceHeight);
                     } else {
-                        context.drawImage(moodImage, 0, 0, width, height);
+                        renderContext.drawImage(moodImage, avatarLeft, avatarTop, width, height);
                     }
-                    context.restore();
+                    renderContext.restore();
                 }
                 const customLayerOrder = wardrobeSavedCategoryOrder !== null
                     || JSON.stringify(wardrobeDraftCategoryOrder) !== JSON.stringify(defaultWardrobeCategoryOrder);
@@ -4728,9 +4743,29 @@
                 for (const item of equipped) {
                     const image = getClothingImage(item);
                     if (!image) continue;
-                    drawClothingLayer(context, image, item, width / 2, height / 2, width, height);
+                    drawClothingLayer(renderContext, image, item, avatarCenterX, avatarCenterY, width, height);
                 }
-                context.restore();
+                const pixels = renderContext.getImageData(0, 0, renderWidth, renderHeight).data;
+                let minX = renderWidth, minY = renderHeight, maxX = -1, maxY = -1;
+                for (let y = 0; y < renderHeight; y++) {
+                    for (let x = 0; x < renderWidth; x++) {
+                        if (pixels[(y * renderWidth + x) * 4 + 3] < 8) continue;
+                        if (x < minX) minX = x;
+                        if (x > maxX) maxX = x;
+                        if (y < minY) minY = y;
+                        if (y > maxY) maxY = y;
+                    }
+                }
+                if (maxX < minX || maxY < minY) return;
+                const boundsWidth = maxX - minX + 1;
+                const boundsHeight = maxY - minY + 1;
+                const fit = Math.min((width * 0.9) / boundsWidth, (height * 0.9) / boundsHeight);
+                const destinationWidth = boundsWidth * fit;
+                const destinationHeight = boundsHeight * fit;
+                context.drawImage(wardrobePreviewRenderCanvas,
+                    minX, minY, boundsWidth, boundsHeight,
+                    (width - destinationWidth) / 2, (height - destinationHeight) / 2,
+                    destinationWidth, destinationHeight);
             }
 
             function renderWardrobeItems(items = [], level = 1, preserveDraft = false, categoryOrder = undefined) {
@@ -4879,6 +4914,18 @@
                 const outfitDirty = wardrobeDraftIds.size !== wardrobeSavedIds.size || [...wardrobeDraftIds].some((id) => !wardrobeSavedIds.has(id));
                 const orderDirty = JSON.stringify(wardrobeDraftCategoryOrder) !== JSON.stringify(wardrobeSavedCategoryOrder || defaultWardrobeCategoryOrder);
                 const isDirty = outfitDirty || orderDirty;
+                const handItemsEquipped = wardrobeItems.some((item) =>
+                    ['left_hand', 'right_hand'].includes(item.category) && wardrobeDraftIds.has(String(item.id))
+                );
+                const handsInFront = Math.max(
+                    wardrobeDraftCategoryOrder.indexOf('left_hand'),
+                    wardrobeDraftCategoryOrder.indexOf('right_hand')
+                ) < wardrobeDraftCategoryOrder.indexOf('clothing');
+                wardrobeHandLayerToggle.hidden = !handItemsEquipped;
+                wardrobeHandLayerToggle.disabled = !handItemsEquipped;
+                wardrobeHandLayerToggle.setAttribute('aria-pressed', String(handsInFront));
+                wardrobeHandLayerToggle.setAttribute('aria-label', handsInFront ? 'Håndting vises foran tøjet' : 'Håndting vises bag tøjet');
+                wardrobeHandLayerToggle.title = handsInFront ? 'Håndting foran tøjet · tryk for at lægge bagved' : 'Håndting bag tøjet · tryk for at vise foran';
                 wardrobeSaveButton.disabled = !isDirty;
                 wardrobeDiscardButton.disabled = !isDirty;
                 if (!isDirty && wardrobeStatus.textContent.startsWith('Outfit ikke gemt endnu')) {
@@ -6019,6 +6066,18 @@
                     equippedItemIds: [...wardrobeDraftIds],
                     categoryOrder: wardrobeDraftCategoryOrder
                 });
+            });
+            wardrobeHandLayerToggle.addEventListener('click', () => {
+                const shouldMoveInFront = wardrobeHandLayerToggle.getAttribute('aria-pressed') !== 'true';
+                const handCategories = wardrobeDraftCategoryOrder.filter((category) => ['left_hand', 'right_hand'].includes(category));
+                const order = wardrobeDraftCategoryOrder.filter((category) => !['left_hand', 'right_hand'].includes(category));
+                const clothingIndex = order.indexOf('clothing');
+                order.splice(clothingIndex + (shouldMoveInFront ? 0 : 1), 0, ...handCategories);
+                wardrobeDraftCategoryOrder = order;
+                wardrobeStatus.textContent = shouldMoveInFront
+                    ? 'Håndtingene vises foran tøjet i previewet. Gem outfittet for at bruge rækkefølgen i chatten.'
+                    : 'Håndtingene vises bag tøjet i previewet. Gem outfittet for at bruge rækkefølgen i chatten.';
+                renderWardrobeItems(wardrobeItems, wardrobeLevel, true);
             });
             wardrobeDiscardButton.addEventListener('click', () => {
                 if (wardrobeDiscardButton.disabled) return;
