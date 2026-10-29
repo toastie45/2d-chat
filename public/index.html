@@ -4947,6 +4947,18 @@
                     details.append(name, room);
                     const actions = document.createElement('div');
                     actions.className = 'admin-row-actions';
+                    const bring = document.createElement('button');
+                    bring.className = 'admin-row-button';
+                    bring.type = 'button';
+                    bring.textContent = 'Hent';
+                    bring.disabled = !user.isOnline || Boolean(user.isSelf);
+                    bring.title = user.isSelf ? 'Du er allerede her' : !user.isOnline ? 'Brugeren skal være online for at blive hentet' : `Hent ${user.username} til dit rum`;
+                    bring.addEventListener('click', () => {
+                        if (!user.isOnline || user.isSelf) return;
+                        if (!window.confirm(`Vil du hente ${user.username} til dit rum?`)) return;
+                        adminUsersStatus.textContent = `Henter ${user.username}…`;
+                        socket.emit('admin-user-bring', { targetSocketId: user.socketId });
+                    });
                     const kick = document.createElement('button');
                     kick.className = 'admin-row-button';
                     kick.type = 'button';
@@ -4979,7 +4991,7 @@
                         adminBanCreatedAt.textContent = formatAdminDate(new Date());
                         adminBanDialog.showModal();
                     });
-                    actions.append(kick, ban);
+                    actions.append(bring, kick, ban);
                     row.append(details, actions);
                     adminOnlineUsers.append(row);
                 }

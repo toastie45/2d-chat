@@ -1920,10 +1920,10 @@ async function startServer() {
         };
     }
 
-    async function placeSocketInRoom(socket, roomId) {
+    async function placeSocketInRoom(socket, roomId, { bypassRoomAccess = false } = {}) {
         if (isPublicChatRoomId(roomId)) {
             const policy = await getPublicRoomPolicy(roomId);
-            if (publicRoomAccessError(policy, Boolean(socket.data.canManagePublicRooms))) return null;
+            if (publicRoomAccessError(policy, bypassRoomAccess || Boolean(socket.data.canManagePublicRooms))) return null;
         }
         const keys = roomKeys(roomId);
         const apartmentTiles = await loadApartmentTiles(roomId);
@@ -3076,6 +3076,46 @@ async function startServer() {
             }
         });
 
+        socket.on('admin-user-bring', async ({ targetSocketId } = {}) => {
+            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id) || socket.data.switchingRoom) return;
+            if (typeof targetSocketId !== 'string' || targetSocketId.length > 128 || targetSocketId === socket.id) {
+                socket.emit('admin-action-result', { success: false, message: 'Vælg en anden bruger, der er online.' });
+                return;
+            }
+            const targetSocket = io.sockets.sockets.get(targetSocketId);
+            const roomId = activeSocketRooms.get(socket.id);
+            if (!targetSocket || !activeSocketIds.has(targetSocketId) || !roomId || targetSocket.data.switchingRoom) {
+                socket.emit('admin-action-result', { success: false, message: 'Brugeren eller dit rum er ikke længere tilgængeligt.' });
+                return;
+            }
+            if (String(activeSocketUsers.get(targetSocketId)) === String(socket.data.user.id)) {
+                socket.emit('admin-action-result', { success: false, message: 'Du kan ikke hente din egen bruger.' });
+                return;
+            }
+            targetSocket.data.switchingRoom = true;
+            try {
+                if (activeSocketRooms.get(targetSocketId) !== roomId) {
+                    const joined = await placeSocketInRoom(targetSocket, roomId, { bypassRoomAccess: true });
+                    if (!joined) {
+                        socket.emit('admin-action-result', { success: false, message: 'Brugeren kunne ikke flyttes. Rummet kan være fuldt.' });
+                        return;
+                    }
+                }
+                const arrivedNearAdmin = await moveSocketNearTarget(targetSocket, roomId, socket.id);
+                if (!arrivedNearAdmin && activeSocketRooms.get(targetSocketId) !== roomId) {
+                    socket.emit('admin-action-result', { success: false, message: 'Brugeren kunne ikke flyttes. Rummet kan være fuldt.' });
+                    return;
+                }
+                socket.emit('admin-action-result', { success: true, message: `${targetSocket.data.user.username} blev hentet hen til dig.` });
+                targetSocket.emit('profile-teleport-result', { message: `En administrator hentede dig til ${socket.data.user.username}.` });
+            } catch (error) {
+                console.error('Could not bring chat participant:', getSafeErrorCode(error));
+                socket.emit('admin-action-result', { success: false, message: 'Brugeren kunne ikke hentes. Prøv igen.' });
+            } finally {
+                targetSocket.data.switchingRoom = false;
+            }
+        });
+
         socket.on('admin-user-ban', async (payload = {}) => {
             if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
             const data = payload && typeof payload === 'object' ? payload : {};
@@ -3210,7 +3250,7 @@ async function startServer() {
                 if (apartmentMatch) {
                     const { rows: [apartment] } = await pool.query('SELECT owner_id FROM chat_apartments WHERE id = $1', [apartmentMatch[1]]);
                     if (!apartment) return;
-                    if (String(apartment.owner_id) !== String(socket.data.user.id)) {
+                    if (!socket.data.isAdmin && String(apartment.owner_id) !== String(socket.data.user.id)) {
                         const admissionKey = `chat:apartment-admission:${socket.id}:${apartment.id}`;
                         const admission = await redis.getDel(admissionKey);
                         if (!admission) {
@@ -3644,7 +3684,7 @@ async function startServer() {
                     SELECT DISTINCT a.id, a.apartment_number, a.apartment_name, u.username
                     FROM chat_apartments a
                     JOIN chat_users u ON u.id = a.owner_id
-                    JOIN chat_online_sessions s ON s.user_id = a.owner_id
+                    ${socket.data.isAdmin ? '' : 'JOIN chat_online_sessions s ON s.user_id = a.owner_id'}
                     ORDER BY a.apartment_number
                 `);
                 for (const apartment of apartments) {
@@ -3772,6 +3812,25 @@ async function startServer() {
                 if (!apartment) return;
                 if (targetPlayerId && activeSocketRooms.get(targetPlayerId) !== apartmentRoomId) {
                     socket.emit('apartment-visit-result', { message: 'Brugeren har skiftet rum. Prøv igen.' });
+                    return;
+                }
+                if (socket.data.isAdmin) {
+                    if (socket.data.switchingRoom) return;
+                    socket.data.switchingRoom = true;
+                    try {
+                        if (activeSocketRooms.get(socket.id) === apartmentRoomId) {
+                            socket.emit('apartment-visit-result', { message: `Du er allerede i ${getApartmentRoomName(apartment)}.` });
+                            return;
+                        }
+                        const moved = await placeSocketInRoom(socket, apartmentRoomId);
+                        socket.emit('apartment-visit-result', {
+                            message: moved
+                                ? `Du er gået direkte ind i ${getApartmentRoomName(apartment)} som administrator.`
+                                : 'Lejligheden er fuld. Prøv igen senere.'
+                        });
+                    } finally {
+                        socket.data.switchingRoom = false;
+                    }
                     return;
                 }
                 if (String(apartment.owner_id) === String(socket.data.user.id)) {
@@ -4016,6 +4075,18 @@ async function startServer() {
                         const apartmentRoomId = `apartment:${apartment.id}`;
                         if (activeSocketRooms.get(socket.id) === apartmentRoomId) {
                             socket.emit('profile-teleport-result', { message: `Du er allerede i lejlighed #${rawTarget}.` });
+                        } else if (socket.data.isAdmin) {
+                            socket.data.switchingRoom = true;
+                            try {
+                                const joined = await placeSocketInRoom(socket, apartmentRoomId);
+                                socket.emit('profile-teleport-result', {
+                                    message: joined
+                                        ? `Du er gået direkte ind i lejlighed #${rawTarget} som administrator.`
+                                        : 'Lejligheden er fuld. Prøv igen senere.'
+                                });
+                            } finally {
+                                socket.data.switchingRoom = false;
+                            }
                         } else {
                             socket.emit('profile-teleport-knock', { apartmentId: String(apartment.id) });
                         }
