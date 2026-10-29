@@ -2191,7 +2191,9 @@
             let wardrobeSavedIds = new Set();
             let wardrobeDraftIds = new Set();
             let wardrobeLevel = 1;
-            const collapsedWardrobeCategories = new Set();
+            const collapsedWardrobeCategories = new Set([
+                'headwear', 'hair', 'beard', 'glasses', 'clothing', 'left_hand', 'right_hand', 'accessory'
+            ]);
             const adminPanel = document.getElementById('admin-panel');
             const adminSectionSelect = document.getElementById('admin-section-select');
             const adminWelcomeView = document.getElementById('admin-welcome-view');
