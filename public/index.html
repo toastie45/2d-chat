@@ -907,6 +907,9 @@
         .admin-clothing-transform label { font-size: 9px; }
         .admin-clothing-preview-wrap { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 9px; border: 1px solid #353732; border-radius: 7px; background: #151613; }
         .admin-clothing-preview { display: block; width: 144px; height: 200px; border: 1px solid #586247; border-radius: 5px; background: transparent; image-rendering: auto; touch-action: none; cursor: crosshair; }
+        .admin-clothing-preview-control { display: grid; flex: none; justify-items: center; gap: 5px; }
+        .admin-clothing-preview-zoom { display: grid; width: 144px; grid-template-columns: 1fr auto; align-items: center; gap: 2px 6px; color: var(--muted); font-size: 9px; }
+        .admin-clothing-preview-zoom input { grid-column: 1 / -1; width: 100%; min-height: 14px; padding: 0; accent-color: #a8c879; }
         .admin-clothing-preview-note { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
         .admin-clothing-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 8px; border: 1px solid #393b33; border-radius: 7px; background: #20211d; }
         .admin-clothing-thumb { width: 40px; height: 48px; object-fit: contain; border-radius: 4px; background: #10110f; }
@@ -1866,8 +1869,14 @@
                                     </div>
                                     </details>
                                     <div class="admin-clothing-preview-wrap">
-                                        <canvas class="admin-clothing-preview" id="admin-clothing-preview" width="216" height="300" aria-label="Live preview af tøjdelen på avataren"></canvas>
-                                        <p class="admin-clothing-preview-note">Træk tøjet for at flytte det. Træk i hjørnerne for at strække, i sidehåndtagene for at skævvride og i håndtaget over tøjet for at dreje.</p>
+                                        <div class="admin-clothing-preview-control">
+                                            <canvas class="admin-clothing-preview" id="admin-clothing-preview" width="216" height="300" aria-label="Live preview af tøjdelen på avataren"></canvas>
+                                            <label class="admin-clothing-preview-zoom" for="admin-clothing-preview-zoom">
+                                                <span>Zoom preview</span><output id="admin-clothing-preview-zoom-value">65%</output>
+                                                <input id="admin-clothing-preview-zoom" type="range" min="20" max="100" value="65">
+                                            </label>
+                                        </div>
+                                        <p class="admin-clothing-preview-note">Træk tøjet for at flytte det. Træk i hjørnerne for at strække, i sidehåndtagene for at skævvride og i håndtaget over tøjet for at dreje. Zoom ændrer kun visningen.</p>
                                     </div>
                                     <button class="admin-row-button wide" id="admin-clothing-save" type="submit">Gem t&oslash;jdelen</button>
                                     <p class="admin-status wide" id="admin-clothing-status" aria-live="polite"></p>
@@ -2168,6 +2177,8 @@
             const adminClothingSkewX = document.getElementById('admin-clothing-skew-x');
             const adminClothingSkewY = document.getElementById('admin-clothing-skew-y');
             const adminClothingPreview = document.getElementById('admin-clothing-preview');
+            const adminClothingPreviewZoom = document.getElementById('admin-clothing-preview-zoom');
+            const adminClothingPreviewZoomValue = document.getElementById('admin-clothing-preview-zoom-value');
             const adminClothingStatus = document.getElementById('admin-clothing-status');
             const adminClothingItems = document.getElementById('admin-clothing-items');
             const adminClothingCatalog = document.getElementById('admin-clothing-catalog');
@@ -3573,10 +3584,18 @@
             function drawAdminClothingPreview() {
                 const context = adminClothingPreview.getContext('2d');
                 context.clearRect(0, 0, adminClothingPreview.width, adminClothingPreview.height);
+                const viewScale = Math.max(20, Math.min(100, Number(adminClothingPreviewZoom.value) || 65)) / 100;
+                context.save();
+                context.translate(adminClothingPreview.width / 2, adminClothingPreview.height / 2);
+                context.scale(viewScale, viewScale);
+                context.translate(-adminClothingPreview.width / 2, -adminClothingPreview.height / 2);
                 if (adminClothingPreviewAvatar.complete && adminClothingPreviewAvatar.naturalWidth) {
                     context.drawImage(adminClothingPreviewAvatar, 0, 0, adminClothingPreview.width, adminClothingPreview.height);
                 }
-                if (!adminClothingPreviewImage?.naturalWidth) return;
+                if (!adminClothingPreviewImage?.naturalWidth) {
+                    context.restore();
+                    return;
+                }
                 const scale = Math.max(25, Math.min(300, Number(adminClothingScale.value) || 100)) / 100;
                 const baseScale = Math.min(adminClothingPreview.width / adminClothingPreviewImage.naturalWidth,
                     adminClothingPreview.height / adminClothingPreviewImage.naturalHeight);
@@ -3617,6 +3636,7 @@
                 context.strokeStyle = '#c1f078';
                 context.lineWidth = 1;
                 context.stroke();
+                context.restore();
             }
 
             function clothingPreviewGeometry() {
@@ -3670,8 +3690,11 @@
 
             function clothingPreviewPointer(event) {
                 const rect = adminClothingPreview.getBoundingClientRect();
-                return { x: (event.clientX - rect.left) * adminClothingPreview.width / rect.width,
-                    y: (event.clientY - rect.top) * adminClothingPreview.height / rect.height };
+                const viewScale = Math.max(20, Math.min(100, Number(adminClothingPreviewZoom.value) || 65)) / 100;
+                return {
+                    x: adminClothingPreview.width / 2 + ((event.clientX - rect.left) * adminClothingPreview.width / rect.width - adminClothingPreview.width / 2) / viewScale,
+                    y: adminClothingPreview.height / 2 + ((event.clientY - rect.top) * adminClothingPreview.height / rect.height - adminClothingPreview.height / 2) / viewScale
+                };
             }
 
             function clothingPreviewLocalPoint(point, transform = {}) {
@@ -3769,6 +3792,11 @@
             const stopClothingPreviewDrag = () => { clothingPreviewDrag = null; };
             adminClothingPreview.addEventListener('pointerup', stopClothingPreviewDrag);
             adminClothingPreview.addEventListener('pointercancel', stopClothingPreviewDrag);
+            adminClothingPreviewZoom.addEventListener('input', () => {
+                adminClothingPreviewZoomValue.value = `${adminClothingPreviewZoom.value}%`;
+                adminClothingPreviewZoomValue.textContent = `${adminClothingPreviewZoom.value}%`;
+                drawAdminClothingPreview();
+            });
             adminClothingPreviewAvatar.addEventListener('load', drawAdminClothingPreview);
             [adminClothingX, adminClothingY, adminClothingRotation, adminClothingScale,
                 adminClothingScaleX, adminClothingScaleY, adminClothingSkewX, adminClothingSkewY].forEach((input) =>
@@ -6235,6 +6263,8 @@
                 adminClothingPreviewUrl = '';
                 adminClothingPreviewImage = null;
                 adminClothingForm.reset();
+                adminClothingPreviewZoomValue.value = `${adminClothingPreviewZoom.value}%`;
+                adminClothingPreviewZoomValue.textContent = `${adminClothingPreviewZoom.value}%`;
                 drawAdminClothingPreview();
             });
             socket.on('admin-online-users', ({ users = [], query = '', totalCount } = {}) => {
