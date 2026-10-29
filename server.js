@@ -440,6 +440,8 @@ function publicPlayer(player) {
             category: item.category,
             imageVersion: Number(item.imageVersion || 1),
             imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${Number(item.imageVersion || 1)}`,
+            // Preserve animation settings when room joins rebuild player objects.
+            animation: normalizeClothingAnimation(item.animation),
             x: item.x,
             y: item.y,
             rotation: item.rotation,
@@ -4085,6 +4087,7 @@ async function startServer() {
             if (!activeSocketIds.has(socket.id) || socket.data.switchingRoom) return;
             const roomId = String(payload.roomId || '');
             if (!await isValidRoomId(roomId)) return;
+            if (activeSocketRooms.get(socket.id) === roomId) return;
             if (isPublicChatRoomId(roomId)) {
                 const accessError = publicRoomAccessError(await getPublicRoomPolicy(roomId), Boolean(socket.data.canManagePublicRooms));
                 if (accessError) {
@@ -4669,6 +4672,10 @@ async function startServer() {
                     FROM chat_apartments a JOIN chat_users u ON u.id = a.owner_id WHERE a.id = $1
                 `, [apartmentId]);
                 if (!apartment) return;
+                if (!targetPlayerId && activeSocketRooms.get(socket.id) === apartmentRoomId) {
+                    socket.emit('apartment-visit-result', { message: `Du er allerede i ${getApartmentRoomName(apartment)}.` });
+                    return;
+                }
                 if (targetPlayerId && activeSocketRooms.get(targetPlayerId) !== apartmentRoomId) {
                     socket.emit('apartment-visit-result', { message: 'Brugeren har skiftet rum. Prøv igen.' });
                     return;

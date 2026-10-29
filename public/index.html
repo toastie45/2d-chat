@@ -3518,11 +3518,14 @@
                     button.type = 'button';
                     button.dataset.room = room.id;
                     button.setAttribute('aria-current', String(room.id === activeRoomId));
+                    const isCurrentRoom = room.id === activeRoomId;
                     button.append(document.createTextNode(room.name));
                     const detail = document.createElement('span');
                     detail.className = 'navigator-room-description';
                     if (room.type === 'apartment') {
-                        detail.textContent = `${room.count} ${room.count === 1 ? 'bruger' : 'brugere'} i rummet`;
+                        detail.textContent = isCurrentRoom
+                            ? 'Du er her nu'
+                            : `${room.count} ${room.count === 1 ? 'bruger' : 'brugere'} i rummet`;
                     } else {
                         const lockedForUser = room.isLocked && !isAdminUser;
                         detail.textContent = lockedForUser
@@ -3533,8 +3536,13 @@
                             button.title = 'Rummet er låst for deltagere lige nu.';
                         }
                     }
+                    if (isCurrentRoom) {
+                        button.disabled = true;
+                        button.title = 'Du er allerede i dette rum.';
+                    }
                     button.append(detail);
                     button.addEventListener('click', () => {
+                        if (room.id === activeRoom) return;
                         if (room.type === 'apartment') {
                             socket.emit('apartment-visit', { apartmentId: room.id.slice('apartment:'.length) });
                         } else {
