@@ -196,7 +196,7 @@ if not encoded then return false end
 local player = cjson.decode(encoded)
 local nextCell = ARGV[2] .. ':' .. ARGV[3]
 local tileState = redis.call('HGET', KEYS[3], nextCell)
-if tileState == 'closed' or (tileState and string.sub(tileState, 1, 7) == 'closed|') then return false end
+if ARGV[4] ~= '1' and (tileState == 'closed' or (tileState and string.sub(tileState, 1, 7) == 'closed|')) then return false end
 local occupant = redis.call('HGET', KEYS[2], nextCell)
 local invisible = player.invisible == true
 if not invisible and occupant and occupant ~= ARGV[1] then return false end
@@ -5258,13 +5258,9 @@ async function startServer() {
             try {
                 const roomId = socket.data.roomId || 'common';
                 const keys = roomKeys(roomId);
-                const tileStates = await redis.hGetAll(keys.tiles);
-                if (parseApartmentTileState(tileStates[`${position.col}:${position.row}`])?.kind === 'closed') {
-                    return;
-                }
                 const movedPlayerJson = await redis.eval(PLAYER_MOVE_SCRIPT, {
                     keys: [keys.players, keys.cells, keys.tiles],
-                    arguments: [socket.id, String(position.col), String(position.row), String(Date.now())]
+                    arguments: [socket.id, String(position.col), String(position.row), String(Date.now()), socket.data.isAdmin ? '1' : '0']
                 });
                 if (!movedPlayerJson) {
                     return;
