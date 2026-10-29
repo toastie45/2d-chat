@@ -4370,6 +4370,10 @@
                 if (!avatarImageLoaded) return;
                 const width = wardrobeAvatarPreview.width;
                 const height = wardrobeAvatarPreview.height;
+                context.save();
+                context.translate(width / 2, height / 2);
+                context.scale(0.82, 0.82);
+                context.translate(-width / 2, -height / 2);
                 context.drawImage(avatarImage, 0, 0, width, height);
                 const mood = players[myId]?.mood || 'glad';
                 const moodImages = {
@@ -4395,6 +4399,7 @@
                     if (!image) continue;
                     drawClothingLayer(context, image, item, width / 2, height / 2, width, height);
                 }
+                context.restore();
             }
 
             function renderWardrobeItems(items = [], level = 1, preserveDraft = false) {
