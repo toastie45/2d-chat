@@ -748,6 +748,43 @@ async function startServer() {
         )
     `);
     await pool.query(`
+        CREATE TABLE IF NOT EXISTS chat_app_migrations (
+            migration_key VARCHAR(120) PRIMARY KEY,
+            applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    const avatarMigration = await pool.connect();
+    try {
+        await avatarMigration.query('BEGIN');
+        const { rows: [newMigration] } = await avatarMigration.query(`
+            INSERT INTO chat_app_migrations (migration_key)
+            VALUES ('default-girl-avatar-dame-v1')
+            ON CONFLICT DO NOTHING
+            RETURNING migration_key
+        `);
+        if (newMigration) {
+            const defaultGirlAvatar = fs.readFileSync(path.join(__dirname, 'public', 'images', 'dame.png'));
+            const isPng = defaultGirlAvatar.length >= 8
+                && defaultGirlAvatar.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+            if (!isPng) throw new Error('Bundled default girl avatar is not a valid PNG.');
+            await avatarMigration.query(`
+                INSERT INTO chat_avatar_assets (avatar_type, image_data, mime_type)
+                VALUES ('girl', $1, 'image/png')
+                ON CONFLICT (avatar_type) DO UPDATE SET
+                    image_data = EXCLUDED.image_data,
+                    mime_type = EXCLUDED.mime_type,
+                    updated_at = NOW(),
+                    version = chat_avatar_assets.version + 1
+            `, [defaultGirlAvatar]);
+        }
+        await avatarMigration.query('COMMIT');
+    } catch (error) {
+        try { await avatarMigration.query('ROLLBACK'); } catch {}
+        throw error;
+    } finally {
+        avatarMigration.release();
+    }
+    await pool.query(`
         CREATE SEQUENCE IF NOT EXISTS chat_apartment_number_seq START WITH 101
     `);
     await pool.query(`
