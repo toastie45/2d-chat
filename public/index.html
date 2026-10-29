@@ -2109,6 +2109,25 @@
                 }
                 return image.loaded ? image : null;
             }
+            function drawClothingLayer(context, image, item, centerX, centerY, avatarWidth, avatarHeight) {
+                if (!image?.naturalWidth || !image?.naturalHeight) return null;
+                const fitScale = Math.min(avatarWidth / image.naturalWidth, avatarHeight / image.naturalHeight);
+                const drawWidth = image.naturalWidth * fitScale;
+                const drawHeight = image.naturalHeight * fitScale;
+                const unitScale = avatarWidth / 54;
+                const scale = Math.max(0.25, Math.min(3, Number(item.scale) || 1));
+                context.save();
+                context.translate(centerX + (Number(item.x) || 0) * unitScale,
+                    centerY + (Number(item.y) || 0) * unitScale);
+                context.rotate((Number(item.rotation) || 0) * Math.PI / 180);
+                context.transform(1, Math.tan((Number(item.skewY) || 0) * Math.PI / 180),
+                    Math.tan((Number(item.skewX) || 0) * Math.PI / 180), 1, 0, 0);
+                context.scale(scale * Math.max(0.25, Math.min(3, Number(item.scaleX) || 1)),
+                    scale * Math.max(0.25, Math.min(3, Number(item.scaleY) || 1)));
+                context.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+                context.restore();
+                return { width: drawWidth, height: drawHeight };
+            }
             const loginSection = document.getElementById('login-section');
             const gameSection = document.getElementById('game-section');
             const usernameInput = document.getElementById('username-input');
@@ -3606,23 +3625,21 @@
                     context.restore();
                     return;
                 }
-                const scale = Math.max(25, Math.min(300, Number(adminClothingScale.value) || 100)) / 100;
-                const baseScale = Math.min(adminClothingPreview.width / adminClothingPreviewImage.naturalWidth,
-                    adminClothingPreview.height / adminClothingPreviewImage.naturalHeight);
-                const drawWidth = adminClothingPreviewImage.naturalWidth * baseScale;
-                const drawHeight = adminClothingPreviewImage.naturalHeight * baseScale;
-                context.save();
-                context.translate(
-                    adminClothingPreview.width / 2 + (Number(adminClothingX.value) || 0) * 4,
-                    adminClothingPreview.height / 2 + (Number(adminClothingY.value) || 0) * 4
-                );
-                context.rotate((Number(adminClothingRotation.value) || 0) * Math.PI / 180);
-                context.transform(1, Math.tan(Number(adminClothingSkewY.value || 0) * Math.PI / 180),
-                    Math.tan(Number(adminClothingSkewX.value || 0) * Math.PI / 180), 1, 0, 0);
-                context.scale(scale * (Number(adminClothingScaleX.value) || 100) / 100,
-                    scale * (Number(adminClothingScaleY.value) || 100) / 100);
-                context.drawImage(adminClothingPreviewImage, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
-                context.restore();
+                const previewItem = {
+                    x: Number(adminClothingX.value) || 0,
+                    y: Number(adminClothingY.value) || 0,
+                    rotation: Number(adminClothingRotation.value) || 0,
+                    scale: Math.max(25, Math.min(300, Number(adminClothingScale.value) || 100)) / 100,
+                    scaleX: (Number(adminClothingScaleX.value) || 100) / 100,
+                    scaleY: (Number(adminClothingScaleY.value) || 100) / 100,
+                    skewX: Number(adminClothingSkewX.value) || 0,
+                    skewY: Number(adminClothingSkewY.value) || 0
+                };
+                const geometry = drawClothingLayer(context, adminClothingPreviewImage, previewItem,
+                    adminClothingPreview.width / 2, adminClothingPreview.height / 2,
+                    adminClothingPreview.width, adminClothingPreview.height);
+                if (!geometry) { context.restore(); return; }
+                const drawWidth = geometry.width, drawHeight = geometry.height;
                 const corners = getAdminClothingPreviewCorners(drawWidth, drawHeight);
                 context.beginPath();
                 corners.forEach((point, index) => index ? context.lineTo(point.x, point.y) : context.moveTo(point.x, point.y));
@@ -4376,19 +4393,7 @@
                 for (const item of equipped) {
                     const image = getClothingImage(item);
                     if (!image) continue;
-                    const scale = Math.max(0.25, Math.min(3, Number(item.scale) || 1));
-                    const fitScale = Math.min(width / image.naturalWidth, height / image.naturalHeight);
-                    const drawWidth = image.naturalWidth * fitScale;
-                    const drawHeight = image.naturalHeight * fitScale;
-                    context.save();
-                    context.translate(width / 2 + (Number(item.x) || 0) * 4, height / 2 + (Number(item.y) || 0) * 4);
-                    context.rotate((Number(item.rotation) || 0) * Math.PI / 180);
-                    context.transform(1, Math.tan((Number(item.skewY) || 0) * Math.PI / 180),
-                        Math.tan((Number(item.skewX) || 0) * Math.PI / 180), 1, 0, 0);
-                    context.scale(scale * Math.max(0.25, Math.min(3, Number(item.scaleX) || 1)),
-                        scale * Math.max(0.25, Math.min(3, Number(item.scaleY) || 1)));
-                    context.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
-                    context.restore();
+                    drawClothingLayer(context, image, item, width / 2, height / 2, width, height);
                 }
             }
 
@@ -5062,19 +5067,7 @@
                     for (const item of clothingLayers) {
                         const clothingImage = getClothingImage(item);
                         if (!clothingImage) continue;
-                        const scale = Math.max(0.25, Math.min(3, Number(item.scale) || 1));
-                        ctx.save();
-                        ctx.translate(position.x + (Number(item.x) || 0), avatarY + (Number(item.y) || 0));
-                        ctx.rotate((Number(item.rotation) || 0) * Math.PI / 180);
-                        ctx.transform(1, Math.tan((Number(item.skewY) || 0) * Math.PI / 180),
-                            Math.tan((Number(item.skewX) || 0) * Math.PI / 180), 1, 0, 0);
-                        ctx.scale(scale * Math.max(0.25, Math.min(3, Number(item.scaleX) || 1)),
-                            scale * Math.max(0.25, Math.min(3, Number(item.scaleY) || 1)));
-                        const imageScale = Math.min(visualWidth / clothingImage.naturalWidth, visualHeight / clothingImage.naturalHeight);
-                        const imageWidth = clothingImage.naturalWidth * imageScale;
-                        const imageHeight = clothingImage.naturalHeight * imageScale;
-                        ctx.drawImage(clothingImage, -imageWidth / 2, -imageHeight / 2, imageWidth, imageHeight);
-                        ctx.restore();
+                        drawClothingLayer(ctx, clothingImage, item, position.x, avatarY, visualWidth, visualHeight);
                     }
 
                     if (muted) {

@@ -344,11 +344,16 @@ function publicPlayer(player) {
             id: String(item.id),
             name: item.name,
             category: item.category,
-            imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image`,
+            imageVersion: Number(item.imageVersion || 1),
+            imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${Number(item.imageVersion || 1)}`,
             x: item.x,
             y: item.y,
             rotation: item.rotation,
-            scale: item.scale
+            scale: item.scale,
+            scaleX: item.scaleX,
+            scaleY: item.scaleY,
+            skewX: item.skewX,
+            skewY: item.skewY
         })) : []
     };
 }
@@ -1739,11 +1744,16 @@ async function startServer() {
                 id: String(item.id),
                 name: item.name,
                 category: item.category,
+                imageVersion: Number(item.image_version || 1),
                 imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.image_version || 1}`,
                 x: transform.x,
                 y: transform.y,
                 rotation: transform.rotation,
-                scale: transform.scale
+                scale: transform.scale,
+                scaleX: transform.scaleX,
+                scaleY: transform.scaleY,
+                skewX: transform.skewX,
+                skewY: transform.skewY
             };
         });
     }
