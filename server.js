@@ -215,6 +215,40 @@ if not invisible then redis.call('HSET', KEYS[2], nextCell, ARGV[1]) end
 return cjson.encode(player)
 `;
 
+const SWAP_PLAYER_POSITIONS_SCRIPT = `
+local firstEncoded = redis.call('HGET', KEYS[1], ARGV[1])
+local secondEncoded = redis.call('HGET', KEYS[1], ARGV[2])
+if not firstEncoded or not secondEncoded then return false end
+
+local first = cjson.decode(firstEncoded)
+local second = cjson.decode(secondEncoded)
+local firstCell = first.col .. ':' .. first.row
+local secondCell = second.col .. ':' .. second.row
+if firstCell == secondCell then return false end
+
+local firstOccupant = redis.call('HGET', KEYS[2], secondCell)
+local secondOccupant = redis.call('HGET', KEYS[2], firstCell)
+if (firstOccupant and firstOccupant ~= ARGV[1] and firstOccupant ~= ARGV[2])
+    or (secondOccupant and secondOccupant ~= ARGV[1] and secondOccupant ~= ARGV[2]) then
+    return false
+end
+
+if firstOccupant == ARGV[1] or firstOccupant == ARGV[2] then redis.call('HDEL', KEYS[2], secondCell) end
+if secondOccupant == ARGV[1] or secondOccupant == ARGV[2] then redis.call('HDEL', KEYS[2], firstCell) end
+
+local firstCol, firstRow = first.col, first.row
+first.col, first.row = second.col, second.row
+second.col, second.row = firstCol, firstRow
+local now = tonumber(ARGV[3])
+first.lastSeen, first.lastActivityAt = now, now
+second.lastSeen, second.lastActivityAt = now, now
+redis.call('HSET', KEYS[1], ARGV[1], cjson.encode(first))
+redis.call('HSET', KEYS[1], ARGV[2], cjson.encode(second))
+if first.invisible ~= true then redis.call('HSET', KEYS[2], secondCell, ARGV[1]) end
+if second.invisible ~= true then redis.call('HSET', KEYS[2], firstCell, ARGV[2]) end
+return cjson.encode({ first = first, second = second })
+`;
+
 const PLAYER_VISIBILITY_SCRIPT = `
 local encoded = redis.call('HGET', KEYS[1], ARGV[1])
 if not encoded then return false end
@@ -3309,6 +3343,44 @@ async function startServer() {
                 socket.emit('admin-action-result', { success: false, message: 'Brugeren kunne ikke hentes. Prøv igen.' });
             } finally {
                 targetSocket.data.switchingRoom = false;
+            }
+        });
+
+        socket.on('admin-user-swap-position', async ({ targetSocketId } = {}) => {
+            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id) || socket.data.switchingRoom) return;
+            const actorRoomId = activeSocketRooms.get(socket.id);
+            const targetSocket = typeof targetSocketId === 'string' ? io.sockets.sockets.get(targetSocketId) : null;
+            if (!targetSocketId || targetSocketId === socket.id || !targetSocket
+                || !activeSocketIds.has(targetSocketId) || targetSocket.data.switchingRoom
+                || !actorRoomId || activeSocketRooms.get(targetSocketId) !== actorRoomId) {
+                socket.emit('admin-action-result', { success: false, message: 'Brugeren er ikke længere i samme rum.' });
+                return;
+            }
+            if (String(activeSocketUsers.get(targetSocketId)) === String(socket.data.user.id)) {
+                socket.emit('admin-action-result', { success: false, message: 'Du kan ikke skifte plads med din egen bruger.' });
+                return;
+            }
+            try {
+                const keys = roomKeys(actorRoomId);
+                const swappedJson = await redis.eval(SWAP_PLAYER_POSITIONS_SCRIPT, {
+                    keys: [keys.players, keys.cells],
+                    arguments: [socket.id, targetSocketId, String(Date.now())]
+                });
+                if (!swappedJson) {
+                    socket.emit('admin-action-result', { success: false, message: 'Pladserne kunne ikke byttes. Kontrollér, at begge avatarer stadig er i rummet.' });
+                    return;
+                }
+                const swapped = JSON.parse(swappedJson);
+                const first = publicPlayer(swapped.first);
+                const second = publicPlayer(swapped.second);
+                await Promise.all([
+                    emitRoomEventForVisibleSender(actorRoomId, 'playerMoved', { id: first.id, col: first.col, row: first.row }, first.id),
+                    emitRoomEventForVisibleSender(actorRoomId, 'playerMoved', { id: second.id, col: second.col, row: second.row }, second.id)
+                ]);
+                socket.emit('admin-action-result', { success: true, message: `Du har byttet plads med ${second.name}.` });
+            } catch (error) {
+                console.error('Could not swap chat participant positions:', getSafeErrorCode(error));
+                socket.emit('admin-action-result', { success: false, message: 'Pladserne kunne ikke byttes. Prøv igen.' });
             }
         });
 

@@ -1980,6 +1980,7 @@
             <button class="avatar-context-action avatar-context-subaction" id="avatar-context-mood-boevet" type="button" role="menuitemradio" data-avatar-mood="boevet" aria-checked="false" hidden>B&#248;vet</button>
             <div class="avatar-context-separator" id="avatar-context-admin-separator" role="separator" hidden></div>
             <p class="avatar-context-admin-heading" id="avatar-context-admin-heading" hidden>Admin</p>
+            <button class="avatar-context-action" id="avatar-context-admin-swap" type="button" role="menuitem" hidden>Skift plads</button>
             <button class="avatar-context-action danger" id="avatar-context-admin-kick" type="button" role="menuitem" hidden>Kick bruger</button>
             <button class="avatar-context-action danger" id="avatar-context-admin-ban" type="button" role="menuitem" hidden>Ban bruger</button>
         </div>
@@ -2479,6 +2480,7 @@
             const avatarContextKick = document.getElementById('avatar-context-kick');
             const avatarContextAdminSeparator = document.getElementById('avatar-context-admin-separator');
             const avatarContextAdminHeading = document.getElementById('avatar-context-admin-heading');
+            const avatarContextAdminSwap = document.getElementById('avatar-context-admin-swap');
             const avatarContextAdminKick = document.getElementById('avatar-context-admin-kick');
             const avatarContextAdminBan = document.getElementById('avatar-context-admin-ban');
             const avatarContextInvisible = document.getElementById('avatar-context-invisible');
@@ -3306,6 +3308,7 @@
                 const canAdminTarget = Boolean(player && !isSelf && isFullAdminUser);
                 avatarContextAdminSeparator.hidden = !canAdminTarget;
                 avatarContextAdminHeading.hidden = !canAdminTarget;
+                avatarContextAdminSwap.hidden = !canAdminTarget;
                 avatarContextAdminKick.hidden = !canAdminTarget;
                 avatarContextAdminBan.hidden = !canAdminTarget;
                 avatarContextInvisible.hidden = !player || !isSelf || !isFullAdminUser;
@@ -6049,6 +6052,15 @@
                 pendingAdminContextAction = `Kick af ${target.name}`;
                 setRoomNotice(`Kicker ${target.name}…`);
                 socket.emit('admin-user-kick', { targetSocketId });
+                closeAvatarContextMenu();
+            });
+            avatarContextAdminSwap.addEventListener('click', () => {
+                const targetSocketId = contextPlayerId;
+                const target = targetSocketId ? players[targetSocketId] : null;
+                if (!isFullAdminUser || !target || targetSocketId === myId) return;
+                pendingAdminContextAction = `Skift plads med ${target.name}`;
+                setRoomNotice(`Bytter plads med ${target.name}…`);
+                socket.emit('admin-user-swap-position', { targetSocketId });
                 closeAvatarContextMenu();
             });
             avatarContextAdminBan.addEventListener('click', () => {
