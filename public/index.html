@@ -235,6 +235,10 @@
         .auth-switch-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
         .login-form { display: grid; gap: 10px; }
+        .login-avatar-choice { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
+        .login-avatar-choice select { width: 100%; padding: 12px 13px; border: 1px solid #363831; border-radius: 10px; background: #10110f; color: #f2f0e9; font-size: 14px; }
+        .login-avatar-status { margin: -4px 0 0; color: var(--muted); font-size: 11px; }
+        #admin-girl-avatar-preview { display: block; width: 108px; height: 150px; object-fit: contain; margin-top: 10px; padding: 8px; border: 1px solid #363831; border-radius: 10px; background: #10110f; }
 
         input {
             min-width: 0;
@@ -1459,6 +1463,13 @@
                 <p id="auth-description">Log ind for at møde andre på gulvet og fortsætte, hvor du slap.</p>
                 <form class="login-form" id="login-form">
                     <input id="username-input" maxlength="18" minlength="3" autocomplete="username" placeholder="Brugernavn" aria-label="Brugernavn" required>
+                    <label class="login-avatar-choice" id="register-avatar-choice" for="register-avatar-type" hidden>Vælg avatar
+                        <select id="register-avatar-type" name="avatarType" required>
+                            <option value="boy">Drengeavatar</option>
+                            <option value="girl" disabled>Pigeavatar</option>
+                        </select>
+                    </label>
+                    <p class="login-avatar-status" id="register-avatar-status" hidden></p>
                     <input id="password-input" type="password" maxlength="72" minlength="8" autocomplete="current-password" placeholder="Adgangskode (mindst 8 tegn)" aria-label="Adgangskode" required>
                     <button class="primary-button" id="join-button" type="submit">Log ind</button>
                 </form>
@@ -1840,6 +1851,7 @@
                                 <option value="rooms">Navigator - etager og rum</option>
                                 <option value="clothing">Tøj og tilbehør</option>
                                 <option value="shop">Butik</option>
+                                <option value="avatars">Avatarer</option>
                             </select>
                             <section class="admin-welcome" id="admin-welcome-view" aria-labelledby="admin-welcome-title">
                                 <h3 id="admin-welcome-title">Velkommen til adminpanelet</h3>
@@ -1947,6 +1959,17 @@
                                 <button class="admin-row-button" id="admin-shop-open-toggle" type="button">Åbn butik for brugere</button>
                                 <p class="admin-status" id="admin-shop-status" aria-live="polite"></p>
                                 <div class="admin-list" id="admin-shop-catalog" role="list"></div>
+                            </section>
+                            <section class="admin-section" id="admin-avatars-view" aria-labelledby="admin-avatars-title" hidden>
+                                <h3 class="visually-hidden" id="admin-avatars-title">Avatarer</h3>
+                                <p class="admin-status">Upload pigeavataren, som nye brugere kan vælge, når de opretter en konto. Billedet gemmes i databasen og kan udskiftes her.</p>
+                                <form id="admin-avatar-form">
+                                    <label for="admin-girl-avatar-file">Pigeavatar (PNG eller WebP; gennemsigtig baggrund anbefales)</label>
+                                    <input id="admin-girl-avatar-file" type="file" accept="image/png,image/webp" required>
+                                    <button class="admin-row-button" id="admin-avatar-upload" type="submit">Upload pigeavatar</button>
+                                    <p class="admin-status" id="admin-avatar-status" aria-live="polite"></p>
+                                    <img id="admin-girl-avatar-preview" alt="Forhåndsvisning af pigeavataren" hidden>
+                                </form>
                             </section>
                         </section>
                     </aside>
@@ -2118,6 +2141,7 @@
                 requestBoardRender();
             });
             const avatarImage = new Image();
+            const girlAvatarImage = new Image();
             const mobsetAvatarImage = new Image();
             const kedAvatarImage = new Image();
             const blappetAvatarImage = new Image();
@@ -2127,6 +2151,7 @@
             const avatarWidth = 54;
             const avatarHeight = 75;
             let avatarImageLoaded = false;
+            let girlAvatarImageLoaded = false;
             let mobsetAvatarImageLoaded = false;
             let kedAvatarImageLoaded = false;
             let blappetAvatarImageLoaded = false;
@@ -2137,6 +2162,26 @@
                 drawWardrobeAvatarPreview();
             });
             avatarImage.src = '/images/mand.png';
+            girlAvatarImage.addEventListener('load', () => {
+                girlAvatarImageLoaded = true;
+                updateGirlAvatarChoice(true);
+                requestBoardRender();
+                drawWardrobeAvatarPreview();
+                const adminGirlAvatarPreview = document.getElementById('admin-girl-avatar-preview');
+                if (adminGirlAvatarPreview) {
+                    adminGirlAvatarPreview.src = girlAvatarImage.src;
+                    adminGirlAvatarPreview.hidden = false;
+                }
+            });
+            girlAvatarImage.addEventListener('error', () => {
+                girlAvatarImageLoaded = false;
+                updateGirlAvatarChoice(false);
+            });
+            girlAvatarImage.src = '/api/avatar/girl';
+            function getAvatarImageForPlayer(player) {
+                if (player?.avatarType === 'girl') return girlAvatarImageLoaded ? girlAvatarImage : null;
+                return avatarImageLoaded ? avatarImage : null;
+            }
             mobsetAvatarImage.addEventListener('load', () => {
                 mobsetAvatarImageLoaded = true;
                 requestBoardRender();
@@ -2200,6 +2245,9 @@
             const gameSection = document.getElementById('game-section');
             const usernameInput = document.getElementById('username-input');
             const passwordInput = document.getElementById('password-input');
+            const registerAvatarChoice = document.getElementById('register-avatar-choice');
+            const registerAvatarType = document.getElementById('register-avatar-type');
+            const registerAvatarStatus = document.getElementById('register-avatar-status');
             const joinButton = document.getElementById('join-button');
             const loginError = document.getElementById('login-error');
             const authTitle = document.getElementById('auth-title');
@@ -2266,6 +2314,11 @@
             const adminRoomsView = document.getElementById('admin-rooms-view');
             const adminClothingView = document.getElementById('admin-clothing-view');
             const adminShopView = document.getElementById('admin-shop-view');
+            const adminAvatarsView = document.getElementById('admin-avatars-view');
+            const adminAvatarForm = document.getElementById('admin-avatar-form');
+            const adminGirlAvatarFile = document.getElementById('admin-girl-avatar-file');
+            const adminAvatarStatus = document.getElementById('admin-avatar-status');
+            const adminGirlAvatarPreview = document.getElementById('admin-girl-avatar-preview');
             const adminShopStatus = document.getElementById('admin-shop-status');
             const adminShopCatalog = document.getElementById('admin-shop-catalog');
             const adminClothingForm = document.getElementById('admin-clothing-form');
@@ -2851,9 +2904,25 @@
                     : 'Log ind for at møde andre på gulvet og fortsætte, hvor du slap.';
                 joinButton.textContent = isRegistering ? 'Opret konto' : 'Log ind';
                 passwordInput.autocomplete = isRegistering ? 'new-password' : 'current-password';
+                registerAvatarChoice.hidden = !isRegistering;
+                registerAvatarType.required = isRegistering;
+                registerAvatarStatus.hidden = !isRegistering || girlAvatarImageLoaded;
+                if (isRegistering && girlAvatarImageLoaded) {
+                    registerAvatarType.querySelector('option[value="girl"]').disabled = false;
+                }
                 authSwitch.hidden = Boolean(currentUser);
                 authSwitchButton.textContent = isRegistering ? 'Log ind' : 'Opret konto';
                 authSwitch.firstChild.textContent = isRegistering ? 'Har du allerede en bruger? ' : 'Har du ikke en bruger? ';
+            }
+
+            function updateGirlAvatarChoice(available) {
+                const girlOption = registerAvatarType.querySelector('option[value="girl"]');
+                girlOption.disabled = !available;
+                if (!available && registerAvatarType.value === 'girl') registerAvatarType.value = 'boy';
+                registerAvatarStatus.textContent = available
+                    ? ''
+                    : 'Pigeavataren er ikke uploadet endnu. Vælg drengeavatar indtil da.';
+                registerAvatarStatus.hidden = authMode !== 'register' || available;
             }
 
             showAuthMode();
@@ -3723,18 +3792,21 @@
             function selectAdminSection() {
                 if (adminSectionSelect.value === 'users' && !isFullAdminUser
                     || adminSectionSelect.value === 'rooms' && !canManagePublicRooms
-                    || ['clothing', 'shop'].includes(adminSectionSelect.value) && !canManageClothing) {
+                    || ['clothing', 'shop'].includes(adminSectionSelect.value) && !canManageClothing
+                    || adminSectionSelect.value === 'avatars' && !isFullAdminUser) {
                     adminSectionSelect.value = '';
                 }
                 const showUsers = adminSectionSelect.value === 'users' && isFullAdminUser;
                 const showRooms = adminSectionSelect.value === 'rooms' && canManagePublicRooms;
                 const showClothing = adminSectionSelect.value === 'clothing' && canManageClothing;
                 const showAdminShop = adminSectionSelect.value === 'shop' && canManageClothing;
-                adminWelcomeView.hidden = showUsers || showRooms || showClothing || showAdminShop;
+                const showAvatars = adminSectionSelect.value === 'avatars' && isFullAdminUser;
+                adminWelcomeView.hidden = showUsers || showRooms || showClothing || showAdminShop || showAvatars;
                 adminUsersView.hidden = !showUsers;
                 adminRoomsView.hidden = !showRooms;
                 adminClothingView.hidden = !showClothing;
                 adminShopView.hidden = !showAdminShop;
+                adminAvatarsView.hidden = !showAvatars;
                 if (showUsers) {
                     requestAdminUserList();
                     socket.emit('admin-ip-bans-request');
@@ -4505,23 +4577,25 @@
                 context.clearRect(0, 0, wardrobeAvatarPreview.width, wardrobeAvatarPreview.height);
                 context.fillStyle = '#11130f';
                 context.fillRect(0, 0, wardrobeAvatarPreview.width, wardrobeAvatarPreview.height);
-                if (!avatarImageLoaded) return;
+                const ownPlayer = players[myId] || currentUser;
+                const ownAvatarImage = getAvatarImageForPlayer(ownPlayer);
+                if (!ownAvatarImage) return;
                 const width = wardrobeAvatarPreview.width;
                 const height = wardrobeAvatarPreview.height;
                 context.save();
                 context.translate(width / 2, height / 2);
                 context.scale(0.738, 0.738);
                 context.translate(-width / 2, -height / 2);
-                context.drawImage(avatarImage, 0, 0, width, height);
+                context.drawImage(ownAvatarImage, 0, 0, width, height);
                 const mood = players[myId]?.mood || 'glad';
-                const moodImages = {
+                const moodImages = ownPlayer?.avatarType === 'girl' ? {} : {
                     mobset: mobsetAvatarImageLoaded ? mobsetAvatarImage : null,
                     ked: kedAvatarImageLoaded ? kedAvatarImage : null,
                     blappet: blappetAvatarImageLoaded ? blappetAvatarImage : null,
                     boevet: boevetAvatarImageLoaded ? boevetAvatarImage : null
                 };
                 const moodImage = moodImages[mood];
-                if (moodImage) {
+                if (moodImage && moodImage !== ownAvatarImage) {
                     context.save();
                     context.beginPath();
                     context.ellipse(width / 2, height / 2 - height * 0.19, width * 0.275, height * 0.255, 0, 0, Math.PI * 2);
@@ -5338,7 +5412,8 @@
                 for (const player of avatarDrawOrder) {
                     const position = player.position || player.target || positionFor(player);
                     if (!position) continue;
-                    const moodFaceImage = player.mood === 'mobset'
+                    const playerAvatarImage = getAvatarImageForPlayer(player);
+                    const moodFaceImage = player.avatarType === 'girl' ? null : player.mood === 'mobset'
                         ? (mobsetAvatarImageLoaded ? mobsetAvatarImage : avatarImageLoaded ? avatarImage : null)
                         : player.mood === 'ked'
                             ? (kedAvatarImageLoaded ? kedAvatarImage : avatarImageLoaded ? avatarImage : null)
@@ -5348,8 +5423,8 @@
                                 ? (boevetAvatarImageLoaded ? boevetAvatarImage : avatarImageLoaded ? avatarImage : null)
                                 : avatarImageLoaded ? avatarImage : null;
                     const muted = isMutedPlayer(player);
-                    const visualHeight = avatarImageLoaded ? avatarHeight : avatarRadius * 2;
-                    const visualWidth = avatarImageLoaded ? avatarWidth : avatarRadius * 2;
+                    const visualHeight = playerAvatarImage ? avatarHeight : avatarRadius * 2;
+                    const visualWidth = playerAvatarImage ? avatarWidth : avatarRadius * 2;
                     const avatarY = getAvatarDrawY(position);
 
                     const isGhosting = player.id === myId && isAdminInvisible;
@@ -5374,14 +5449,14 @@
                     ctx.save();
                     ctx.globalAlpha = 0.16;
                     ctx.beginPath();
-                    ctx.ellipse(position.x, avatarY + visualHeight / 2 - 1, avatarImageLoaded ? 13 : 18, 5, 0, 0, Math.PI * 2);
+                    ctx.ellipse(position.x, avatarY + visualHeight / 2 - 1, playerAvatarImage ? 13 : 18, 5, 0, 0, Math.PI * 2);
                     ctx.fillStyle = '#000';
                     ctx.fill();
                     ctx.restore();
 
-                    if (avatarImageLoaded) {
+                    if (playerAvatarImage) {
                         ctx.drawImage(
-                            avatarImage,
+                            playerAvatarImage,
                             position.x - visualWidth / 2,
                             avatarY - visualHeight / 2,
                             visualWidth,
@@ -5389,7 +5464,7 @@
                         );
                         // Keep the avatar silhouette, ears, and body fixed. Only replace
                         // the inner face area so mood changes cannot make the outline jump.
-                        if (moodFaceImage && moodFaceImage !== avatarImage) {
+                        if (moodFaceImage && moodFaceImage !== playerAvatarImage) {
                             ctx.save();
                             ctx.beginPath();
                             ctx.ellipse(
@@ -5690,6 +5765,7 @@
                         body: JSON.stringify({
                             username: usernameInput.value,
                             password: passwordInput.value,
+                            ...(authMode === 'register' ? { avatarType: registerAvatarType.value } : {})
                         })
                     });
                     const result = await response.json();
@@ -5775,8 +5851,40 @@
                 adminRoomsView.hidden = true;
                 adminClothingView.hidden = true;
                 adminShopView.hidden = true;
+                adminAvatarsView.hidden = true;
             });
             adminSectionSelect.addEventListener('change', selectAdminSection);
+            adminAvatarForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const file = adminGirlAvatarFile.files?.[0];
+                if (!file) return;
+                if (!['image/png', 'image/webp'].includes(file.type) || file.size > 15 * 1024 * 1024) {
+                    adminAvatarStatus.textContent = 'Vælg en PNG- eller WebP-fil på højst 15 MB.';
+                    return;
+                }
+                const uploadButton = document.getElementById('admin-avatar-upload');
+                uploadButton.disabled = true;
+                adminAvatarStatus.textContent = 'Tilpasser og uploader avatar…';
+                try {
+                    const bitmap = await createImageBitmap(file);
+                    const uploadCanvas = document.createElement('canvas');
+                    uploadCanvas.width = 216;
+                    uploadCanvas.height = 300;
+                    const context = uploadCanvas.getContext('2d');
+                    const scale = Math.min(uploadCanvas.width / bitmap.width, uploadCanvas.height / bitmap.height);
+                    const width = bitmap.width * scale;
+                    const height = bitmap.height * scale;
+                    context.drawImage(bitmap, (uploadCanvas.width - width) / 2, (uploadCanvas.height - height) / 2, width, height);
+                    bitmap.close?.();
+                    let blob = await new Promise((resolve) => uploadCanvas.toBlob(resolve, 'image/png'));
+                    if (!blob || blob.size > 950_000) blob = await new Promise((resolve) => uploadCanvas.toBlob(resolve, 'image/webp', 0.9));
+                    if (!blob || blob.size > 950_000) throw new Error('Billedet er for stort. Prøv en mindre fil.');
+                    socket.emit('admin-avatar-upload', { image: new Uint8Array(await blob.arrayBuffer()) });
+                } catch (error) {
+                    adminAvatarStatus.textContent = error.message || 'Avatarbilledet kunne ikke læses.';
+                    uploadButton.disabled = false;
+                }
+            });
             adminClothingOwnersClose.addEventListener('click', () => adminClothingOwnersDialog.close());
             adminRoomCreateForm.addEventListener('submit', (event) => {
                 event.preventDefault();
@@ -6724,6 +6832,18 @@
                 if (Array.isArray(rooms)) renderNavigatorRooms(rooms, activeRoomId || activeRoom);
             });
 
+            socket.on('avatar-assets-updated', ({ girlVersion } = {}) => {
+                if (girlVersion) girlAvatarImage.src = `/api/avatar/girl?v=${encodeURIComponent(girlVersion)}`;
+            });
+            socket.on('admin-avatar-upload-result', ({ success, message, girlVersion } = {}) => {
+                adminAvatarStatus.textContent = message || '';
+                document.getElementById('admin-avatar-upload').disabled = false;
+                if (!success || !girlVersion) return;
+                girlAvatarImage.src = `/api/avatar/girl?v=${encodeURIComponent(girlVersion)}`;
+                adminGirlAvatarPreview.src = girlAvatarImage.src;
+                adminGirlAvatarPreview.hidden = false;
+            });
+
             socket.on('admin-status', ({ isAdmin, role, canManageUsers, canManagePublicRooms: mayManageRooms, canManageClothing: mayManageClothing } = {}) => {
                 isAdminUser = isAdmin === true;
                 isFullAdminUser = canManageUsers === true || role === 'full';
@@ -6734,6 +6854,7 @@
                 adminSectionSelect.querySelector('option[value="rooms"]').hidden = !canManagePublicRooms;
                 adminSectionSelect.querySelector('option[value="clothing"]').hidden = !canManageClothing;
                 adminSectionSelect.querySelector('option[value="shop"]').hidden = !canManageClothing;
+                adminSectionSelect.querySelector('option[value="avatars"]').hidden = !isFullAdminUser;
                 selectAdminSection();
                 if (contextPlayerId === myId) updateAvatarContextMute();
             });

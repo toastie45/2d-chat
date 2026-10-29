@@ -140,6 +140,7 @@ if existing then
     player.joinedAt = tonumber(player.joinedAt or ARGV[3])
     player.lastActivityAt = tonumber(player.lastActivityAt or ARGV[3])
     player.clothing = cjson.decode(ARGV[5])
+    player.avatarType = ARGV[7] == 'girl' and 'girl' or 'boy'
     player.invisible = shouldBeInvisible
     redis.call('HSET', KEYS[1], ARGV[1], cjson.encode(player))
     return cjson.encode(player)
@@ -158,6 +159,7 @@ local function tryJoin(cell)
             col = tonumber(col),
             row = tonumber(row),
             mood = ARGV[4],
+            avatarType = ARGV[7] == 'girl' and 'girl' or 'boy',
             invisible = isInvisible,
             clothing = cjson.decode(ARGV[5]),
             text = '',
@@ -174,7 +176,7 @@ local function tryJoin(cell)
 end
 
 -- In an apartment, prefer a designated door as the spawn point when available.
-for index = 7, #ARGV do
+for index = 8, #ARGV do
     local cell = ARGV[index]
     local tileState = redis.call('HGET', KEYS[3], cell)
     if tileState == 'door' or (tileState and string.sub(tileState, 1, 5) == 'door:') then
@@ -182,7 +184,7 @@ for index = 7, #ARGV do
         if player then return player end
     end
 end
-for index = 7, #ARGV do
+for index = 8, #ARGV do
     local player = tryJoin(ARGV[index])
     if player then return player end
 end
@@ -426,6 +428,7 @@ function publicPlayer(player) {
     return {
         id: player.id,
         name: player.name,
+        avatarType: player.avatarType === 'girl' ? 'girl' : 'boy',
         col: player.col,
         row: player.row,
         mood: ['glad', 'mobset', 'ked', 'blappet', 'boevet'].includes(player.mood) ? player.mood : 'glad',
@@ -699,6 +702,7 @@ async function startServer() {
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS discord_name VARCHAR(64)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS interests VARCHAR(160)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS registration_ip_hash TEXT');
+    await pool.query("ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS avatar_type VARCHAR(8) NOT NULL DEFAULT 'boy'");
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS total_online_ms BIGINT NOT NULL DEFAULT 0');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS steam_name VARCHAR(256)');
     await pool.query('ALTER TABLE chat_users ALTER COLUMN steam_name TYPE VARCHAR(256)');
@@ -707,6 +711,15 @@ async function startServer() {
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS region VARCHAR(32)');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS accepted_chat_messages BIGINT NOT NULL DEFAULT 0');
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS chat_avatar_assets (
+            avatar_type VARCHAR(8) PRIMARY KEY CHECK (avatar_type = 'girl'),
+            image_data BYTEA NOT NULL,
+            mime_type VARCHAR(24) NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            version BIGINT NOT NULL DEFAULT 1
+        )
+    `);
     await pool.query(`
         CREATE SEQUENCE IF NOT EXISTS chat_apartment_number_seq START WITH 101
     `);
@@ -950,6 +963,25 @@ async function startServer() {
     io.adapter(createAdapter(redisPublisher, redisSubscriber));
     app.set('trust proxy', 1);
     app.get('/health', (_request, response) => response.status(200).type('text/plain').send('ok'));
+    app.get('/api/avatar/girl', async (_request, response) => {
+        try {
+            const { rows: [avatar] } = await pool.query(
+                "SELECT image_data, mime_type, version FROM chat_avatar_assets WHERE avatar_type = 'girl'"
+            );
+            if (!avatar) {
+                response.sendStatus(404);
+                return;
+            }
+            response.set({
+                'Cache-Control': 'no-store',
+                'X-Content-Type-Options': 'nosniff'
+            });
+            response.type(avatar.mime_type).send(avatar.image_data);
+        } catch (error) {
+            console.error('Could not load girl avatar:', getSafeErrorCode(error));
+            response.sendStatus(500);
+        }
+    });
     app.get('/api/public-room-background/:roomId', async (request, response) => {
         const roomId = String(request.params.roomId || '');
         if (!/^(common|disco|public:[1-9]\d{0,18})$/.test(roomId)) {
@@ -1219,7 +1251,7 @@ async function startServer() {
         await new Promise((resolve, reject) => {
             request.session.regenerate((error) => error ? reject(error) : resolve());
         });
-        request.session.user = { id: user.id, username: user.username };
+        request.session.user = { id: user.id, username: user.username, avatarType: user.avatarType === 'girl' ? 'girl' : 'boy' };
         request.session.tabId = tabId;
         request.session.clientIp = getRequestIpAddress(request);
         request.session.ipHash = hashRegistrationIp(
@@ -1255,6 +1287,14 @@ async function startServer() {
                     request.session.save((error) => error ? reject(error) : resolve());
                 });
             }
+            const { rows: [account] } = await pool.query(
+                'SELECT avatar_type FROM chat_users WHERE id = $1', [request.session.user.id]
+            );
+            if (!account) {
+                response.status(401).json({ error: 'Brugeren findes ikke l\u00e6ngere.' });
+                return;
+            }
+            request.session.user.avatarType = account.avatar_type === 'girl' ? 'girl' : 'boy';
             response.json({ user: request.session.user });
         } catch (error) {
             next(error);
@@ -1505,6 +1545,11 @@ async function startServer() {
         }
         const account = normalizeUsername(request.body && request.body.username);
         const password = request.body && request.body.password;
+        const avatarType = request.body && request.body.avatarType;
+        if (!['boy', 'girl'].includes(avatarType)) {
+            response.status(400).json({ error: 'Vælg en avatar til din konto.' });
+            return;
+        }
         if (!account) {
             response.status(400).json({ error: 'Brugernavnet skal være 3–18 tegn: bogstaver, tal, punktum, bindestreg eller underscore.' });
             return;
@@ -1524,6 +1569,15 @@ async function startServer() {
         }
 
         try {
+            if (avatarType === 'girl') {
+                const { rowCount } = await pool.query(
+                    "SELECT 1 FROM chat_avatar_assets WHERE avatar_type = 'girl'"
+                );
+                if (!rowCount) {
+                    response.status(400).json({ error: 'Pigeavataren er ikke tilgængelig endnu.' });
+                    return;
+                }
+            }
             const registrationIpHash = hashRegistrationIp(
                 request.ip || request.socket.remoteAddress,
                 SESSION_SECRET
@@ -1546,11 +1600,11 @@ async function startServer() {
                     return;
                 }
                 const result = await client.query(
-                    'INSERT INTO chat_users (username, username_normalized, password_hash, registration_ip_hash, last_login_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING id, username',
-                    [account.username, account.normalized, passwordHash, registrationIpHash]
+                    'INSERT INTO chat_users (username, username_normalized, password_hash, registration_ip_hash, avatar_type, last_login_at) VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING id, username, avatar_type',
+                    [account.username, account.normalized, passwordHash, registrationIpHash, avatarType]
                 );
                 await client.query('COMMIT');
-                user = { id: result.rows[0].id, username: result.rows[0].username };
+                user = { id: result.rows[0].id, username: result.rows[0].username, avatarType: result.rows[0].avatar_type };
             } catch (error) {
                 if (transactionStarted) await client.query('ROLLBACK');
                 throw error;
@@ -1590,7 +1644,7 @@ async function startServer() {
 
         try {
             const result = await pool.query(
-                'SELECT id, username, password_hash FROM chat_users WHERE username_normalized = $1',
+                'SELECT id, username, password_hash, avatar_type FROM chat_users WHERE username_normalized = $1',
                 [account.normalized]
             );
             const userRecord = result.rows[0];
@@ -1602,7 +1656,7 @@ async function startServer() {
                 response.status(401).json({ error: 'Forkert brugernavn eller adgangskode.' });
                 return;
             }
-            const user = { id: userRecord.id, username: userRecord.username };
+            const user = { id: userRecord.id, username: userRecord.username, avatarType: userRecord.avatar_type === 'girl' ? 'girl' : 'boy' };
             await saveAuthenticatedSession(request, user, tabId);
             await pool.query('UPDATE chat_users SET last_login_at = NOW() WHERE id = $1', [user.id]);
             await redis.del(getRateLimitKey(request));
@@ -2064,6 +2118,7 @@ async function startServer() {
                 socket.data.mood || 'glad',
                 JSON.stringify(clothing),
                 invisibleSocketIds.has(socket.id) ? '1' : '0',
+                socket.data.user.avatarType === 'girl' ? 'girl' : 'boy',
                 ...GRID_CELLS.map((cell) => `${cell.col}:${cell.row}`)]
         });
         if (!joined) return null;
@@ -2685,6 +2740,45 @@ async function startServer() {
             if (!activeSocketIds.has(socket.id)) return;
             socket.emit('wardrobe-action-result', { success: false, message: 'Opdater siden for at bruge den gemte outfitfunktion.' });
             await sendUserWardrobe();
+        });
+
+        socket.on('admin-avatar-upload', async ({ image } = {}) => {
+            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            const bytes = Buffer.isBuffer(image) ? image : image instanceof Uint8Array ? Buffer.from(image) : null;
+            const isPng = bytes && bytes.length >= 8
+                && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+            const isWebp = bytes && bytes.length >= 12
+                && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
+            if (!bytes || (!isPng && !isWebp) || bytes.length > 950_000) {
+                socket.emit('admin-avatar-upload-result', {
+                    success: false,
+                    message: 'Vælg et PNG- eller WebP-billede på højst 950 KB.'
+                });
+                return;
+            }
+            try {
+                const mimeType = isPng ? 'image/png' : 'image/webp';
+                const { rows: [avatar] } = await pool.query(`
+                    INSERT INTO chat_avatar_assets (avatar_type, image_data, mime_type)
+                    VALUES ('girl', $1, $2)
+                    ON CONFLICT (avatar_type) DO UPDATE SET
+                        image_data = EXCLUDED.image_data,
+                        mime_type = EXCLUDED.mime_type,
+                        updated_at = NOW(),
+                        version = chat_avatar_assets.version + 1
+                    RETURNING version
+                `, [bytes, mimeType]);
+                const version = Number(avatar.version);
+                io.emit('avatar-assets-updated', { girlVersion: version });
+                socket.emit('admin-avatar-upload-result', {
+                    success: true,
+                    girlVersion: version,
+                    message: 'Pigeavataren er gemt og kan nu vælges ved oprettelse.'
+                });
+            } catch (error) {
+                console.error('Could not save girl avatar:', getSafeErrorCode(error));
+                socket.emit('admin-avatar-upload-result', { success: false, message: 'Pigeavataren kunne ikke gemmes.' });
+            }
         });
 
         socket.on('admin-public-rooms-request', async () => {
@@ -5137,6 +5231,7 @@ async function startServer() {
                     socket.data.mood || 'glad',
                     JSON.stringify(clothing),
                     '0',
+                    socket.data.user.avatarType === 'girl' ? 'girl' : 'boy',
                     ...GRID_CELLS.map((cell) => `${cell.col}:${cell.row}`)
                 ];
                 const joinedPlayerJson = await redis.eval(PLAYER_JOIN_SCRIPT, {
