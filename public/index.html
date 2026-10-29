@@ -2186,21 +2186,21 @@
             const avatarHeight = 75;
             function drawAvatarMoodFace(context, moodImage, isGirl, centerX, centerY, width, height) {
                 if (!context || !moodImage || !width || !height) return;
+                if (isGirl) {
+                    // Female mood assets are complete head layers. Keep their native proportions
+                    // and align them over the fixed body, avoiding an oval edge through the face.
+                    const headWidth = width * 0.93;
+                    const headHeight = headWidth * (moodImage.naturalHeight / moodImage.naturalWidth);
+                    const headCenterY = centerY - height * 0.19;
+                    context.drawImage(moodImage, centerX - headWidth / 2, headCenterY - headHeight / 2, headWidth, headHeight);
+                    return;
+                }
                 context.save();
                 context.beginPath();
                 context.ellipse(centerX, centerY - height * 0.19, width * 0.275, height * 0.255, 0, 0, Math.PI * 2);
                 context.clip();
-                if (isGirl) {
-                    // Female mood assets contain only the head. Keep their native aspect ratio
-                    // so the face does not look stretched compared with the neutral avatar.
-                    const faceHeight = height * 0.51;
-                    const faceWidth = faceHeight * (moodImage.naturalWidth / moodImage.naturalHeight);
-                    const faceCenterY = centerY - height * 0.19;
-                    context.drawImage(moodImage, centerX - faceWidth / 2, faceCenterY - faceHeight / 2, faceWidth, faceHeight);
-                } else {
-                    // Male mood assets are full-avatar images; clipping keeps the body and ears fixed.
-                    context.drawImage(moodImage, centerX - width / 2, centerY - height / 2, width, height);
-                }
+                // Male mood assets are full-avatar images; clipping keeps the body and ears fixed.
+                context.drawImage(moodImage, centerX - width / 2, centerY - height / 2, width, height);
                 context.restore();
             }
             let avatarImageLoaded = false;
