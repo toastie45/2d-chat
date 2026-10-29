@@ -424,6 +424,21 @@ function isGridCoordinate(col, row) {
     return Number.isInteger(col) && Number.isInteger(row) && GRID_CELL_KEYS.has(`${col}:${row}`);
 }
 
+function normalizeClothingAnimation(value = {}) {
+    const columns = Number.isInteger(Number(value?.columns)) ? Number(value.columns) : 1;
+    const rows = Number.isInteger(Number(value?.rows)) ? Number(value.rows) : 1;
+    const safeColumns = Math.min(16, Math.max(1, columns));
+    const safeRows = Math.min(16, Math.max(1, rows));
+    const frames = Number.isInteger(Number(value?.frames)) ? Number(value.frames) : 1;
+    const fps = Number.isInteger(Number(value?.fps)) ? Number(value.fps) : 8;
+    return {
+        columns: safeColumns,
+        rows: safeRows,
+        frames: Math.min(safeColumns * safeRows, 256, Math.max(1, frames)),
+        fps: Math.min(24, Math.max(1, fps))
+    };
+}
+
 function publicPlayer(player) {
     return {
         id: player.id,
@@ -683,20 +698,6 @@ async function startServer() {
             layerPosition: ['front', 'normal', 'back'].includes(value?.layerPosition)
                 ? value.layerPosition
                 : ['left_hand', 'right_hand'].includes(category) ? 'front' : 'normal'
-        };
-    }
-    function normalizeClothingAnimation(value = {}) {
-        const columns = Number.isInteger(Number(value?.columns)) ? Number(value.columns) : 1;
-        const rows = Number.isInteger(Number(value?.rows)) ? Number(value.rows) : 1;
-        const safeColumns = Math.min(16, Math.max(1, columns));
-        const safeRows = Math.min(16, Math.max(1, rows));
-        const frames = Number.isInteger(Number(value?.frames)) ? Number(value.frames) : 1;
-        const fps = Number.isInteger(Number(value?.fps)) ? Number(value.fps) : 8;
-        return {
-            columns: safeColumns,
-            rows: safeRows,
-            frames: Math.min(safeColumns * safeRows, 256, Math.max(1, frames)),
-            fps: Math.min(24, Math.max(1, fps))
         };
     }
     function isValidClothingAnimation(value = {}) {
