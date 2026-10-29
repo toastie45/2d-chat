@@ -7119,7 +7119,7 @@
             socket.on('wardrobe-items', ({ items = [], level = 1, categoryOrder } = {}) => {
                 renderWardrobeItems(Array.isArray(items) ? items : [], Math.max(1, Number(level) || 1), false, categoryOrder);
                 if (wardrobeStatus.textContent.startsWith('Henter')) {
-                    wardrobeStatus.textContent = 'Træk kategorierne for at ændre rækkefølgen. Tryk på lagikonet på previewet for at flytte håndting foran eller bag tøjet. Gem for at vise ændringerne i chatten.';
+                    wardrobeStatus.textContent = 'Træk kategorierne for at ændre rækkefølgen. Tryk på lagikonet for at flytte håndting frem eller tilbage i lagene.';
                 }
             });
             socket.on('clothing-ownership-counts', (counts = {}) => {
