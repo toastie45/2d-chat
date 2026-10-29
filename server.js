@@ -2049,9 +2049,64 @@ async function startServer() {
         setTimeout(() => io.in(socketId).disconnectSockets(true), 100);
     }
 
-    async function getPlayers(roomId = 'common', viewerSocket = null) {
+    async function refreshRoomPlayersClothing(roomId, players) {
+        const playerNames = [...new Set(Object.values(players)
+            .map((player) => normalizeUsername(player.name)?.normalized)
+            .filter(Boolean))];
+        if (!playerNames.length) return players;
+
+        const { rows } = await pool.query(`
+            SELECT target.username_normalized, target.wardrobe_category_order,
+                   item.id, item.name, item.category, item.image_version, item.transform_json, item.animation_json
+            FROM chat_users target
+            JOIN chat_clothing_assignments assignment
+              ON assignment.target_user_id = target.id AND assignment.is_equipped = TRUE
+            JOIN chat_clothing_catalog item
+              ON item.id = assignment.clothing_item_id AND item.target_avatar_type = target.avatar_type
+            WHERE target.username_normalized = ANY($1::text[])
+            ORDER BY target.username_normalized, item.id
+        `, [playerNames]);
+
+        const clothingByName = new Map();
+        for (const row of rows) {
+            const clothing = clothingByName.get(row.username_normalized) || [];
+            const transform = normalizeClothingTransform(row.transform_json, row.category);
+            const categoryOrder = normalizeWardrobeCategoryOrder(row.wardrobe_category_order);
+            clothing.push({
+                id: String(row.id),
+                name: row.name,
+                category: row.category,
+                imageVersion: Number(row.image_version || 1),
+                imageUrl: `/api/clothing-items/${encodeURIComponent(row.id)}/image?v=${row.image_version || 1}`,
+                animation: normalizeClothingAnimation(row.animation_json),
+                x: transform.x,
+                y: transform.y,
+                rotation: transform.rotation,
+                scale: transform.scale,
+                scaleX: transform.scaleX,
+                scaleY: transform.scaleY,
+                skewX: transform.skewX,
+                skewY: transform.skewY,
+                layerPosition: transform.layerPosition,
+                ...(categoryOrder ? { layerOrder: WARDROBE_CATEGORIES.length - categoryOrder.indexOf(row.category) } : {})
+            });
+            clothingByName.set(row.username_normalized, clothing);
+        }
+
+        const roomPlayersKey = roomKeys(roomId).players;
+        await Promise.all(Object.entries(players).map(async ([playerId, player]) => {
+            const username = normalizeUsername(player.name)?.normalized;
+            const clothing = username ? (clothingByName.get(username) || []) : [];
+            player.clothing = clothing;
+            await redis.hSet(roomPlayersKey, playerId, JSON.stringify({ ...player, clothing }));
+        }));
+        return players;
+    }
+
+    async function getPlayers(roomId = 'common', viewerSocket = null, refreshClothing = false) {
         await cleanupStalePlayers(roomId);
         const allPlayers = getPublicPlayers(await redis.hGetAll(roomKeys(roomId).players));
+        if (refreshClothing) await refreshRoomPlayersClothing(roomId, allPlayers);
         if (!viewerSocket || canSeeInvisibleUser(viewerSocket)) return allPlayers;
         for (const socketId of invisibleSocketIds) delete allPlayers[socketId];
         return allPlayers;
@@ -2300,7 +2355,7 @@ async function startServer() {
         socket.data.roomId = roomId;
         await pool.query('UPDATE chat_online_sessions SET room_id = $2 WHERE socket_id = $1', [socket.id, roomId]);
         await socket.join(roomChannel(roomId));
-        const players = await getPlayers(roomId, socket);
+        const players = await getPlayers(roomId, socket, true);
         for (const player of Object.values(players)) {
             player.text = '';
             player.messageTime = 0;
@@ -5763,7 +5818,7 @@ async function startServer() {
                 await socket.join(roomChannel(initialRoomId));
                 await socket.join(`private-mail:${socket.data.user.id}`);
                 await socket.join(`chat-progress:${socket.data.user.id}`);
-                const currentPlayers = await getPlayers(initialRoomId, socket);
+                const currentPlayers = await getPlayers(initialRoomId, socket, true);
                 for (const player of Object.values(currentPlayers)) {
                     player.text = '';
                     player.messageTime = 0;
