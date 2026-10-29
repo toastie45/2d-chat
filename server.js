@@ -690,12 +690,22 @@ async function startServer() {
     async function broadcastChatOnlineCount() {
         try {
             const count = await getChatOnlineCount();
+            const { rows: activeClothingRows } = await pool.query(`
+                SELECT assignment.clothing_item_id::text AS item_id,
+                       COUNT(DISTINCT assignment.target_user_id)::int AS active_count
+                FROM chat_clothing_assignments assignment
+                JOIN chat_online_sessions online_session ON online_session.user_id = assignment.target_user_id
+                WHERE assignment.is_equipped = TRUE
+                GROUP BY assignment.clothing_item_id
+            `);
+            const activeClothingCounts = Object.fromEntries(activeClothingRows.map((row) => [row.item_id, Number(row.active_count || 0)]));
             for (const socketId of activeSocketIds) {
                 const recipient = io.sockets.sockets.get(socketId);
                 if (!recipient) continue;
                 recipient.emit('chat-online-count', {
                     count: Math.max(0, count - invisibleSocketIds.size)
                 });
+                recipient.emit('clothing-active-counts', activeClothingCounts);
             }
             return count;
         } catch (error) {
@@ -2679,7 +2689,13 @@ async function startServer() {
             const [{ rows }, totalOnlineMs, { rows: [progress] }] = await Promise.all([
                 pool.query(`
                     SELECT item.id, item.name, item.description, item.category, item.required_level, item.price,
-                           assignment.is_equipped, item.image_version, item.transform_json
+                           assignment.is_equipped, item.image_version, item.transform_json,
+                           (SELECT COUNT(DISTINCT live_assignment.target_user_id)::int
+                            FROM chat_clothing_assignments live_assignment
+                            JOIN chat_online_sessions online_session
+                              ON online_session.user_id = live_assignment.target_user_id
+                            WHERE live_assignment.clothing_item_id = item.id
+                              AND live_assignment.is_equipped = TRUE) AS active_in_chat
                     FROM chat_clothing_assignments assignment
                     JOIN chat_clothing_catalog item ON item.id = assignment.clothing_item_id
                     JOIN chat_users target ON target.id = assignment.target_user_id
@@ -2687,22 +2703,11 @@ async function startServer() {
                     ORDER BY item.category, item.id
                 `, [socket.data.user.id]),
                 getTotalOnlineMs(socket.data.user.id),
-                pool.query(`
-                    SELECT accepted_chat_messages, wardrobe_category_order,
-                           (SELECT COALESCE(jsonb_object_agg(category, category_count), '{}'::jsonb)
-                            FROM (
-                                SELECT category, COUNT(*)::integer AS category_count
-                                 FROM chat_clothing_catalog
-                                 WHERE target_avatar_type = (SELECT avatar_type FROM chat_users WHERE id = $1)
-                                 GROUP BY category
-                            ) clothing_counts) AS clothing_category_counts
-                    FROM chat_users WHERE id = $1
-                `, [socket.data.user.id])
+                pool.query('SELECT accepted_chat_messages, wardrobe_category_order FROM chat_users WHERE id = $1', [socket.data.user.id])
             ]);
             socket.emit('wardrobe-items', {
                 level: getUserLevel(totalOnlineMs, Number(progress?.accepted_chat_messages || 0)),
                 categoryOrder: normalizeWardrobeCategoryOrder(progress?.wardrobe_category_order),
-                clothingCategoryCounts: progress?.clothing_category_counts || {},
                 items: rows.map((item) => ({
                     id: String(item.id),
                     name: item.name,
@@ -2711,6 +2716,7 @@ async function startServer() {
                     requiredLevel: Number(item.required_level),
                     price: Number(item.price),
                     equipped: item.is_equipped,
+                    activeInChat: Number(item.active_in_chat || 0),
                     imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.image_version || 1}`,
                     ...normalizeClothingTransform(item.transform_json, item.category)
                 }))
@@ -2798,6 +2804,7 @@ async function startServer() {
                 }
                 await client.query('COMMIT');
                 await refreshOnlineUserClothing(socket.data.user.id);
+                await broadcastChatOnlineCount();
                 await sendUserWardrobe();
                 socket.emit('wardrobe-action-result', { success: true, message: 'Outfittet er gemt og vises nu i chatten.' });
             } catch (error) {

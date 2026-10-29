@@ -417,37 +417,39 @@
         .navigator-section-title { margin: 18px 0 8px; color: #9fa194; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
         .navigator-section-title:first-child { margin-top: 0; }
         .navigator-apartment-empty { margin: 0; color: var(--muted); font-size: 11px; }
-        .wardrobe-layout { display: grid; grid-template-columns: minmax(0, 1fr) 158px minmax(0, 1fr); grid-template-areas: "left preview right"; align-items: start; gap: 10px; }
-        .wardrobe-category-stack { display: grid; gap: 9px; min-width: 0; }
-        .wardrobe-category-stack.left { grid-area: left; }
-        .wardrobe-category-stack.right { grid-area: right; }
-        .wardrobe-category-box { min-width: 0; overflow: hidden; border: 1px solid #383d32; border-radius: 9px; background: linear-gradient(150deg, #242720, #191b18); transition: border-color .15s ease, transform .15s ease; }
+        .wardrobe-layout { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-areas: "preview preview preview preview"; align-items: start; gap: 10px; }
+        .wardrobe-category-stack { display: contents; }
+        .wardrobe-category-stack.left, .wardrobe-category-stack.right { grid-area: auto; }
+        .wardrobe-category-box { min-width: 0; overflow: hidden; border: 1px solid #383d32; border-radius: 9px; background: #191b18; transition: border-color .15s ease, transform .15s ease, background .15s ease; }
         .wardrobe-category-box[data-drag-over="true"] { border-color: #a8c879; transform: translateY(-2px); }
-        .wardrobe-category-heading { display: flex; align-items: center; justify-content: space-between; gap: 5px; width: 100%; padding: 8px 9px; border: 0; background: transparent; color: #dce6cc; font: inherit; font-size: 10px; font-weight: 700; text-align: left; cursor: grab; }
+        .wardrobe-category-heading { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 7px; width: 100%; padding: 8px 10px; border: 0; background: transparent; color: #dce6cc; font: inherit; font-size: 10px; font-weight: 700; text-align: left; cursor: grab; }
         .wardrobe-category-heading:active { cursor: grabbing; }
-        .wardrobe-category-heading::after { color: #a8c879; content: "+"; font-size: 14px; line-height: 1; }
+        .wardrobe-category-heading > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .wardrobe-category-heading::after { flex: 0 0 auto; color: #a8c879; content: "+"; font-size: 14px; line-height: 1; }
         .wardrobe-category-box[data-selected="true"] { border-color: #829b5a; }
         .wardrobe-category-box[data-selected="true"] > .wardrobe-category-heading { background: #2a3323; }
         .wardrobe-category-box[data-selected="true"] > .wardrobe-category-heading::after { content: "−"; }
-        .wardrobe-category-count { color: #a8c879; font-size: 9px; font-weight: 600; }
+        .wardrobe-category-count { color: #a8c879; font-size: 9px; font-weight: 600; white-space: nowrap; }
         .wardrobe-category-empty { margin: 0; padding: 4px; color: #85887c; font-size: 9px; }
-        .wardrobe-preview-column { grid-area: preview; display: grid; justify-items: center; gap: 8px; }
+        .wardrobe-preview-column { grid-area: preview; display: grid; justify-items: center; gap: 6px; padding: 8px 0 4px; }
         .wardrobe-preview-label { margin: 0; color: #dce6cc; font-size: 10px; font-weight: 700; }
-        .wardrobe-avatar-stage { display: grid; width: 100%; max-width: 158px; aspect-ratio: 216 / 300; place-items: center; overflow: hidden; border: 1px solid #3d4930; border-radius: 12px; background: radial-gradient(ellipse at 50% 45%, #293120 0%, #181b17 62%, #111310 100%); box-shadow: inset 0 0 24px #0005, 0 8px 24px #0003; }
+        .wardrobe-avatar-stage { display: grid; width: 176px; max-width: 100%; aspect-ratio: 216 / 300; place-items: center; overflow: hidden; border: 1px solid #3d4930; border-radius: 14px; background: radial-gradient(ellipse at 50% 45%, #293120 0%, #181b17 62%, #111310 100%); box-shadow: inset 0 0 24px #0005, 0 8px 24px #0003; }
         .wardrobe-avatar-preview { display: block; width: 100%; height: 100%; object-fit: contain; }
         .wardrobe-preview-level { color: #a8c879; font-size: 9px; font-weight: 650; }
         .wardrobe-status { min-height: 16px; margin: 8px 0; color: var(--muted); font-size: 10px; }
         .wardrobe-actions { display: flex; gap: 8px; margin-top: 12px; }
         .wardrobe-actions button { flex: 1; min-height: 36px; }
-        .wardrobe-selection { margin-top: 14px; padding: 12px; border: 1px solid #383d32; border-radius: 9px; background: #191b18; }
+        .wardrobe-selection { margin-top: 14px; padding: 14px; border: 1px solid #383d32; border-radius: 12px; background: #191b18; }
         .wardrobe-selection h3 { margin: 0 0 10px; color: #dce6cc; font-size: 12px; }
-        .wardrobe-selection-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; max-height: 230px; overflow-y: auto; }
-        .wardrobe-select-item { display: grid; grid-template-columns: 54px minmax(0, 1fr); align-items: center; gap: 8px; min-width: 0; padding: 7px; border: 1px solid #363a31; border-radius: 7px; background: #20211d; color: #d9dacf; font: inherit; text-align: left; cursor: pointer; }
+        .wardrobe-selection-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 9px; max-height: 300px; overflow-y: auto; }
+        .wardrobe-select-item { display: grid; grid-template-columns: 54px minmax(0, 1fr); align-items: center; gap: 9px; min-width: 0; min-height: 76px; padding: 8px; border: 1px solid #363a31; border-radius: 9px; background: #20211d; color: #d9dacf; font: inherit; text-align: left; cursor: pointer; transition: border-color .15s ease, background .15s ease, transform .15s ease; }
+        .wardrobe-select-item:hover:not(:disabled) { transform: translateY(-1px); }
         .wardrobe-select-item:hover:not(:disabled), .wardrobe-select-item[aria-pressed="true"] { border-color: #89a95a; background: #2a3323; }
         .wardrobe-select-item:disabled { opacity: .5; cursor: not-allowed; }
         .wardrobe-select-item img { width: 54px; height: 60px; object-fit: contain; border-radius: 5px; background: #10110f; }
         .wardrobe-select-item span { display: grid; min-width: 0; gap: 4px; color: #a5a89b; font-size: 9px; }
         .wardrobe-select-item strong { overflow: hidden; color: #f2f0e9; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+        .wardrobe-item-live-count { color: #a8c879 !important; font-size: 9px !important; }
         .wardrobe-empty { color: var(--muted); font-size: 11px; }
         .shop-intro { margin: 0 0 14px; color: var(--muted); font-size: 11px; line-height: 1.5; }
         .shop-list { display: grid; gap: 9px; }
@@ -474,15 +476,14 @@
         .admin-shop-group-count { color: var(--muted); font-size: 9px; font-weight: 500; }
         .admin-shop-group-list { display: grid; gap: 7px; padding: 0 8px 8px; }
         @media (max-width: 700px) {
-            .wardrobe-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "preview preview" "left right"; gap: 9px; }
+            .wardrobe-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "preview preview"; gap: 8px; }
             .wardrobe-avatar-stage { width: 158px; }
         }
         @media (max-width: 420px) {
             .wardrobe-layout { gap: 6px; }
-            .wardrobe-category-stack { gap: 6px; }
-            .wardrobe-category-heading { padding: 7px 6px; font-size: 9px; }
+            .wardrobe-category-heading { min-height: 42px; gap: 3px; padding: 6px; font-size: 9px; }
             .wardrobe-selection { padding: 8px; }
-            .wardrobe-selection-items { grid-template-columns: repeat(auto-fill, minmax(105px, 1fr)); gap: 6px; }
+            .wardrobe-selection-items { grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); gap: 6px; }
             .wardrobe-select-item { grid-template-columns: 44px minmax(0, 1fr); gap: 6px; padding: 6px; }
             .wardrobe-select-item img { width: 44px; height: 52px; }
             .wardrobe-avatar-stage { width: 138px; }
@@ -2364,7 +2365,6 @@
             const wardrobePreviewLevel = document.getElementById('wardrobe-preview-level');
             const wardrobeEmpty = document.getElementById('wardrobe-empty');
             const wardrobeStatus = document.getElementById('wardrobe-status');
-            let wardrobeCategoryCounts = {};
             const wardrobeSaveButton = document.getElementById('wardrobe-save-button');
             const wardrobeDiscardButton = document.getElementById('wardrobe-discard-button');
             const wardrobeCategoryPreview = document.getElementById('wardrobe-category-preview');
@@ -4784,8 +4784,7 @@
                     const count = document.createElement('span');
                     count.className = 'wardrobe-category-count';
                     const selectedCount = categoryItems.filter((item) => wardrobeDraftIds.has(String(item.id))).length;
-                    const publishedCount = Math.max(0, Number(wardrobeCategoryCounts[category]) || 0);
-                    count.textContent = `${selectedCount}/${categoryItems.length} valgt · ${publishedCount} i chatten`;
+                    count.textContent = `${selectedCount}/${categoryItems.length}`;
                     heading.append(title, count);
                     heading.addEventListener('click', () => {
                         activeWardrobeCategory = selected ? '' : category;
@@ -4856,7 +4855,11 @@
                         meta.textContent = selected ? 'Valgt · klik for at tage af' : locked
                             ? `Level ${item.requiredLevel}`
                             : `${Number(item.price).toLocaleString('da-DK')} mønter`;
-                        details.append(name, meta);
+                        const activeCount = document.createElement('span');
+                        activeCount.className = 'wardrobe-item-live-count';
+                        const activeUsers = Math.max(0, Number(item.activeInChat) || 0);
+                        activeCount.textContent = `${activeUsers} på i chatten`;
+                        details.append(name, meta, activeCount);
                         button.append(image, details);
                         button.addEventListener('click', () => {
                             if (wardrobeDraftIds.has(itemId)) wardrobeDraftIds.delete(itemId);
@@ -7053,11 +7056,19 @@
                 setRoomNotice(message);
                 addChatSystemEntry(message);
             });
-            socket.on('wardrobe-items', ({ items = [], level = 1, clothingCategoryCounts = {}, categoryOrder } = {}) => {
-                wardrobeCategoryCounts = clothingCategoryCounts && typeof clothingCategoryCounts === 'object'
-                    ? clothingCategoryCounts
-                    : {};
+            socket.on('wardrobe-items', ({ items = [], level = 1, categoryOrder } = {}) => {
                 renderWardrobeItems(Array.isArray(items) ? items : [], Math.max(1, Number(level) || 1), false, categoryOrder);
+                if (wardrobeStatus.textContent.startsWith('Henter')) {
+                    wardrobeStatus.textContent = 'Træk kategorierne for at ændre rækkefølgen. Dit outfit vises i chatten, når du gemmer.';
+                }
+            });
+            socket.on('clothing-active-counts', (counts = {}) => {
+                if (!counts || typeof counts !== 'object') return;
+                wardrobeItems = wardrobeItems.map((item) => ({
+                    ...item,
+                    activeInChat: Math.max(0, Number(counts[String(item.id)]) || 0)
+                }));
+                renderWardrobeItems(wardrobeItems, wardrobeLevel, true);
             });
             socket.on('wardrobe-action-result', ({ success, message } = {}) => {
                 wardrobeStatus.textContent = message || (success ? 'Tøjskabet er opdateret.' : 'Handlingen mislykkedes.');
