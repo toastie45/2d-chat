@@ -2149,6 +2149,7 @@
             });
             const avatarImage = new Image();
             const girlAvatarImage = new Image();
+            const girlMobsetAvatarImage = new Image();
             const mobsetAvatarImage = new Image();
             const kedAvatarImage = new Image();
             const blappetAvatarImage = new Image();
@@ -2159,6 +2160,7 @@
             const avatarHeight = 75;
             let avatarImageLoaded = false;
             let girlAvatarImageLoaded = false;
+            let girlMobsetAvatarImageLoaded = false;
             let mobsetAvatarImageLoaded = false;
             let kedAvatarImageLoaded = false;
             let blappetAvatarImageLoaded = false;
@@ -2186,6 +2188,15 @@
                 updateGirlAvatarChoice(false);
             });
             girlAvatarImage.src = '/api/avatar/girl';
+            girlMobsetAvatarImage.addEventListener('load', () => {
+                girlMobsetAvatarImageLoaded = true;
+                requestBoardRender();
+                drawWardrobeAvatarPreview();
+            });
+            girlMobsetAvatarImage.addEventListener('error', () => {
+                girlMobsetAvatarImageLoaded = false;
+            });
+            girlMobsetAvatarImage.src = '/images/mobset-kvinde.png';
             function getAvatarImageForPlayer(player) {
                 if (player?.avatarType === 'girl') return girlAvatarImageLoaded ? girlAvatarImage : null;
                 return avatarImageLoaded ? avatarImage : null;
@@ -4609,7 +4620,9 @@
                 context.translate(-width / 2, -height / 2);
                 context.drawImage(ownAvatarImage, 0, 0, width, height);
                 const mood = players[myId]?.mood || 'glad';
-                const moodImages = ownPlayer?.avatarType === 'girl' ? {} : {
+                const moodImages = ownPlayer?.avatarType === 'girl' ? {
+                    mobset: girlMobsetAvatarImageLoaded ? girlMobsetAvatarImage : null
+                } : {
                     mobset: mobsetAvatarImageLoaded ? mobsetAvatarImage : null,
                     ked: kedAvatarImageLoaded ? kedAvatarImage : null,
                     blappet: blappetAvatarImageLoaded ? blappetAvatarImage : null,
@@ -4621,7 +4634,17 @@
                     context.beginPath();
                     context.ellipse(width / 2, height / 2 - height * 0.19, width * 0.275, height * 0.255, 0, 0, Math.PI * 2);
                     context.clip();
-                    context.drawImage(moodImage, 0, 0, width, height);
+                    if (ownPlayer?.avatarType === 'girl') {
+                        const faceWidth = width * 0.66;
+                        const faceHeight = height * 0.66;
+                        context.drawImage(moodImage,
+                            width / 2 - faceWidth / 2,
+                            height / 2 - height * 0.19 - faceHeight / 2,
+                            faceWidth,
+                            faceHeight);
+                    } else {
+                        context.drawImage(moodImage, 0, 0, width, height);
+                    }
                     context.restore();
                 }
                 const equipped = wardrobeItems.filter((item) => wardrobeDraftIds.has(String(item.id))).sort((first, second) =>
@@ -5436,7 +5459,9 @@
                     const position = player.position || player.target || positionFor(player);
                     if (!position) continue;
                     const playerAvatarImage = getAvatarImageForPlayer(player);
-                    const moodFaceImage = player.avatarType === 'girl' ? null : player.mood === 'mobset'
+                    const moodFaceImage = player.avatarType === 'girl'
+                        ? player.mood === 'mobset' && girlMobsetAvatarImageLoaded ? girlMobsetAvatarImage : null
+                        : player.mood === 'mobset'
                         ? (mobsetAvatarImageLoaded ? mobsetAvatarImage : avatarImageLoaded ? avatarImage : null)
                         : player.mood === 'ked'
                             ? (kedAvatarImageLoaded ? kedAvatarImage : avatarImageLoaded ? avatarImage : null)
@@ -5500,13 +5525,25 @@
                                 Math.PI * 2
                             );
                             ctx.clip();
-                            ctx.drawImage(
-                                moodFaceImage,
-                                position.x - visualWidth / 2,
-                                avatarY - visualHeight / 2,
-                                visualWidth,
-                                visualHeight
-                            );
+                            if (player.avatarType === 'girl') {
+                                const faceWidth = visualWidth * 0.66;
+                                const faceHeight = visualHeight * 0.66;
+                                ctx.drawImage(
+                                    moodFaceImage,
+                                    position.x - faceWidth / 2,
+                                    avatarY - visualHeight * 0.19 - faceHeight / 2,
+                                    faceWidth,
+                                    faceHeight
+                                );
+                            } else {
+                                ctx.drawImage(
+                                    moodFaceImage,
+                                    position.x - visualWidth / 2,
+                                    avatarY - visualHeight / 2,
+                                    visualWidth,
+                                    visualHeight
+                                );
+                            }
                             ctx.restore();
                         }
                     } else {
