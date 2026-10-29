@@ -1167,6 +1167,51 @@
             flex-direction: column;
         }
 
+        .chat-panel-heading {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+        .chat-panel-heading .side-title { margin: 0; }
+        .chat-detach-button {
+            flex: 0 0 auto;
+            padding: 5px 8px;
+            border: 1px solid #3a3d35;
+            border-radius: 7px;
+            background: #252722;
+            color: #d8d9d2;
+            font: inherit;
+            font-size: 11px;
+            cursor: pointer;
+        }
+        .chat-detach-button:hover { border-color: #8fae5d; color: #c1f078; }
+        .chat-panel-detached {
+            position: fixed;
+            z-index: 1200;
+            right: 18px;
+            bottom: 18px;
+            display: flex !important;
+            box-sizing: border-box;
+            width: min(390px, calc(100vw - 24px));
+            height: min(480px, calc(100dvh - 24px));
+            min-height: min(230px, calc(100dvh - 24px));
+            padding: 14px;
+            border: 1px solid #45483e;
+            border-radius: 13px;
+            background: #1e201d;
+            box-shadow: 0 16px 48px #0009;
+        }
+        .chat-panel-detached .chat-log {
+            flex: 1;
+            min-height: 0;
+            max-height: none;
+            overflow-y: auto;
+            margin-top: 6px;
+            text-align: left;
+        }
+
         .chat-hint {
             margin: -5px 0 13px;
             color: var(--muted);
@@ -1719,7 +1764,10 @@
                             </article>
                         </section>
                         <section class="side-panel chat-section" id="chat-panel" aria-labelledby="chat-title" hidden>
-                            <h2 class="side-title" id="chat-title">Tekstchat i #1 Fællesrum</h2>
+                            <div class="chat-panel-heading">
+                                <h2 class="side-title" id="chat-title">Tekstchat i #1 Fællesrum</h2>
+                                <button class="chat-detach-button" id="chat-detach-button" type="button" aria-pressed="false" aria-label="Frigør tekstchatten som et flydende panel">Frigør</button>
+                            </div>
                             <div class="chat-log" id="chat-log" role="log" aria-live="polite" aria-relevant="additions">
                                 <p class="chat-empty" id="chat-empty">Samtalen begynder her.</p>
                             </div>
@@ -2807,6 +2855,9 @@
             const apartmentEditorReset = document.getElementById('apartment-editor-reset');
             const apartmentEditorStatus = document.getElementById('apartment-editor-status');
             const chatPanel = document.getElementById('chat-panel');
+            const chatDetachButton = document.getElementById('chat-detach-button');
+            const chatPanelPlaceholder = document.createComment('tekstchat-plads');
+            let chatDetached = false;
             const profileEditorPanel = document.getElementById('profile-editor-panel');
             const roomLayout = document.querySelector('.room');
             const boardCard = roomLayout.querySelector('.board-card');
@@ -3325,6 +3376,7 @@
             }
 
             function selectSidePanel(panel, { remember = true } = {}) {
+                if (chatDetached && panel === 'chat') setChatDetached(false);
                 if (activeSidePanel && activeSidePanel !== panel && remember) {
                     sidePanelHistory.push(activeSidePanel);
                 }
@@ -3339,7 +3391,7 @@
                 shopPanel.hidden = panel !== 'shop';
                 roomWelcomePanel.hidden = panel !== 'welcome';
                 apartmentEditorPanel.hidden = panel !== 'apartment-editor';
-                chatPanel.hidden = panel !== 'chat';
+                chatPanel.hidden = !chatDetached && panel !== 'chat';
                 searchPanel.hidden = panel !== 'search';
                 privateMailPanel.hidden = panel !== 'private-mail';
                 adminPanel.hidden = panel !== 'admin';
@@ -6744,8 +6796,35 @@
                 });
             });
             chatNavButton.addEventListener('click', () => {
+                if (chatDetached) setChatDetached(false);
                 selectSidePanel('chat');
             });
+            function setChatDetached(detached) {
+                if (chatDetached === detached) return;
+                if (detached) {
+                    chatPanel.parentNode.insertBefore(chatPanelPlaceholder, chatPanel);
+                    document.body.append(chatPanel);
+                    chatPanel.classList.add('chat-panel-detached');
+                    chatPanel.hidden = false;
+                    chatDetachButton.textContent = 'Sæt tilbage';
+                    chatDetachButton.setAttribute('aria-pressed', 'true');
+                    chatDetachButton.setAttribute('aria-label', 'Sæt tekstchatten tilbage i højrepanelet');
+                    chatDetached = true;
+                    return;
+                }
+                if (chatPanelPlaceholder.parentNode) {
+                    chatPanelPlaceholder.parentNode.insertBefore(chatPanel, chatPanelPlaceholder);
+                }
+                chatPanel.classList.remove('chat-panel-detached');
+                chatDetached = false;
+                chatPanel.hidden = activeSidePanel !== 'chat';
+                chatDetachButton.textContent = 'Frigør';
+                chatDetachButton.setAttribute('aria-pressed', 'false');
+                chatDetachButton.setAttribute('aria-label', 'Frigør tekstchatten som et flydende panel');
+                selectSidePanel('chat');
+                requestAnimationFrame(syncRoomSideCardHeight);
+            }
+            chatDetachButton.addEventListener('click', () => setChatDetached(!chatDetached));
             roomStripName.addEventListener('click', showCurrentRoomLandingPanel);
             profileNavButton.addEventListener('click', openProfileEditor);
             searchNavButton.addEventListener('click', openUserSearch);
@@ -7127,6 +7206,7 @@
                     });
                     const result = await response.json();
                     if (!response.ok) throw new Error(result.error || 'Brugeren kunne ikke slettes.');
+                    if (chatDetached) setChatDetached(false);
                     currentUser = null;
                     myId = null;
                     players = {};
@@ -7161,6 +7241,7 @@
                         method: 'POST'
                     });
                     if (!response.ok) throw new Error('Kunne ikke logge ud. Prøv igen.');
+                    if (chatDetached) setChatDetached(false);
                     currentUser = null;
                     myId = null;
                     players = {};
@@ -7456,6 +7537,7 @@
 
             socket.on('session-kicked', ({ message } = {}) => {
                 sessionKickMessage = message || 'Du blev fjernet fra chatten.';
+                if (chatDetached) setChatDetached(false);
                 currentUser = null;
                 authMode = 'login';
                 passwordInput.value = '';
