@@ -960,6 +960,9 @@
         .admin-clothing-refine summary { width: fit-content; color: var(--muted); font-size: 10px; cursor: pointer; }
         .admin-clothing-transform { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
         .admin-clothing-transform label { font-size: 9px; }
+        .admin-clothing-animation { display: grid; min-width: 0; gap: 3px; margin: 3px 0; padding: 10px; border: 1px solid #353732; border-radius: 7px; background: #151613; }
+        .admin-clothing-animation legend { padding: 0 6px; color: #dce6cc; font-size: 11px; font-weight: 700; }
+        .admin-clothing-animation p { margin: 4px 0 0; color: var(--muted); font-size: 9px; line-height: 1.45; }
         .admin-clothing-preview-wrap { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 9px; border: 1px solid #353732; border-radius: 7px; background: #151613; }
         .admin-clothing-preview { display: block; width: 144px; height: 200px; border: 1px solid #586247; border-radius: 5px; background: transparent; image-rendering: auto; touch-action: none; cursor: crosshair; }
         .admin-clothing-preview-control { display: grid; flex: none; justify-items: center; gap: 5px; }
@@ -1961,6 +1964,16 @@
                                     <label id="admin-clothing-image-field"><span>Billede (PNG/WebP, maks. 950 KB)</span>
                                         <input id="admin-clothing-image" type="file" accept="image/png,image/webp">
                                     </label>
+                                    <fieldset class="admin-clothing-animation wide">
+                                        <legend>Spritesheet-opsætning</legend>
+                                        <div class="admin-clothing-transform">
+                                            <label>Kolonner<input id="admin-clothing-animation-columns" type="number" min="1" max="16" value="1"></label>
+                                            <label>Rækker<input id="admin-clothing-animation-rows" type="number" min="1" max="16" value="1"></label>
+                                            <label>Frames<input id="admin-clothing-animation-frames" type="number" min="1" max="256" value="1"></label>
+                                            <label>FPS<input id="admin-clothing-animation-fps" type="number" min="1" max="24" value="8"></label>
+                                        </div>
+                                        <p>Brug 1 × 1 til et almindeligt billede. På et spritesheet læses frames fra venstre mod højre og derefter næste række. Alle felter skal have samme størrelse.</p>
+                                    </fieldset>
                                     <label>Levelkrav (1–20)
                                         <input id="admin-clothing-level" type="number" min="1" max="20" value="1" required>
                                     </label>
@@ -2373,7 +2386,8 @@
             boevetAvatarImage.src = '/images/boevet.png';
             function getClothingImage(item) {
                 if (!item?.id || !item.imageUrl) return null;
-                let image = clothingImageCache.get(String(item.id));
+                const cacheKey = `${item.id}:${item.imageVersion || 1}`;
+                let image = clothingImageCache.get(cacheKey);
                 if (!image) {
                     image = new Image();
                     image.loaded = false;
@@ -2383,15 +2397,71 @@
                         drawWardrobeAvatarPreview();
                     });
                     image.src = item.imageUrl;
-                    clothingImageCache.set(String(item.id), image);
+                    clothingImageCache.set(cacheKey, image);
                 }
                 return image.loaded ? image : null;
             }
-            function drawClothingLayer(context, image, item, centerX, centerY, avatarWidth, avatarHeight) {
+            function setClothingThumbnail(target, item) {
+                const draw = (image) => {
+                    if (!image?.naturalWidth || !image?.naturalHeight) return;
+                    const animation = normalizeClothingAnimation(item.animation);
+                    const width = image.naturalWidth / animation.columns;
+                    const height = image.naturalHeight / animation.rows;
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 108;
+                    canvas.height = 132;
+                    const scale = Math.min(canvas.width / width, canvas.height / height);
+                    const drawWidth = width * scale;
+                    const drawHeight = height * scale;
+                    const context = canvas.getContext('2d');
+                    context.drawImage(image, 0, 0, width, height,
+                        (canvas.width - drawWidth) / 2, (canvas.height - drawHeight) / 2, drawWidth, drawHeight);
+                    try { target.src = canvas.toDataURL('image/webp', 0.9); }
+                    catch { target.src = item.imageUrl; }
+                };
+                const loaded = getClothingImage(item);
+                if (loaded) {
+                    draw(loaded);
+                    return;
+                }
+                const pending = clothingImageCache.get(`${item?.id}:${item?.imageVersion || 1}`);
+                if (pending) {
+                    const onLoad = () => draw(pending);
+                    if (pending.loaded) onLoad();
+                    else pending.addEventListener('load', onLoad, { once: true });
+                } else if (item?.imageUrl) target.src = item.imageUrl;
+            }
+            function normalizeClothingAnimation(value = {}) {
+                const columns = Math.max(1, Math.min(16, Math.floor(Number(value?.columns) || 1)));
+                const rows = Math.max(1, Math.min(16, Math.floor(Number(value?.rows) || 1)));
+                const frames = Math.max(1, Math.min(columns * rows, 256, Math.floor(Number(value?.frames) || 1)));
+                const fps = Math.max(1, Math.min(24, Number(value?.fps) || 8));
+                return { columns, rows, frames, fps };
+            }
+            function getClothingSpriteFrame(image, animation = {}, now = Date.now()) {
+                const settings = normalizeClothingAnimation(animation);
+                const width = image.naturalWidth / settings.columns;
+                const height = image.naturalHeight / settings.rows;
+                const frame = settings.frames > 1
+                    ? Math.floor(now / (1000 / settings.fps)) % settings.frames
+                    : 0;
+                return { sx: (frame % settings.columns) * width, sy: Math.floor(frame / settings.columns) * height,
+                    sw: width, sh: height, frames: settings.frames, fps: settings.fps };
+            }
+            function getAdminClothingAnimation() {
+                return {
+                    columns: Number(adminClothingAnimationColumns.value),
+                    rows: Number(adminClothingAnimationRows.value),
+                    frames: Number(adminClothingAnimationFrames.value),
+                    fps: Number(adminClothingAnimationFps.value)
+                };
+            }
+            function drawClothingLayer(context, image, item, centerX, centerY, avatarWidth, avatarHeight, now = Date.now()) {
                 if (!image?.naturalWidth || !image?.naturalHeight) return null;
-                const fitScale = Math.min(avatarWidth / image.naturalWidth, avatarHeight / image.naturalHeight);
-                const drawWidth = image.naturalWidth * fitScale;
-                const drawHeight = image.naturalHeight * fitScale;
+                const frame = getClothingSpriteFrame(image, item.animation, now);
+                const fitScale = Math.min(avatarWidth / frame.sw, avatarHeight / frame.sh);
+                const drawWidth = frame.sw * fitScale;
+                const drawHeight = frame.sh * fitScale;
                 const unitScale = avatarWidth / 54;
                 const scale = Math.max(0.25, Math.min(3, Number(item.scale) || 1));
                 context.save();
@@ -2402,7 +2472,8 @@
                     Math.tan((Number(item.skewX) || 0) * Math.PI / 180), 1, 0, 0);
                 context.scale(scale * Math.max(0.25, Math.min(3, Number(item.scaleX) || 1)),
                     scale * Math.max(0.25, Math.min(3, Number(item.scaleY) || 1)));
-                context.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+                context.drawImage(image, frame.sx, frame.sy, frame.sw, frame.sh,
+                    -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
                 context.restore();
                 return { width: drawWidth, height: drawHeight };
             }
@@ -2528,6 +2599,10 @@
             const adminClothingAvatarType = document.getElementById('admin-clothing-avatar-type');
             const adminClothingImageInput = document.getElementById('admin-clothing-image');
             const adminClothingImageField = document.getElementById('admin-clothing-image-field');
+            const adminClothingAnimationColumns = document.getElementById('admin-clothing-animation-columns');
+            const adminClothingAnimationRows = document.getElementById('admin-clothing-animation-rows');
+            const adminClothingAnimationFrames = document.getElementById('admin-clothing-animation-frames');
+            const adminClothingAnimationFps = document.getElementById('admin-clothing-animation-fps');
             const adminClothingAssignmentField = document.getElementById('admin-clothing-assignment-field');
             const adminClothingLevel = document.getElementById('admin-clothing-level');
             const adminClothingPrice = document.getElementById('admin-clothing-price');
@@ -4039,6 +4114,7 @@
                     return;
                 }
                 const previewItem = {
+                    animation: getAdminClothingAnimation(),
                     x: Number(adminClothingX.value) || 0,
                     y: Number(adminClothingY.value) || 0,
                     rotation: Number(adminClothingRotation.value) || 0,
@@ -4081,9 +4157,9 @@
 
             function clothingPreviewGeometry() {
                 if (!adminClothingPreviewImage?.naturalWidth) return null;
-                const fit = Math.min(adminClothingPreview.width / adminClothingPreviewImage.naturalWidth,
-                    adminClothingPreview.height / adminClothingPreviewImage.naturalHeight);
-                return { width: adminClothingPreviewImage.naturalWidth * fit, height: adminClothingPreviewImage.naturalHeight * fit };
+                const frame = getClothingSpriteFrame(adminClothingPreviewImage, getAdminClothingAnimation());
+                const fit = Math.min(adminClothingPreview.width / frame.sw, adminClothingPreview.height / frame.sh);
+                return { width: frame.sw * fit, height: frame.sh * fit };
             }
 
             function clothingPreviewCenter() {
@@ -4239,7 +4315,9 @@
             });
             adminClothingPreviewAvatar.addEventListener('load', drawAdminClothingPreview);
             [adminClothingX, adminClothingY, adminClothingRotation, adminClothingScale,
-                adminClothingScaleX, adminClothingScaleY, adminClothingSkewX, adminClothingSkewY].forEach((input) =>
+                adminClothingScaleX, adminClothingScaleY, adminClothingSkewX, adminClothingSkewY,
+                adminClothingAnimationColumns, adminClothingAnimationRows, adminClothingAnimationFrames,
+                adminClothingAnimationFps].forEach((input) =>
                 input.addEventListener('input', drawAdminClothingPreview)
             );
             adminClothingImageInput.addEventListener('change', () => {
@@ -4262,8 +4340,8 @@
                         adminClothingImageInput.value = '';
                         adminClothingPreviewImage = null;
                     } else {
-                        adminClothingStatus.textContent = '';
                         adminClothingPreviewImage = image;
+                        adminClothingStatus.textContent = getAdminClothingAnimationError(image) || '';
                     }
                     drawAdminClothingPreview();
                 }, { once: true });
@@ -4274,6 +4352,22 @@
                 }, { once: true });
                 image.src = adminClothingPreviewUrl;
             });
+
+            function getAdminClothingAnimationError(image = adminClothingPreviewImage) {
+                const animation = getAdminClothingAnimation();
+                if (!Number.isInteger(animation.columns) || animation.columns < 1 || animation.columns > 16
+                    || !Number.isInteger(animation.rows) || animation.rows < 1 || animation.rows > 16
+                    || !Number.isInteger(animation.frames) || animation.frames < 1 || animation.frames > 256
+                    || !Number.isInteger(animation.fps) || animation.fps < 1 || animation.fps > 24
+                    || animation.frames > animation.columns * animation.rows) {
+                    return 'Kontrollér kolonner, rækker, frames og FPS. Frames må ikke overstige antal felter.';
+                }
+                if (image?.naturalWidth && (image.naturalWidth % animation.columns !== 0
+                    || image.naturalHeight % animation.rows !== 0)) {
+                    return 'Spritesheetets bredde og højde skal kunne deles præcist med kolonner og rækker.';
+                }
+                return '';
+            }
 
             async function prepareAdminClothingImage(file) {
                 if (!file || !['image/png', 'image/webp'].includes(file.type) || file.size > 20 * 1024 * 1024) {
@@ -4287,11 +4381,14 @@
                     if (!image.naturalWidth || !image.naturalHeight || image.naturalWidth > 8000 || image.naturalHeight > 8000) {
                         throw new Error('Billedet skal være mellem 1 og 8000 px i hver retning.');
                     }
+                    const animationError = getAdminClothingAnimationError(image);
+                    if (animationError) throw new Error(animationError);
                     if (file.size <= 950_000 && file.size > 0) return { blob: file, mimeType: file.type };
                     const ratio = Math.min(1, 1536 / Math.max(image.naturalWidth, image.naturalHeight));
                     const canvas = document.createElement('canvas');
-                    canvas.width = Math.max(1, Math.round(image.naturalWidth * ratio));
-                    canvas.height = Math.max(1, Math.round(image.naturalHeight * ratio));
+                    const { columns, rows } = getAdminClothingAnimation();
+                    canvas.width = Math.max(columns, Math.floor(image.naturalWidth * ratio / columns) * columns);
+                    canvas.height = Math.max(rows, Math.floor(image.naturalHeight * ratio / rows) * rows);
                     canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
                     let blob = null;
                     for (const quality of [0.96, 0.92, 0.88, 0.84, 0.8]) {
@@ -4311,6 +4408,10 @@
                 adminClothingAssignmentField.hidden = false;
                 adminClothingLayerField.hidden = !['left_hand', 'right_hand'].includes(adminClothingCategory.value);
                 adminClothingImageField.querySelector('span').textContent = 'Billede (PNG/WebP, maks. 950 KB)';
+                adminClothingAnimationColumns.value = '1';
+                adminClothingAnimationRows.value = '1';
+                adminClothingAnimationFrames.value = '1';
+                adminClothingAnimationFps.value = '8';
                 adminClothingAvatarType.value = 'boy';
                 adminClothingSaveButton.textContent = 'Gem tøjdelen';
                 adminClothingCancelEditButton.hidden = true;
@@ -4337,6 +4438,11 @@
                 adminClothingAvatarType.value = item.avatarType === 'girl' ? 'girl' : 'boy';
                 adminClothingLevel.value = String(item.requiredLevel || 1);
                 adminClothingPrice.value = String(item.price || 0);
+                const animation = normalizeClothingAnimation(item.animation || {});
+                adminClothingAnimationColumns.value = String(animation.columns);
+                adminClothingAnimationRows.value = String(animation.rows);
+                adminClothingAnimationFrames.value = String(animation.frames);
+                adminClothingAnimationFps.value = String(animation.fps);
                 const transform = item.transform || {};
                 adminClothingX.value = String(transform.x || 0);
                 adminClothingY.value = String(transform.y || 0);
@@ -4372,6 +4478,8 @@
                     return;
                 }
                 try {
+                    const animationError = getAdminClothingAnimationError();
+                    if (animationError) throw new Error(animationError);
                     adminClothingStatus.textContent = 'Forbereder og uploader tøjdelen…';
                     if (!socket.connected) throw new Error('Forbindelsen er afbrudt. Prøv igen.');
                     const payload = {
@@ -4389,7 +4497,8 @@
                         scaleX: Number(adminClothingScaleX.value) / 100,
                         scaleY: Number(adminClothingScaleY.value) / 100,
                         skewX: Number(adminClothingSkewX.value),
-                        skewY: Number(adminClothingSkewY.value)
+                        skewY: Number(adminClothingSkewY.value),
+                        animation: getAdminClothingAnimation()
                     };
                     if (isEditing) payload.id = adminClothingEditingId;
                     else payload.username = adminClothingUsername.value;
@@ -4947,7 +5056,7 @@
                         button.disabled = locked;
                         button.title = locked ? `Kræver level ${item.requiredLevel}. Du er level ${wardrobeLevel}.` : item.description || '';
                         const image = document.createElement('img');
-                        image.src = item.imageUrl;
+                        setClothingThumbnail(image, item);
                         image.alt = '';
                         const details = document.createElement('span');
                         const name = document.createElement('strong');
@@ -5035,7 +5144,7 @@
                     row.setAttribute('role', 'listitem');
                     const image = document.createElement('img');
                     image.className = 'admin-clothing-thumb';
-                    image.src = item.imageUrl || `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.imageVersion || 1}`;
+                    setClothingThumbnail(image, item);
                     image.alt = '';
                     const details = document.createElement('div');
                     details.className = 'admin-clothing-meta';
@@ -5189,7 +5298,7 @@
                     row.setAttribute('role', 'listitem');
                     const image = document.createElement('img');
                     image.className = 'admin-clothing-thumb';
-                    image.src = item.imageUrl;
+                    setClothingThumbnail(image, item);
                     image.alt = '';
                     const details = document.createElement('div');
                     details.className = 'admin-clothing-meta';
@@ -5373,7 +5482,7 @@
                     card.className = 'shop-item';
                     card.setAttribute('role', 'listitem');
                     const image = document.createElement('img');
-                    image.src = selected.imageUrl;
+                    setClothingThumbnail(image, selected);
                     image.alt = selected.name || '';
                     const details = document.createElement('div');
                     details.className = 'shop-item-details';
@@ -5384,7 +5493,7 @@
                     description.className = 'shop-variant-description';
                     const updateVariantDetails = () => {
                         meta.textContent = `Level ${selected.requiredLevel} · ${Number(selected.price).toLocaleString('da-DK')} mønter${selected.variantLabel ? ` · ${selected.variantLabel}` : ''}`;
-                        image.src = selected.imageUrl;
+                        setClothingThumbnail(image, selected);
                         image.alt = selected.name || '';
                         name.textContent = variants.length > 1 ? selected.variantGroup : selected.name;
                         description.textContent = selected.description || '';
@@ -6107,8 +6216,13 @@
             function getBoardFramePlan(now) {
                 let animate = false;
                 let nextAt = Infinity;
+                let clothingFps = 0;
                 if (isAdminInvisible) nextAt = now + 60;
                 for (const player of Object.values(players)) {
+                    for (const item of Array.isArray(player.clothing) ? player.clothing : []) {
+                        const animation = normalizeClothingAnimation(item.animation);
+                        if (animation.frames > 1) clothingFps = Math.max(clothingFps, animation.fps);
+                    }
                     if (!player.text || !player.messageTime || isMutedPlayer(player)) continue;
                     const expiresAt = player.messageTime + messageDuration;
                     const remaining = expiresAt - now;
@@ -6125,6 +6239,18 @@
                     else if (elapsed < 0) nextAt = Math.min(nextAt, sentAt);
                     else nextAt = Math.min(nextAt, whisper.expiresAt - 900);
                 }
+                if (activeSidePanel === 'wardrobe' && !wardrobePanel.hidden) {
+                    for (const item of wardrobeItems) {
+                        if (!wardrobeDraftIds.has(String(item.id))) continue;
+                        const animation = normalizeClothingAnimation(item.animation);
+                        if (animation.frames > 1) clothingFps = Math.max(clothingFps, animation.fps);
+                    }
+                }
+                if (!adminClothingView.hidden && adminClothingPreviewImage?.naturalWidth) {
+                    const animation = getAdminClothingAnimation();
+                    if (animation.frames > 1) clothingFps = Math.max(clothingFps, animation.fps);
+                }
+                if (clothingFps > 0) nextAt = Math.min(nextAt, now + 1000 / clothingFps);
                 return { animate, nextAt };
             }
 
@@ -6133,6 +6259,8 @@
                 boardRenderTimer = null;
                 if (document.hidden || gameSection.classList.contains('hidden')) return;
                 drawBoard();
+                if (activeSidePanel === 'wardrobe' && !wardrobePanel.hidden) drawWardrobeAvatarPreview();
+                if (!adminClothingView.hidden && adminClothingPreviewImage?.naturalWidth) drawAdminClothingPreview();
                 const framePlan = getBoardFramePlan(Date.now());
                 if (framePlan.animate) {
                     animationFrame = requestAnimationFrame(gameLoop);
