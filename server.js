@@ -298,6 +298,11 @@ local encoded = redis.call('HGET', KEYS[1], ARGV[1])
 if not encoded then return false end
 local player = cjson.decode(encoded)
 player.clothing = cjson.decode(ARGV[2])
+local now = tonumber(ARGV[3])
+if not player.lastSeen then player.lastSeen = now end
+if not player.lastActivityAt then player.lastActivityAt = now end
+if not player.joinedAt then player.joinedAt = now end
+if player.invisible == nil then player.invisible = ARGV[4] == '1' end
 redis.call('HSET', KEYS[1], ARGV[1], cjson.encode(player))
 return cjson.encode(player)
 `;
@@ -319,9 +324,14 @@ const KICK_IDLE_PLAYERS_SCRIPT = `
 local removed = {}
 local entries = redis.call('HGETALL', KEYS[1])
 local cutoff = tonumber(ARGV[1])
+local now = tonumber(ARGV[2])
 for index = 1, #entries, 2 do
     local id = entries[index]
     local player = cjson.decode(entries[index + 1])
+    if not player.lastSeen then player.lastSeen = now end
+    if not player.lastActivityAt then player.lastActivityAt = now end
+    if not player.joinedAt then player.joinedAt = now end
+    if player.invisible == nil then player.invisible = false end
     local lastActivityAt = tonumber(player.lastActivityAt or player.joinedAt or player.lastSeen or 0)
     if lastActivityAt < cutoff then
         local cell = player.col .. ':' .. player.row
@@ -330,6 +340,8 @@ for index = 1, #entries, 2 do
         end
         redis.call('HDEL', KEYS[1], id)
         table.insert(removed, id)
+    else
+        redis.call('HSET', KEYS[1], id, cjson.encode(player))
     end
 end
 return removed
@@ -382,9 +394,14 @@ const CLEAN_STALE_PLAYERS_SCRIPT = `
 local removed = {}
 local entries = redis.call('HGETALL', KEYS[1])
 local cutoff = tonumber(ARGV[1])
+local now = tonumber(ARGV[2])
 for index = 1, #entries, 2 do
     local id = entries[index]
     local player = cjson.decode(entries[index + 1])
+    if not player.lastSeen then player.lastSeen = now end
+    if not player.lastActivityAt then player.lastActivityAt = now end
+    if not player.joinedAt then player.joinedAt = now end
+    if player.invisible == nil then player.invisible = false end
     if tonumber(player.lastSeen or 0) < cutoff then
         local cell = player.col .. ':' .. player.row
         if redis.call('HGET', KEYS[2], cell) == id then
@@ -392,6 +409,8 @@ for index = 1, #entries, 2 do
         end
         redis.call('HDEL', KEYS[1], id)
         table.insert(removed, id)
+    else
+        redis.call('HSET', KEYS[1], id, cjson.encode(player))
     end
 end
 
@@ -1916,9 +1935,10 @@ async function startServer() {
         let removedAnyPlayers = false;
         for (const currentRoomId of roomIds) {
             const keys = roomKeys(currentRoomId);
+            const now = Date.now();
             const removedIds = await redis.eval(CLEAN_STALE_PLAYERS_SCRIPT, {
                 keys: [keys.players, keys.cells],
-                arguments: [String(Date.now() - PRESENCE_EXPIRY)]
+                arguments: [String(now - PRESENCE_EXPIRY), String(now)]
             });
             for (const id of removedIds) {
                 removedAnyPlayers = true;
@@ -1977,9 +1997,10 @@ async function startServer() {
         let removedAnyPlayers = false;
         for (const roomId of await getAllRoomIds()) {
             const keys = roomKeys(roomId);
+            const now = Date.now();
             const removedIds = await redis.eval(KICK_IDLE_PLAYERS_SCRIPT, {
                 keys: [keys.players, keys.cells],
-                arguments: [String(Date.now() - PLAYER_IDLE_TIMEOUT)]
+                arguments: [String(now - PLAYER_IDLE_TIMEOUT), String(now)]
             });
             for (const id of removedIds) {
                 removedAnyPlayers = true;
@@ -2093,20 +2114,26 @@ async function startServer() {
             clothingByName.set(row.username_normalized, clothing);
         }
 
-        const roomPlayersKey = roomKeys(roomId).players;
         await Promise.all(Object.entries(players).map(async ([playerId, player]) => {
             const username = normalizeUsername(player.name)?.normalized;
             const clothing = username ? (clothingByName.get(username) || []) : [];
             player.clothing = clothing;
-            await redis.hSet(roomPlayersKey, playerId, JSON.stringify({ ...player, clothing }));
+            const repairedPlayer = await redis.eval(UPDATE_PLAYER_CLOTHING_SCRIPT, {
+                keys: [roomKeys(roomId).players],
+                arguments: [playerId, JSON.stringify(clothing), String(Date.now()), invisibleSocketIds.has(playerId) ? '1' : '0']
+            });
+            if (repairedPlayer) Object.assign(player, publicPlayer(JSON.parse(repairedPlayer)));
         }));
         return players;
     }
 
     async function getPlayers(roomId = 'common', viewerSocket = null, refreshClothing = false) {
+        if (refreshClothing) {
+            const playersBeforeRefresh = getPublicPlayers(await redis.hGetAll(roomKeys(roomId).players));
+            await refreshRoomPlayersClothing(roomId, playersBeforeRefresh);
+        }
         await cleanupStalePlayers(roomId);
         const allPlayers = getPublicPlayers(await redis.hGetAll(roomKeys(roomId).players));
-        if (refreshClothing) await refreshRoomPlayersClothing(roomId, allPlayers);
         if (!viewerSocket || canSeeInvisibleUser(viewerSocket)) return allPlayers;
         for (const socketId of invisibleSocketIds) delete allPlayers[socketId];
         return allPlayers;
@@ -2178,7 +2205,7 @@ async function startServer() {
             const keys = roomKeys(roomId);
             const updated = await redis.eval(UPDATE_PLAYER_CLOTHING_SCRIPT, {
                 keys: [keys.players],
-                arguments: [socketId, JSON.stringify(clothing)]
+                arguments: [socketId, JSON.stringify(clothing), String(Date.now()), invisibleSocketIds.has(socketId) ? '1' : '0']
             });
             if (!updated) continue;
             await emitRoomEventForVisibleSender(roomId, 'player-clothing-updated', { id: socketId, clothing }, socketId);
