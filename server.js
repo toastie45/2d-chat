@@ -126,10 +126,21 @@ const PLAYER_JOIN_SCRIPT = `
 local existing = redis.call('HGET', KEYS[1], ARGV[1])
 if existing then
     local player = cjson.decode(existing)
+    local shouldBeInvisible = ARGV[6] == '1'
+    local previousCell = player.col .. ':' .. player.row
+    if shouldBeInvisible then
+        if redis.call('HGET', KEYS[2], previousCell) == ARGV[1] then
+            redis.call('HDEL', KEYS[2], previousCell)
+        end
+    else
+        local occupant = redis.call('HGET', KEYS[2], previousCell)
+        if not occupant or occupant == ARGV[1] then redis.call('HSET', KEYS[2], previousCell, ARGV[1]) end
+    end
     player.lastSeen = tonumber(ARGV[3])
     player.joinedAt = tonumber(player.joinedAt or ARGV[3])
     player.lastActivityAt = tonumber(player.lastActivityAt or ARGV[3])
     player.clothing = cjson.decode(ARGV[5])
+    player.invisible = shouldBeInvisible
     redis.call('HSET', KEYS[1], ARGV[1], cjson.encode(player))
     return cjson.encode(player)
 end
@@ -137,7 +148,9 @@ end
 local function tryJoin(cell)
     local tileState = redis.call('HGET', KEYS[3], cell)
     local isClosed = tileState == 'closed' or (tileState and string.sub(tileState, 1, 7) == 'closed|')
-    if redis.call('HEXISTS', KEYS[2], cell) == 0 and not isClosed then
+    local isInvisible = ARGV[6] == '1'
+    local occupant = redis.call('HGET', KEYS[2], cell)
+    if (isInvisible or not occupant) and not isClosed then
         local col, row = string.match(cell, '^([%-]?%d+):([%-]?%d+)$')
         local player = {
             id = ARGV[1],
@@ -145,6 +158,7 @@ local function tryJoin(cell)
             col = tonumber(col),
             row = tonumber(row),
             mood = ARGV[4],
+            invisible = isInvisible,
             clothing = cjson.decode(ARGV[5]),
             text = '',
             messageTime = 0,
@@ -153,14 +167,14 @@ local function tryJoin(cell)
             lastActivityAt = tonumber(ARGV[3])
         }
         redis.call('HSET', KEYS[1], ARGV[1], cjson.encode(player))
-        redis.call('HSET', KEYS[2], cell, ARGV[1])
+        if not isInvisible then redis.call('HSET', KEYS[2], cell, ARGV[1]) end
         return cjson.encode(player)
     end
     return false
 end
 
 -- In an apartment, prefer a designated door as the spawn point when available.
-for index = 6, #ARGV do
+for index = 7, #ARGV do
     local cell = ARGV[index]
     local tileState = redis.call('HGET', KEYS[3], cell)
     if tileState == 'door' or (tileState and string.sub(tileState, 1, 5) == 'door:') then
@@ -168,7 +182,7 @@ for index = 6, #ARGV do
         if player then return player end
     end
 end
-for index = 6, #ARGV do
+for index = 7, #ARGV do
     local player = tryJoin(ARGV[index])
     if player then return player end
 end
@@ -184,7 +198,8 @@ local nextCell = ARGV[2] .. ':' .. ARGV[3]
 local tileState = redis.call('HGET', KEYS[3], nextCell)
 if tileState == 'closed' or (tileState and string.sub(tileState, 1, 7) == 'closed|') then return false end
 local occupant = redis.call('HGET', KEYS[2], nextCell)
-if occupant and occupant ~= ARGV[1] then return false end
+local invisible = player.invisible == true
+if not invisible and occupant and occupant ~= ARGV[1] then return false end
 
 local previousCell = player.col .. ':' .. player.row
 if previousCell ~= nextCell and redis.call('HGET', KEYS[2], previousCell) == ARGV[1] then
@@ -196,8 +211,50 @@ player.row = tonumber(ARGV[3])
 player.lastSeen = tonumber(ARGV[4])
 player.lastActivityAt = tonumber(ARGV[4])
 redis.call('HSET', KEYS[1], ARGV[1], cjson.encode(player))
-redis.call('HSET', KEYS[2], nextCell, ARGV[1])
+if not invisible then redis.call('HSET', KEYS[2], nextCell, ARGV[1]) end
 return cjson.encode(player)
+`;
+
+const PLAYER_VISIBILITY_SCRIPT = `
+local encoded = redis.call('HGET', KEYS[1], ARGV[1])
+if not encoded then return false end
+local player = cjson.decode(encoded)
+local previousCell = player.col .. ':' .. player.row
+
+if ARGV[2] == 'hide' then
+    if redis.call('HGET', KEYS[2], previousCell) == ARGV[1] then
+        redis.call('HDEL', KEYS[2], previousCell)
+    end
+    player.invisible = true
+    player.lastActivityAt = tonumber(ARGV[3])
+    player.lastSeen = tonumber(ARGV[3])
+    redis.call('HSET', KEYS[1], ARGV[1], cjson.encode(player))
+    return cjson.encode(player)
+end
+
+for index = 4, #ARGV, 2 do
+    local col = tonumber(ARGV[index])
+    local row = tonumber(ARGV[index + 1])
+    local cell = ARGV[index] .. ':' .. ARGV[index + 1]
+    local tileState = redis.call('HGET', KEYS[3], cell)
+    local isClosed = tileState == 'closed' or (tileState and string.sub(tileState, 1, 7) == 'closed|')
+    local occupant = redis.call('HGET', KEYS[2], cell)
+    if not isClosed and (not occupant or occupant == ARGV[1]) then
+        if redis.call('HGET', KEYS[2], previousCell) == ARGV[1] then
+            redis.call('HDEL', KEYS[2], previousCell)
+        end
+        player.invisible = false
+        player.col = col
+        player.row = row
+        player.lastActivityAt = tonumber(ARGV[3])
+        player.lastSeen = tonumber(ARGV[3])
+        redis.call('HSET', KEYS[1], ARGV[1], cjson.encode(player))
+        redis.call('HSET', KEYS[2], cell, ARGV[1])
+        return cjson.encode(player)
+    end
+end
+
+return false
 `;
 
 const UPDATE_PLAYER_CLOTHING_SCRIPT = `
@@ -512,6 +569,8 @@ async function startServer() {
     const activeSocketRooms = new Map();
     const activeSocketUsers = new Map();
     const invisibleSocketIds = new Set();
+    const canSeeInvisibleUser = (socket) => Boolean(socket?.data?.isAdmin
+        || socket?.data?.canManagePublicRooms || socket?.data?.canManageClothing);
     const roomChannel = (roomId) => `chatroom:${roomId}`;
     const roomKeys = (roomId) => ({
         players: `chat:${roomId}:players`,
@@ -580,7 +639,7 @@ async function startServer() {
                 const recipient = io.sockets.sockets.get(socketId);
                 if (!recipient) continue;
                 recipient.emit('chat-online-count', {
-                    count: recipient.data.isAdmin ? count : Math.max(0, count - invisibleSocketIds.size)
+                    count: Math.max(0, count - invisibleSocketIds.size)
                 });
             }
             return count;
@@ -1750,7 +1809,7 @@ async function startServer() {
     async function getPlayers(roomId = 'common', viewerSocket = null) {
         await cleanupStalePlayers(roomId);
         const allPlayers = getPublicPlayers(await redis.hGetAll(roomKeys(roomId).players));
-        if (!viewerSocket || viewerSocket.data.isAdmin) return allPlayers;
+        if (!viewerSocket || canSeeInvisibleUser(viewerSocket)) return allPlayers;
         for (const socketId of invisibleSocketIds) delete allPlayers[socketId];
         return allPlayers;
     }
@@ -1762,7 +1821,7 @@ async function startServer() {
         }
         const recipients = await io.in(roomChannel(roomId)).fetchSockets();
         for (const recipient of recipients) {
-            if (recipient.id === player.id || recipient.data.isAdmin) recipient.emit(eventName, player);
+            if (recipient.id === player.id || canSeeInvisibleUser(recipient)) recipient.emit(eventName, player);
         }
     }
 
@@ -1773,7 +1832,7 @@ async function startServer() {
         }
         const recipients = await io.in(roomChannel(roomId)).fetchSockets();
         for (const recipient of recipients) {
-            if (recipient.id === senderSocketId || recipient.data.isAdmin) recipient.emit(eventName, payload);
+            if (recipient.id === senderSocketId || canSeeInvisibleUser(recipient)) recipient.emit(eventName, payload);
         }
     }
 
@@ -1970,6 +2029,7 @@ async function startServer() {
             arguments: [socket.id, socket.data.user.username, String(Date.now()),
                 socket.data.mood || 'glad',
                 JSON.stringify(clothing),
+                invisibleSocketIds.has(socket.id) ? '1' : '0',
                 ...GRID_CELLS.map((cell) => `${cell.col}:${cell.row}`)]
         });
         if (!joined) return null;
@@ -2064,18 +2124,42 @@ async function startServer() {
                 const keys = roomKeys(roomId);
                 const encodedPlayer = await redis.hGet(keys.players, socket.id);
                 if (!encodedPlayer) return;
-                const player = publicPlayer(JSON.parse(encodedPlayer));
                 const invisible = !invisibleSocketIds.has(socket.id);
                 if (invisible) {
+                    const hiddenPlayer = await redis.eval(PLAYER_VISIBILITY_SCRIPT, {
+                        keys: [keys.players, keys.cells, keys.tiles],
+                        arguments: [socket.id, 'hide', String(Date.now())]
+                    });
+                    if (!hiddenPlayer) return;
                     invisibleSocketIds.add(socket.id);
                     const recipients = await io.in(roomChannel(roomId)).fetchSockets();
                     for (const recipient of recipients) {
-                        if (recipient.id !== socket.id && !recipient.data.isAdmin) {
+                        if (recipient.id !== socket.id && !canSeeInvisibleUser(recipient)) {
                             recipient.emit('playerDisconnected', socket.id);
                         }
                     }
                 } else {
+                    const currentPlayer = JSON.parse(encodedPlayer);
+                    const candidates = GRID_CELLS.slice().sort((first, second) => {
+                        const firstDistance = Math.max(Math.abs(first.col - currentPlayer.col), Math.abs(first.row - currentPlayer.row));
+                        const secondDistance = Math.max(Math.abs(second.col - currentPlayer.col), Math.abs(second.row - currentPlayer.row));
+                        return firstDistance - secondDistance
+                            || Math.abs(first.col - currentPlayer.col) + Math.abs(first.row - currentPlayer.row)
+                            - Math.abs(second.col - currentPlayer.col) - Math.abs(second.row - currentPlayer.row);
+                    });
+                    const visiblePlayerJson = await redis.eval(PLAYER_VISIBILITY_SCRIPT, {
+                        keys: [keys.players, keys.cells, keys.tiles],
+                        arguments: [socket.id, 'show', String(Date.now()), ...candidates.flatMap((cell) => [String(cell.col), String(cell.row)])]
+                    });
+                    if (!visiblePlayerJson) {
+                        socket.emit('admin-invisibility-result', {
+                            invisible: true,
+                            message: 'Der er ikke plads til at blive synlig. Prøv igen, når et felt er ledigt.'
+                        });
+                        return;
+                    }
                     invisibleSocketIds.delete(socket.id);
+                    const player = publicPlayer(JSON.parse(visiblePlayerJson));
                     socket.to(roomChannel(roomId)).emit('newPlayer', { ...player, text: '', messageTime: 0 });
                     socket.emit('admin-invisibility-state', { invisible: false });
                     socket.emit('admin-invisibility-result', { invisible: false, message: 'Du er synlig for andre igen.' });
@@ -3056,8 +3140,10 @@ async function startServer() {
                             socketId: session?.socket_id || null,
                             userId: account.user_id,
                             username: account.username,
-                            roomName: session ? 'Online' : 'Offline',
-                            isOnline: Boolean(session),
+                            roomName: session && invisibleSocketIds.has(session.socket_id) ? 'Offline · usynlig' : session ? 'Online' : 'Offline',
+                            isOnline: Boolean(session && !invisibleSocketIds.has(session.socket_id)),
+                            isConnected: Boolean(session),
+                            isInvisible: Boolean(session && invisibleSocketIds.has(session.socket_id)),
                             hasKnownIp: Boolean(session?.ip_hash || account.has_known_ip),
                             ipSource: session?.ip_hash ? 'aktuel IP' : account.has_last_login_ip ? 'seneste login' : account.has_registration_ip ? 'oprettelses-IP' : '',
                             isSelf: account.user_id === String(socket.data.user.id)
@@ -3081,8 +3167,10 @@ async function startServer() {
                             userId: onlineSession?.user_id || String(activeSocketUsers.get(socketId) || ''),
                             username: onlineSession?.username || player.name,
                             roomId,
-                            roomName: roomNames.get(roomId) || 'Ukendt rum',
-                            isOnline: true,
+                            roomName: invisibleSocketIds.has(socketId) ? 'Offline · usynlig' : roomNames.get(roomId) || 'Ukendt rum',
+                            isOnline: !invisibleSocketIds.has(socketId),
+                            isConnected: true,
+                            isInvisible: invisibleSocketIds.has(socketId),
                             hasKnownIp: Boolean(onlineSession?.ip_hash),
                             isSelf: String(onlineSession?.user_id || activeSocketUsers.get(socketId) || '') === String(socket.data.user.id)
                         });
@@ -3770,9 +3858,8 @@ async function startServer() {
                 for (const apartment of apartments) {
                     const id = `apartment:${apartment.id}`;
                     const roomPlayers = await redis.hGetAll(roomKeys(id).players);
-                    const presentCount = socket.data.isAdmin
-                        ? Object.keys(roomPlayers).length
-                        : Object.keys(roomPlayers).filter((playerId) => !invisibleSocketIds.has(playerId)).length;
+                    const presentCount = Object.keys(roomPlayers)
+                        .filter((playerId) => !invisibleSocketIds.has(playerId)).length;
                     rooms.push({
                         id,
                         name: getApartmentRoomName(apartment),
@@ -3815,7 +3902,7 @@ async function startServer() {
                     }
                 }
                 const users = sessions
-                    .filter((session) => socket.data.isAdmin || !invisibleSocketIds.has(session.socket_id))
+                    .filter((session) => !invisibleSocketIds.has(session.socket_id))
                     .map((session) => {
                     const roomId = roomBySocketId.get(session.socket_id) || null;
                     const isPrivate = Boolean(roomId && hiddenRoomIds.has(roomId) && !socket.data.isAdmin);
@@ -4213,7 +4300,7 @@ async function startServer() {
 
             const targetEntry = [...activeSocketUsers.entries()].find(([targetId, onlineUserId]) =>
                 String(onlineUserId) === String(targetUserId) && activeSocketIds.has(targetId)
-                    && (socket.data.isAdmin || !invisibleSocketIds.has(targetId))
+                    && !invisibleSocketIds.has(targetId)
             );
             const targetSocketId = targetEntry?.[0];
             const targetSocket = targetSocketId ? io.sockets.sockets.get(targetSocketId) : null;
@@ -4301,7 +4388,7 @@ async function startServer() {
                 }
                 const online = [...activeSocketUsers.entries()].some(([onlineSocketId, onlineUserId]) =>
                     String(onlineUserId) === String(profile.id) && activeSocketIds.has(onlineSocketId)
-                        && (socket.data.isAdmin || !invisibleSocketIds.has(onlineSocketId))
+                        && !invisibleSocketIds.has(onlineSocketId)
                 );
                 const { rows: [relationship] } = await pool.query(
                     'SELECT relationship FROM chat_profile_relationships WHERE user_id = $1 AND target_user_id = $2',
@@ -4943,6 +5030,7 @@ async function startServer() {
                     String(Date.now()),
                     socket.data.mood || 'glad',
                     JSON.stringify(clothing),
+                    '0',
                     ...GRID_CELLS.map((cell) => `${cell.col}:${cell.row}`)
                 ];
                 const joinedPlayerJson = await redis.eval(PLAYER_JOIN_SCRIPT, {
@@ -5109,8 +5197,8 @@ async function startServer() {
             try {
                 const keys = roomKeys(socket.data.roomId || 'common');
                 const targetSocket = io.sockets.sockets.get(targetPlayerId);
-                if ((invisibleSocketIds.has(socket.id) && !targetSocket?.data.isAdmin)
-                    || (invisibleSocketIds.has(targetPlayerId) && !socket.data.isAdmin)) {
+                if ((invisibleSocketIds.has(socket.id) && !canSeeInvisibleUser(targetSocket))
+                    || (invisibleSocketIds.has(targetPlayerId) && !canSeeInvisibleUser(socket))) {
                     socket.emit('private-whisper-error', { message: 'Hvisk er ikke tilgængelig, mens en deltager er usynlig.' });
                     return;
                 }

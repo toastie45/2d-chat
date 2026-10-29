@@ -4956,10 +4956,10 @@
                     bring.className = 'admin-row-button';
                     bring.type = 'button';
                     bring.textContent = 'Hent';
-                    bring.disabled = !user.isOnline || Boolean(user.isSelf);
-                    bring.title = user.isSelf ? 'Du er allerede her' : !user.isOnline ? 'Brugeren skal være online for at blive hentet' : `Hent ${user.username} til dit rum`;
+                    bring.disabled = !(user.isConnected ?? user.isOnline) || Boolean(user.isSelf);
+                    bring.title = user.isSelf ? 'Du er allerede her' : !(user.isConnected ?? user.isOnline) ? 'Brugeren skal være online for at blive hentet' : `Hent ${user.username} til dit rum`;
                     bring.addEventListener('click', () => {
-                        if (!user.isOnline || user.isSelf) return;
+                        if (!(user.isConnected ?? user.isOnline) || user.isSelf) return;
                         if (!window.confirm(`Vil du hente ${user.username} til dit rum?`)) return;
                         adminUsersStatus.textContent = `Henter ${user.username}…`;
                         socket.emit('admin-user-bring', { targetSocketId: user.socketId });
@@ -4968,8 +4968,8 @@
                     kick.className = 'admin-row-button';
                     kick.type = 'button';
                     kick.textContent = 'Kick';
-                    kick.disabled = !user.isOnline || Boolean(user.isSelf);
-                    kick.title = user.isSelf ? 'Du kan ikke kicke din egen bruger' : !user.isOnline ? 'Brugeren er offline' : `Kick ${user.username}`;
+                    kick.disabled = !(user.isConnected ?? user.isOnline) || Boolean(user.isSelf);
+                    kick.title = user.isSelf ? 'Du kan ikke kicke din egen bruger' : !(user.isConnected ?? user.isOnline) ? 'Brugeren er offline' : `Kick ${user.username}`;
                     kick.addEventListener('click', () => {
                         if (!window.confirm(`Vil du kicke ${user.username}?`)) return;
                         adminUsersStatus.textContent = `Kicker ${user.username}…`;
@@ -4984,7 +4984,7 @@
                         ? 'Du kan ikke banne din egen bruger'
                         : !user.hasKnownIp
                             ? 'Der er ingen kendt IP-adresse for brugeren endnu'
-                            : `Ban ${user.username}${user.isOnline ? '' : ` via ${user.ipSource || 'senest kendte IP'}`}`;
+                            : `Ban ${user.username}${(user.isConnected ?? user.isOnline) ? '' : ` via ${user.ipSource || 'senest kendte IP'}`}`;
                     ban.addEventListener('click', () => {
                         if (user.isSelf || !user.hasKnownIp) return;
                         pendingAdminBanTarget = { userId: user.userId, socketId: user.socketId };
@@ -5332,6 +5332,25 @@
                     const visualWidth = avatarImageLoaded ? avatarWidth : avatarRadius * 2;
                     const avatarY = getAvatarDrawY(position);
 
+                    const isGhosting = player.id === myId && isAdminInvisible;
+                    if (isGhosting) {
+                        const pulse = 0.5 + 0.5 * Math.sin(now / 360);
+                        ctx.save();
+                        ctx.translate(position.x, avatarY);
+                        ctx.rotate(now / 1800);
+                        ctx.globalAlpha = 0.18 + pulse * 0.2;
+                        ctx.strokeStyle = '#c1f078';
+                        ctx.lineWidth = 1.4;
+                        ctx.setLineDash([4, 5]);
+                        ctx.beginPath();
+                        ctx.ellipse(0, 0, visualWidth * 0.47, visualHeight * 0.48, 0, 0, Math.PI * 2);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+
+                    ctx.save();
+                    if (isGhosting) ctx.globalAlpha = 0.38 + (0.18 * (0.5 + 0.5 * Math.sin(now / 360)));
+
                     ctx.save();
                     ctx.globalAlpha = 0.16;
                     ctx.beginPath();
@@ -5418,6 +5437,7 @@
                         ctx.stroke();
                         ctx.restore();
                     }
+                    ctx.restore();
 
                 }
 
@@ -5571,6 +5591,7 @@
             function getBoardFramePlan(now) {
                 let animate = false;
                 let nextAt = Infinity;
+                if (isAdminInvisible) nextAt = now + 60;
                 for (const player of Object.values(players)) {
                     if (!player.text || !player.messageTime || isMutedPlayer(player)) continue;
                     const expiresAt = player.messageTime + messageDuration;
@@ -6671,6 +6692,7 @@
             socket.on('admin-invisibility-state', ({ invisible } = {}) => {
                 isAdminInvisible = invisible === true;
                 if (contextPlayerId === myId) updateAvatarContextMute();
+                requestBoardRender();
             });
             socket.on('admin-invisibility-result', ({ message } = {}) => {
                 if (!message) return;
