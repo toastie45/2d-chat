@@ -697,6 +697,7 @@ async function startServer() {
     `);
     await pool.query('ALTER TABLE chat_clothing_catalog DROP CONSTRAINT IF EXISTS chat_clothing_catalog_category_check');
     await pool.query("ALTER TABLE chat_clothing_catalog ADD CONSTRAINT chat_clothing_catalog_category_check CHECK (category IN ('headwear', 'hair', 'beard', 'glasses', 'clothing', 'left_hand', 'right_hand', 'accessory'))");
+    await pool.query('ALTER TABLE chat_clothing_catalog ADD COLUMN IF NOT EXISTS image_version BIGINT NOT NULL DEFAULT 1');
     await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_clothing_assignments (
             id BIGSERIAL PRIMARY KEY,
@@ -1727,7 +1728,7 @@ async function startServer() {
 
     async function getUserClothing(userId) {
         const { rows } = await pool.query(`
-            SELECT item.id, item.name, item.category, item.transform_json
+            SELECT item.id, item.name, item.category, item.image_version, item.transform_json
             FROM chat_clothing_assignments assignment
             JOIN chat_clothing_catalog item ON item.id = assignment.clothing_item_id
             WHERE assignment.target_user_id = $1 AND assignment.is_equipped = TRUE ORDER BY item.id
@@ -1738,7 +1739,7 @@ async function startServer() {
                 id: String(item.id),
                 name: item.name,
                 category: item.category,
-                imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image`,
+                imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.image_version || 1}`,
                 x: transform.x,
                 y: transform.y,
                 rotation: transform.rotation,
@@ -2024,7 +2025,7 @@ async function startServer() {
             const [catalogResult, assignmentResult] = await Promise.all([
                 pool.query(`
                     SELECT item.id, item.name, item.description, item.category, item.required_level, item.price,
-                           item.transform_json, item.created_at, COUNT(assignment.id)::integer AS assignment_count
+                           item.transform_json, item.image_version, item.created_at, COUNT(assignment.id)::integer AS assignment_count
                     FROM chat_clothing_catalog item
                     LEFT JOIN chat_clothing_assignments assignment ON assignment.clothing_item_id = item.id
                     GROUP BY item.id ORDER BY item.created_at DESC, item.id DESC LIMIT 200
@@ -2033,7 +2034,7 @@ async function startServer() {
                     SELECT assignment.id AS assignment_id, item.id AS item_id,
                            assignment.target_user_id::text AS target_user_id, target.username AS target_username,
                            item.name, item.description, item.category, item.required_level, item.price,
-                           item.transform_json, assignment.assigned_at
+                           item.transform_json, item.image_version, assignment.assigned_at
                     FROM chat_clothing_assignments assignment
                     JOIN chat_clothing_catalog item ON item.id = assignment.clothing_item_id
                     JOIN chat_users target ON target.id = assignment.target_user_id
@@ -2043,6 +2044,8 @@ async function startServer() {
             const mapItem = (item) => ({
                 id: String(item.id), name: item.name, description: item.description, category: item.category,
                 requiredLevel: Number(item.required_level), price: Number(item.price),
+                imageVersion: Number(item.image_version || 1),
+                imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.image_version || 1}`,
                 transform: normalizeClothingTransform(item.transform_json)
             });
             socket.emit('admin-clothing-items', {
@@ -2097,6 +2100,66 @@ async function startServer() {
                 socket.emit('admin-clothing-action-result',{success:true,action:'create',message:target?(name+' blev gemt og lagt i '+target.username+'s tojskab.'):name+' blev gemt i tojkataloget.'});
                 await sendAdminClothingItems();
             }catch(error){console.error('Could not create clothing item:',getSafeErrorCode(error));socket.emit('admin-clothing-action-result',{success:false,message:'T?jdelen kunne ikke gemmes.'});}
+        });
+
+        socket.on('admin-clothing-item-update', async (payload = {}) => {
+            if (!socket.data.canManageClothing || !activeSocketIds.has(socket.id)) return;
+            const id = typeof payload.id === 'string' && /^[1-9]\d{0,18}$/.test(payload.id) ? payload.id : '';
+            const name = typeof payload.name === 'string' ? payload.name.normalize('NFKC').trim() : '';
+            const description = typeof payload.description === 'string' ? payload.description.normalize('NFKC').trim() : '';
+            const category = payload.category;
+            const requiredLevel = Number(payload.requiredLevel), price = Number(payload.price);
+            const x = Number(payload.x), y = Number(payload.y), rotation = Number(payload.rotation), scale = Number(payload.scale);
+            const scaleX = Number(payload.scaleX ?? 1), scaleY = Number(payload.scaleY ?? 1);
+            const skewX = Number(payload.skewX ?? 0), skewY = Number(payload.skewY ?? 0);
+            const image = Buffer.isBuffer(payload.image) ? payload.image
+                : payload.image instanceof Uint8Array ? Buffer.from(payload.image) : null;
+            const hasImage = payload.image != null;
+            const isPng = image && image.length >= 8 && image.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+            const isWebp = image && image.length >= 12 && image.toString('ascii', 0, 4) === 'RIFF' && image.toString('ascii', 8, 12) === 'WEBP';
+            const validTransform = Number.isFinite(x) && x >= -270 && x <= 270
+                && Number.isFinite(y) && y >= -180 && y <= 180
+                && Number.isFinite(rotation) && rotation >= -180 && rotation <= 180
+                && Number.isFinite(scale) && scale >= 0.25 && scale <= 3
+                && Number.isFinite(scaleX) && scaleX >= 0.25 && scaleX <= 3
+                && Number.isFinite(scaleY) && scaleY >= 0.25 && scaleY <= 3
+                && Number.isFinite(skewX) && skewX >= -45 && skewX <= 45
+                && Number.isFinite(skewY) && skewY >= -45 && skewY <= 45;
+            if (!id || !name || name.length > 60 || /[\u0000-\u001f\u007f]/.test(name)
+                || description.length > 300 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(description)
+                || !['headwear', 'hair', 'beard', 'glasses', 'clothing', 'left_hand', 'right_hand', 'accessory'].includes(category)
+                || !Number.isInteger(requiredLevel) || requiredLevel < 1 || requiredLevel > 20
+                || !Number.isInteger(price) || price < 0 || price > 100000000 || !validTransform
+                || (hasImage && (!image || image.length > 950000 || (!isPng && !isWebp)))) {
+                socket.emit('admin-clothing-action-result', { success: false, message: 'Kontrollér oplysninger, placering og eventuelt PNG/WebP-billede (maks. 950 KB).' });
+                return;
+            }
+            try {
+                const { rows: [item] } = await pool.query(`
+                    UPDATE chat_clothing_catalog
+                    SET name = $2, description = $3, category = $4, required_level = $5, price = $6,
+                        transform_json = $7::jsonb,
+                        image = COALESCE($8, image), mime_type = COALESCE($9, mime_type),
+                        image_version = image_version + CASE WHEN $8::bytea IS NULL THEN 0 ELSE 1 END
+                    WHERE id = $1
+                    RETURNING id
+                `, [id, name, description, category, requiredLevel, price,
+                    JSON.stringify({ x, y, rotation, scale, scaleX, scaleY, skewX, skewY }),
+                    image, isPng ? 'image/png' : isWebp ? 'image/webp' : null]);
+                if (!item) {
+                    socket.emit('admin-clothing-action-result', { success: false, message: 'Tøjdelen findes ikke længere.' });
+                    return;
+                }
+                const { rows: assignments } = await pool.query(
+                    'SELECT DISTINCT target_user_id::text AS user_id FROM chat_clothing_assignments WHERE clothing_item_id = $1', [id]
+                );
+                await Promise.all(assignments.map((assignment) => refreshOnlineUserClothing(assignment.user_id)));
+                socket.emit('admin-clothing-action-result', { success: true, action: 'update', message: `${name} blev opdateret.` });
+                await sendAdminClothingItems();
+            } catch (error) {
+                console.error('Could not update clothing item:', getSafeErrorCode(error));
+                socket.emit('admin-clothing-action-result', { success: false, message: 'Tøjdelen kunne ikke opdateres.' });
+            }
         });
 
         socket.on('admin-clothing-item-delete', async ({ id } = {}) => {
@@ -2185,7 +2248,7 @@ async function startServer() {
             const [{ rows }, totalOnlineMs, { rows: [progress] }] = await Promise.all([
                 pool.query(`
                     SELECT item.id, item.name, item.description, item.category, item.required_level, item.price,
-                           assignment.is_equipped, item.transform_json
+                           assignment.is_equipped, item.image_version, item.transform_json
                     FROM chat_clothing_assignments assignment
                     JOIN chat_clothing_catalog item ON item.id = assignment.clothing_item_id
                     WHERE assignment.target_user_id = $1 ORDER BY item.category, item.id
@@ -2203,7 +2266,7 @@ async function startServer() {
                     requiredLevel: Number(item.required_level),
                     price: Number(item.price),
                     equipped: item.is_equipped,
-                    imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image`,
+                    imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.image_version || 1}`,
                     ...normalizeClothingTransform(item.transform_json)
                 }))
             });

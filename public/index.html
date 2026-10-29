@@ -911,6 +911,8 @@
         .admin-clothing-preview-zoom { display: grid; width: 144px; grid-template-columns: 1fr auto; align-items: center; gap: 2px 6px; color: var(--muted); font-size: 9px; }
         .admin-clothing-preview-zoom input { grid-column: 1 / -1; width: 100%; min-height: 14px; padding: 0; accent-color: #a8c879; }
         .admin-clothing-preview-note { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+        .admin-clothing-form-actions { display: flex; gap: 8px; grid-column: 1 / -1; }
+        .admin-clothing-form-actions button { flex: 1; }
         .admin-clothing-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 8px; border: 1px solid #393b33; border-radius: 7px; background: #20211d; }
         .admin-clothing-thumb { width: 40px; height: 48px; object-fit: contain; border-radius: 4px; background: #10110f; }
         .admin-clothing-meta { display: grid; gap: 3px; min-width: 0; color: var(--muted); font-size: 9px; }
@@ -1825,7 +1827,7 @@
                                 <h3 class="visually-hidden" id="admin-clothing-title">Tøj og tilbehør</h3>
                                 <p class="admin-status">Gem hver t&oslash;jdel &eacute;n gang i kataloget. Tildel den nu eller senere uden at uploade eller indstille den igen.</p>
                                 <form class="admin-clothing-form" id="admin-clothing-form">
-                                    <label>Tildel straks til bruger (valgfrit)
+                                    <label id="admin-clothing-assignment-field">Tildel straks til bruger (valgfrit)
                                         <input id="admin-clothing-username" type="text" maxlength="18" autocomplete="off" placeholder="Tomt felt gemmer kun i kataloget">
                                     </label>
                                     <label>Navn på genstand
@@ -1846,8 +1848,8 @@
                                             <option value="accessory">Tilbehør</option>
                                         </select>
                                     </label>
-                                    <label>Billede (PNG/WebP, maks. 950 KB)
-                                        <input id="admin-clothing-image" type="file" accept="image/png,image/webp" required>
+                                    <label id="admin-clothing-image-field"><span>Billede (PNG/WebP, maks. 950 KB)</span>
+                                        <input id="admin-clothing-image" type="file" accept="image/png,image/webp">
                                     </label>
                                     <label>Levelkrav (1–20)
                                         <input id="admin-clothing-level" type="number" min="1" max="20" value="1" required>
@@ -1878,7 +1880,10 @@
                                         </div>
                                         <p class="admin-clothing-preview-note">Træk tøjet for at flytte det. Træk i hjørnerne for at strække, i sidehåndtagene for at skævvride og i håndtaget over tøjet for at dreje. Zoom ændrer kun visningen.</p>
                                     </div>
-                                    <button class="admin-row-button wide" id="admin-clothing-save" type="submit">Gem t&oslash;jdelen</button>
+                                    <div class="admin-clothing-form-actions">
+                                        <button class="admin-row-button" id="admin-clothing-save" type="submit">Gem t&oslash;jdelen</button>
+                                        <button class="admin-row-button" id="admin-clothing-cancel-edit" type="button" hidden>Annuller redigering</button>
+                                    </div>
                                     <p class="admin-status wide" id="admin-clothing-status" aria-live="polite"></p>
                                 </form>
                                 <h3 class="admin-subsection-title">Gemte t&oslash;jdele</h3>
@@ -2166,6 +2171,8 @@
             const adminClothingDescription = document.getElementById('admin-clothing-description');
             const adminClothingCategory = document.getElementById('admin-clothing-category');
             const adminClothingImageInput = document.getElementById('admin-clothing-image');
+            const adminClothingImageField = document.getElementById('admin-clothing-image-field');
+            const adminClothingAssignmentField = document.getElementById('admin-clothing-assignment-field');
             const adminClothingLevel = document.getElementById('admin-clothing-level');
             const adminClothingPrice = document.getElementById('admin-clothing-price');
             const adminClothingX = document.getElementById('admin-clothing-x');
@@ -2179,6 +2186,9 @@
             const adminClothingPreview = document.getElementById('admin-clothing-preview');
             const adminClothingPreviewZoom = document.getElementById('admin-clothing-preview-zoom');
             const adminClothingPreviewZoomValue = document.getElementById('admin-clothing-preview-zoom-value');
+            const adminClothingSaveButton = document.getElementById('admin-clothing-save');
+            const adminClothingCancelEditButton = document.getElementById('admin-clothing-cancel-edit');
+            let adminClothingEditingId = '';
             const adminClothingStatus = document.getElementById('admin-clothing-status');
             const adminClothingItems = document.getElementById('admin-clothing-items');
             const adminClothingCatalog = document.getElementById('admin-clothing-catalog');
@@ -3865,20 +3875,70 @@
                 }
             }
 
+            function resetAdminClothingForm(message = '') {
+                adminClothingEditingId = '';
+                adminClothingForm.reset();
+                adminClothingAssignmentField.hidden = false;
+                adminClothingImageField.querySelector('span').textContent = 'Billede (PNG/WebP, maks. 950 KB)';
+                adminClothingSaveButton.textContent = 'Gem tøjdelen';
+                adminClothingCancelEditButton.hidden = true;
+                adminClothingImageInput.value = '';
+                if (adminClothingPreviewUrl) URL.revokeObjectURL(adminClothingPreviewUrl);
+                adminClothingPreviewUrl = '';
+                adminClothingPreviewImage = null;
+                adminClothingPreviewZoomValue.value = `${adminClothingPreviewZoom.value}%`;
+                adminClothingPreviewZoomValue.textContent = `${adminClothingPreviewZoom.value}%`;
+                adminClothingStatus.textContent = message;
+                drawAdminClothingPreview();
+            }
+
+            function editAdminClothingItem(item) {
+                adminClothingEditingId = String(item.id);
+                adminClothingUsername.value = '';
+                adminClothingAssignmentField.hidden = true;
+                adminClothingName.value = item.name || '';
+                adminClothingDescription.value = item.description || '';
+                adminClothingCategory.value = item.category || 'clothing';
+                adminClothingLevel.value = String(item.requiredLevel || 1);
+                adminClothingPrice.value = String(item.price || 0);
+                const transform = item.transform || {};
+                adminClothingX.value = String(transform.x || 0);
+                adminClothingY.value = String(transform.y || 0);
+                adminClothingRotation.value = String(transform.rotation || 0);
+                adminClothingScale.value = String((Number(transform.scale) || 1) * 100);
+                adminClothingScaleX.value = String((Number(transform.scaleX) || 1) * 100);
+                adminClothingScaleY.value = String((Number(transform.scaleY) || 1) * 100);
+                adminClothingSkewX.value = String(transform.skewX || 0);
+                adminClothingSkewY.value = String(transform.skewY || 0);
+                adminClothingImageInput.value = '';
+                adminClothingImageField.querySelector('span').textContent = 'Erstat billede (valgfrit, PNG/WebP, maks. 950 KB)';
+                adminClothingSaveButton.textContent = 'Gem ændringer';
+                adminClothingCancelEditButton.hidden = false;
+                adminClothingStatus.textContent = `Redigerer ${item.name}. Lad billedfeltet være tomt for at beholde billedet.`;
+                if (adminClothingPreviewUrl) URL.revokeObjectURL(adminClothingPreviewUrl);
+                adminClothingPreviewUrl = '';
+                adminClothingPreviewImage = new Image();
+                adminClothingPreviewImage.addEventListener('load', drawAdminClothingPreview, { once: true });
+                adminClothingPreviewImage.addEventListener('error', () => {
+                    adminClothingStatus.textContent = 'Det gemte billede kunne ikke indlæses i previewet.';
+                }, { once: true });
+                adminClothingPreviewImage.src = item.imageUrl || `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.imageVersion || 1}`;
+                drawAdminClothingPreview();
+                adminClothingForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+
             async function submitAdminClothing(event) {
                 event.preventDefault();
                 const file = adminClothingImageInput.files?.[0];
-                if (!file) {
+                const isEditing = Boolean(adminClothingEditingId);
+                if (!file && !isEditing) {
                     adminClothingStatus.textContent = 'Vælg et billede til tøjdelen.';
                     return;
                 }
                 try {
                     adminClothingStatus.textContent = 'Forbereder og uploader tøjdelen…';
-                    const { blob, mimeType } = await prepareAdminClothingImage(file);
                     if (!socket.connected) throw new Error('Forbindelsen er afbrudt. Prøv igen.');
-                    document.getElementById('admin-clothing-save').disabled = true;
-                    socket.emit('admin-clothing-item-create', {
-                        username: adminClothingUsername.value,
+                    const payload = {
                         name: adminClothingName.value,
                         description: adminClothingDescription.value,
                         category: adminClothingCategory.value,
@@ -3891,16 +3951,24 @@
                         scaleX: Number(adminClothingScaleX.value) / 100,
                         scaleY: Number(adminClothingScaleY.value) / 100,
                         skewX: Number(adminClothingSkewX.value),
-                        skewY: Number(adminClothingSkewY.value),
-                        mimeType,
-                        image: new Uint8Array(await blob.arrayBuffer())
-                    });
+                        skewY: Number(adminClothingSkewY.value)
+                    };
+                    if (isEditing) payload.id = adminClothingEditingId;
+                    else payload.username = adminClothingUsername.value;
+                    if (file) {
+                        const { blob, mimeType } = await prepareAdminClothingImage(file);
+                        payload.mimeType = mimeType;
+                        payload.image = new Uint8Array(await blob.arrayBuffer());
+                    }
+                    adminClothingSaveButton.disabled = true;
+                    socket.emit(isEditing ? 'admin-clothing-item-update' : 'admin-clothing-item-create', payload);
                 } catch (error) {
                     adminClothingStatus.textContent = error.message || 'Tøjdelen kunne ikke uploades.';
                     document.getElementById('admin-clothing-save').disabled = false;
                 }
             }
             adminClothingForm.addEventListener('submit', submitAdminClothing);
+            adminClothingCancelEditButton.addEventListener('click', () => resetAdminClothingForm('Redigeringen blev annulleret.'));
 
             async function uploadAdminRoomBackground(roomId, file, statusElement) {
                 if (!file || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
@@ -4435,7 +4503,7 @@
                     row.setAttribute('role', 'listitem');
                     const image = document.createElement('img');
                     image.className = 'admin-clothing-thumb';
-                    image.src = `/api/clothing-items/${encodeURIComponent(item.catalogId || item.id)}/image`;
+                    image.src = item.imageUrl || `/api/clothing-items/${encodeURIComponent(item.catalogId || item.id)}/image?v=${item.imageVersion || 1}`;
                     image.alt = '';
                     const details = document.createElement('div');
                     details.className = 'admin-clothing-meta';
@@ -4483,7 +4551,7 @@
                     row.setAttribute('role', 'listitem');
                     const image = document.createElement('img');
                     image.className = 'admin-clothing-thumb';
-                    image.src = `/api/clothing-items/${encodeURIComponent(item.id)}/image`;
+                    image.src = item.imageUrl || `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.imageVersion || 1}`;
                     image.alt = '';
                     const details = document.createElement('div');
                     details.className = 'admin-clothing-meta';
@@ -4513,6 +4581,11 @@
                         if (!username.value.trim()) { username.focus(); return; }
                         socket.emit('admin-clothing-template-assign', { id: item.id, username: username.value });
                     });
+                    const edit = document.createElement('button');
+                    edit.className = 'admin-row-button';
+                    edit.type = 'button';
+                    edit.textContent = 'Rediger';
+                    edit.addEventListener('click', () => editAdminClothingItem(item));
                     const remove = document.createElement('button');
                     remove.className = 'admin-row-button ban';
                     remove.type = 'button';
@@ -4522,7 +4595,7 @@
                             socket.emit('admin-clothing-template-delete', { id: item.id });
                         }
                     });
-                    actions.append(username, assign, remove);
+                    actions.append(username, assign, edit, remove);
                     row.append(image, details, actions);
                     adminClothingCatalog.append(row);
                 }
@@ -6258,14 +6331,8 @@
             socket.on('admin-clothing-action-result', ({ success, message, action } = {}) => {
                 adminClothingStatus.textContent = message || (success ? 'Tøjdelen er gemt.' : 'Handlingen mislykkedes.');
                 document.getElementById('admin-clothing-save').disabled = false;
-                if (!success || action !== 'create') return;
-                if (adminClothingPreviewUrl) URL.revokeObjectURL(adminClothingPreviewUrl);
-                adminClothingPreviewUrl = '';
-                adminClothingPreviewImage = null;
-                adminClothingForm.reset();
-                adminClothingPreviewZoomValue.value = `${adminClothingPreviewZoom.value}%`;
-                adminClothingPreviewZoomValue.textContent = `${adminClothingPreviewZoom.value}%`;
-                drawAdminClothingPreview();
+                if (!success || !['create', 'update'].includes(action)) return;
+                resetAdminClothingForm(message || 'Tøjdelen er gemt.');
             });
             socket.on('admin-online-users', ({ users = [], query = '', totalCount } = {}) => {
                 if (!isFullAdminUser) return;
