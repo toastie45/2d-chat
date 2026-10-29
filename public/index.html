@@ -870,7 +870,7 @@
         .admin-row-button.unban { border-color: #778e53; color: #c1f078; }
         .admin-row-button:disabled { opacity: .45; cursor: not-allowed; }
         .admin-floor-heading { margin: 14px 0 7px; color: #b8d981; font-size: 12px; font-weight: 700; }
-        .admin-room-create { display: grid; grid-template-columns: minmax(0, 1fr) 110px auto; gap: 8px; margin: 12px 0; }
+        .admin-room-create { display: grid; grid-template-columns: minmax(0, 1fr) 145px 90px auto; gap: 8px; margin: 12px 0; }
         .admin-room-create input, .admin-room-edit input { min-width: 0; min-height: 34px; padding: 7px 9px; border: 1px solid #3b3e36; border-radius: 7px; background: #151613; color: #f2f0e9; font: inherit; font-size: 11px; }
         .admin-room-check, .admin-room-policy label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 10px; }
         .admin-room-create .admin-room-check { grid-column: 1 / -1; }
@@ -1398,6 +1398,7 @@
             .level-topbar-total { font-size: 9px; }
             .room-strip-user { max-width: 86px; }
             .admin-room-create { grid-template-columns: minmax(0, 1fr) 72px; }
+            .admin-room-create #admin-room-name { grid-column: 1 / -1; }
             .admin-room-create button { grid-column: 1 / -1; }
             .admin-clothing-form { grid-template-columns: 1fr; }
             .admin-clothing-form .wide, .admin-clothing-preview-wrap { grid-column: 1; }
@@ -1815,7 +1816,8 @@
                                 <p class="admin-status">Opret og rediger offentlige rum, upload baggrunde og læg gennemsigtige overlays oven på figurerne. Overlays tilpasses rummets 3:2-format. Fællesrum og Diskoteket er faste rum.</p>
                                 <form class="admin-room-create" id="admin-room-create-form">
                                     <input id="admin-room-name" type="text" maxlength="60" placeholder="Nyt rumnavn" aria-label="Nyt rumnavn" required>
-                                    <input id="admin-room-floor" type="number" min="1" max="100" value="1" aria-label="Etagenummer" required>
+                                    <input id="admin-room-number" type="number" min="3" max="100" placeholder="Rum nr." aria-label="Rumnummer (3–100, valgfrit)">
+                                    <input id="admin-room-floor" type="number" min="1" max="100" value="1" placeholder="Etage" aria-label="Etagenummer" required>
                                     <label class="admin-room-check"><input id="admin-room-create-locked" type="checkbox"> Låst for ikke-admins</label>
                                     <label class="admin-room-check"><input id="admin-room-create-hidden" type="checkbox"> Skjul for ikke-admins</label>
                                     <button class="admin-row-button" type="submit">Tilføj rum</button>
@@ -2216,6 +2218,7 @@
             const adminPublicRooms = document.getElementById('admin-public-rooms');
             const adminRoomCreateForm = document.getElementById('admin-room-create-form');
             const adminRoomName = document.getElementById('admin-room-name');
+            const adminRoomNumber = document.getElementById('admin-room-number');
             const adminRoomFloor = document.getElementById('admin-room-floor');
             const adminRoomCreateLocked = document.getElementById('admin-room-create-locked');
             const adminRoomCreateHidden = document.getElementById('admin-room-create-hidden');
@@ -4372,7 +4375,7 @@
                 const height = wardrobeAvatarPreview.height;
                 context.save();
                 context.translate(width / 2, height / 2);
-                context.scale(0.82, 0.82);
+                context.scale(0.738, 0.738);
                 context.translate(-width / 2, -height / 2);
                 context.drawImage(avatarImage, 0, 0, width, height);
                 const mood = players[myId]?.mood || 'glad';
@@ -5397,6 +5400,7 @@
                 adminRoomsStatus.textContent = 'Opretter rum…';
                 socket.emit('admin-public-room-create', {
                     name: adminRoomName.value,
+                    roomNumber: adminRoomNumber.value ? Number(adminRoomNumber.value) : null,
                     floorNumber: Number(adminRoomFloor.value),
                     isLocked: adminRoomCreateLocked.checked,
                     isHidden: adminRoomCreateHidden.checked
@@ -6364,6 +6368,7 @@
                 if (success) {
                     if (message && message.startsWith('Rum #')) {
                         adminRoomName.value = '';
+                        adminRoomNumber.value = '';
                         adminRoomCreateLocked.checked = false;
                         adminRoomCreateHidden.checked = false;
                     }

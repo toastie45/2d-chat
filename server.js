@@ -2595,30 +2595,62 @@ async function startServer() {
             }
         });
 
-        socket.on('admin-public-room-create', async ({ name, floorNumber, isLocked = false, isHidden = false } = {}) => {
+        socket.on('admin-public-room-create', async ({ name, roomNumber, floorNumber, isLocked = false, isHidden = false } = {}) => {
             if (!socket.data.canManagePublicRooms || !activeSocketIds.has(socket.id)) return;
             const cleanName = typeof name === 'string' ? name.normalize('NFKC').trim() : '';
+            const requestedRoomNumber = roomNumber === null || roomNumber === undefined || roomNumber === '' ? null : Number(roomNumber);
             const floor = Number(floorNumber);
             if (!cleanName || cleanName.length > 60 || /[\u0000-\u001f\u007f]/.test(cleanName)
                 || !Number.isInteger(floor) || floor < 1 || floor > 100
+                || requestedRoomNumber !== null && (!Number.isInteger(requestedRoomNumber) || requestedRoomNumber < 3 || requestedRoomNumber > 100)
                 || typeof isLocked !== 'boolean' || typeof isHidden !== 'boolean') {
-                socket.emit('admin-room-action-result', { success: false, message: 'Angiv et rumnavn, en gyldig etage og adgangsindstillinger.' });
+                socket.emit('admin-room-action-result', { success: false, message: 'Angiv et rumnavn, en etage og eventuelt et ledigt rumnummer fra 3 til 100.' });
                 return;
             }
+            const client = await pool.connect();
             try {
-                const { rows: [numberRow] } = await pool.query("SELECT nextval('chat_public_room_number_seq') AS room_number");
-                const roomNumber = numberRow.room_number;
-                const id = `public:${roomNumber}`;
-                await pool.query(`
+                await client.query('BEGIN');
+                await client.query('SELECT pg_advisory_xact_lock(743920118)');
+                if (requestedRoomNumber !== null) {
+                    const { rowCount } = await client.query(
+                        'SELECT 1 FROM chat_public_rooms WHERE room_number = $1', [requestedRoomNumber]
+                    );
+                    if (rowCount) {
+                        await client.query('ROLLBACK');
+                        socket.emit('admin-room-action-result', { success: false, message: `Rumnummer #${requestedRoomNumber} er allerede i brug.` });
+                        return;
+                    }
+                }
+                const { rows: [numberRow] } = await client.query(`
+                    SELECT CASE WHEN $1::bigint IS NOT NULL THEN $1::bigint ELSE (
+                        SELECT MIN(available.room_number)::bigint
+                        FROM generate_series(3, 100) AS available(room_number)
+                        WHERE NOT EXISTS (
+                            SELECT 1 FROM chat_public_rooms room WHERE room.room_number = available.room_number
+                        )
+                    ) END AS room_number
+                `, [requestedRoomNumber]);
+                if (!numberRow?.room_number) {
+                    await client.query('ROLLBACK');
+                    socket.emit('admin-room-action-result', { success: false, message: 'Alle offentlige rumnumre fra 3 til 100 er i brug.' });
+                    return;
+                }
+                const selectedRoomNumber = Number(numberRow.room_number);
+                const id = `public:${selectedRoomNumber}`;
+                await client.query(`
                     INSERT INTO chat_public_rooms (id, room_number, floor_number, name, is_locked, is_hidden)
                     VALUES ($1, $2, $3, $4, $5, $6)
-                `, [id, roomNumber, floor, cleanName, isLocked, isHidden]);
-                socket.emit('admin-room-action-result', { success: true, message: `Rum #${roomNumber} blev oprettet på etage ${floor}.` });
+                `, [id, selectedRoomNumber, floor, cleanName, isLocked, isHidden]);
+                await client.query('COMMIT');
+                socket.emit('admin-room-action-result', { success: true, message: `Rum #${selectedRoomNumber} blev oprettet på etage ${floor}.` });
                 await sendAdminPublicRooms();
                 io.emit('navigator-refresh');
             } catch (error) {
+                try { await client.query('ROLLBACK'); } catch { }
                 console.error('Could not create public room:', getSafeErrorCode(error));
                 socket.emit('admin-room-action-result', { success: false, message: 'Rummet kunne ikke oprettes.' });
+            } finally {
+                client.release();
             }
         });
 
@@ -3812,10 +3844,42 @@ async function startServer() {
             } else {
                 try {
                     if (mode === 'room') {
-                        if (!/^[1-9]\d{2,18}$/.test(rawTarget)) {
+                        if (!/^[1-9]\d{0,18}$/.test(rawTarget)) {
                             socket.emit('profile-teleport-result', {
-                                message: 'Brug /tr 1 til Fællesrum, /tr 2 til Diskoteket eller /tr 101 til en lejlighed.'
+                                message: 'Brug /tr [rumnummer] eller /tr [lejlighedsnummer]. Offentlige rum er #1–100; lejligheder starter ved #101.'
                             });
+                            return;
+                        }
+                        if (BigInt(rawTarget) <= 100n) {
+                            const { rows: [publicRoom] = [] } = await pool.query(
+                                'SELECT id, name FROM chat_public_rooms WHERE room_number = $1', [rawTarget]
+                            );
+                            if (!publicRoom) {
+                                socket.emit('profile-teleport-result', { message: `Offentligt rum #${rawTarget} findes ikke.` });
+                                return;
+                            }
+                            if (activeSocketRooms.get(socket.id) === publicRoom.id) {
+                                socket.emit('profile-teleport-result', { message: `Du er allerede i #${rawTarget} ${publicRoom.name}.` });
+                                return;
+                            }
+                            const accessError = publicRoomAccessError(
+                                await getPublicRoomPolicy(publicRoom.id), Boolean(socket.data.canManagePublicRooms)
+                            );
+                            if (accessError) {
+                                socket.emit('profile-teleport-result', { message: accessError });
+                                return;
+                            }
+                            socket.data.switchingRoom = true;
+                            try {
+                                const joined = await placeSocketInRoom(socket, publicRoom.id);
+                                socket.emit('profile-teleport-result', {
+                                    message: joined
+                                        ? `Du er teleporteret til #${rawTarget} ${publicRoom.name}.`
+                                        : 'Rummet er fuldt. Teleporteringen mislykkedes.'
+                                });
+                            } finally {
+                                socket.data.switchingRoom = false;
+                            }
                             return;
                         }
                         const { rows: [apartment] } = await pool.query(
