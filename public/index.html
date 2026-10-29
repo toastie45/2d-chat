@@ -1834,6 +1834,9 @@
                                     <label>Kategori
                                         <select id="admin-clothing-category" required>
                                             <option value="headwear">Hovedbeklædning</option>
+                                            <option value="hair">Hår</option>
+                                            <option value="beard">Skæg</option>
+                                            <option value="glasses">Briller</option>
                                             <option value="clothing">Tøj</option>
                                             <option value="left_hand">Venstre hånd</option>
                                             <option value="right_hand">Højre hånd</option>
@@ -2038,7 +2041,7 @@
             const blappetAvatarImage = new Image();
             const boevetAvatarImage = new Image();
             const clothingImageCache = new Map();
-            const clothingCategoryOrder = { left_hand: 0, right_hand: 1, clothing: 2, accessory: 3, headwear: 4 };
+            const clothingCategoryOrder = { left_hand: 0, right_hand: 1, clothing: 2, beard: 3, hair: 4, glasses: 5, accessory: 6, headwear: 7 };
             const avatarWidth = 54;
             const avatarHeight = 75;
             let avatarImageLoaded = false;
@@ -3754,8 +3757,10 @@
                         const tangent = Math.tan(drag.skewY * Math.PI / 180) + (local.y - drag.local.y) * 2 * drag.transform.scaleY / Math.max(1, dimensions.width * drag.transform.scaleX);
                         adminClothingSkewY.value = String(Math.round(Math.atan(tangent) * 180 / Math.PI));
                     } else if (drag.mode.startsWith('resize-')) {
-                        adminClothingScaleX.value = String(Math.round(Math.max(25, Math.min(300, Math.abs(local.x) * 200 / Math.max(1, dimensions.width * scale)))));
-                        adminClothingScaleY.value = String(Math.round(Math.max(25, Math.min(300, Math.abs(local.y) * 200 / Math.max(1, dimensions.height * scale)))));
+                        adminClothingScaleX.value = String(Math.round(Math.max(25, Math.min(300,
+                            Math.abs(local.x) * 200 / Math.max(1, dimensions.width) * drag.transform.scaleX / 100))));
+                        adminClothingScaleY.value = String(Math.round(Math.max(25, Math.min(300,
+                            Math.abs(local.y) * 200 / Math.max(1, dimensions.height) * drag.transform.scaleY / 100))));
                     }
                 }
                 drawAdminClothingPreview();
@@ -4304,8 +4309,8 @@
                 wardrobeEmpty.hidden = true;
                 wardrobePreviewLevel.textContent = `Level ${wardrobeLevel}`;
                 const categoryNames = {
-                    headwear: 'Hovedbeklædning', clothing: 'Tøj', left_hand: 'Venstre hånd',
-                    right_hand: 'Højre hånd', accessory: 'Tilbehør'
+                    headwear: 'Hovedbeklædning', hair: 'Hår', beard: 'Skæg', glasses: 'Briller',
+                    clothing: 'Tøj', left_hand: 'Venstre hånd', right_hand: 'Højre hånd', accessory: 'Tilbehør'
                 };
                 const createCategoryBox = (category) => {
                     const box = document.createElement('details');
@@ -4372,8 +4377,8 @@
                     box.append(heading, list);
                     return box;
                 };
-                wardrobeLeftCategories.replaceChildren(createCategoryBox('headwear'), createCategoryBox('clothing'));
-                wardrobeRightCategories.replaceChildren(createCategoryBox('left_hand'), createCategoryBox('right_hand'), createCategoryBox('accessory'));
+                wardrobeLeftCategories.replaceChildren(createCategoryBox('headwear'), createCategoryBox('hair'), createCategoryBox('beard'), createCategoryBox('glasses'));
+                wardrobeRightCategories.replaceChildren(createCategoryBox('clothing'), createCategoryBox('left_hand'), createCategoryBox('right_hand'), createCategoryBox('accessory'));
                 const isDirty = wardrobeDraftIds.size !== wardrobeSavedIds.size || [...wardrobeDraftIds].some((id) => !wardrobeSavedIds.has(id));
                 wardrobeSaveButton.disabled = !isDirty;
                 wardrobeDiscardButton.disabled = !isDirty;
@@ -4393,8 +4398,8 @@
                     return;
                 }
                 const categoryNames = {
-                    headwear: 'Hovedbeklædning', clothing: 'Tøj', left_hand: 'Venstre hånd',
-                    right_hand: 'Højre hånd', accessory: 'Tilbehør'
+                    headwear: 'Hovedbeklædning', hair: 'Hår', beard: 'Skæg', glasses: 'Briller',
+                    clothing: 'Tøj', left_hand: 'Venstre hånd', right_hand: 'Højre hånd', accessory: 'Tilbehør'
                 };
                 for (const item of items) {
                     const row = document.createElement('div');
@@ -4441,8 +4446,8 @@
                     return;
                 }
                 const categoryNames = {
-                    headwear: 'Hovedbekl\u00e6dning', clothing: 'T\u00f8j', left_hand: 'Venstre h\u00e5nd',
-                    right_hand: 'H\u00f8jre h\u00e5nd', accessory: 'Tilbeh\u00f8r'
+                    headwear: 'Hovedbekl\u00e6dning', hair: 'H\u00e5r', beard: 'Sk\u00e6g', glasses: 'Briller',
+                    clothing: 'T\u00f8j', left_hand: 'Venstre h\u00e5nd', right_hand: 'H\u00f8jre h\u00e5nd', accessory: 'Tilbeh\u00f8r'
                 };
                 for (const item of items) {
                     const row = document.createElement('div');

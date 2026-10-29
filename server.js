@@ -667,7 +667,7 @@ async function startServer() {
             target_user_id BIGINT NOT NULL REFERENCES chat_users(id) ON DELETE CASCADE,
             name VARCHAR(60) NOT NULL,
             description VARCHAR(300) NOT NULL DEFAULT '',
-            category VARCHAR(20) NOT NULL CHECK (category IN ('headwear', 'clothing', 'left_hand', 'right_hand', 'accessory')),
+            category VARCHAR(20) NOT NULL CHECK (category IN ('headwear', 'hair', 'beard', 'glasses', 'clothing', 'left_hand', 'right_hand', 'accessory')),
             image BYTEA NOT NULL,
             mime_type VARCHAR(24) NOT NULL CHECK (mime_type IN ('image/png', 'image/webp')),
             required_level INTEGER NOT NULL DEFAULT 1 CHECK (required_level BETWEEN 1 AND 20),
@@ -677,6 +677,8 @@ async function startServer() {
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
     `);
+    await pool.query('ALTER TABLE chat_clothing_items DROP CONSTRAINT IF EXISTS chat_clothing_items_category_check');
+    await pool.query("ALTER TABLE chat_clothing_items ADD CONSTRAINT chat_clothing_items_category_check CHECK (category IN ('headwear', 'hair', 'beard', 'glasses', 'clothing', 'left_hand', 'right_hand', 'accessory'))");
     await pool.query('ALTER TABLE chat_clothing_items ADD COLUMN IF NOT EXISTS is_equipped BOOLEAN NOT NULL DEFAULT FALSE');
     await pool.query('CREATE INDEX IF NOT EXISTS chat_clothing_items_user_idx ON chat_clothing_items (target_user_id, id)');
     await pool.query(`
@@ -684,7 +686,7 @@ async function startServer() {
             id BIGSERIAL PRIMARY KEY,
             name VARCHAR(60) NOT NULL,
             description VARCHAR(300) NOT NULL DEFAULT '',
-            category VARCHAR(20) NOT NULL CHECK (category IN ('headwear', 'clothing', 'left_hand', 'right_hand', 'accessory')),
+            category VARCHAR(20) NOT NULL CHECK (category IN ('headwear', 'hair', 'beard', 'glasses', 'clothing', 'left_hand', 'right_hand', 'accessory')),
             image BYTEA NOT NULL,
             mime_type VARCHAR(24) NOT NULL CHECK (mime_type IN ('image/png', 'image/webp')),
             required_level INTEGER NOT NULL DEFAULT 1 CHECK (required_level BETWEEN 1 AND 20),
@@ -693,6 +695,8 @@ async function startServer() {
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
     `);
+    await pool.query('ALTER TABLE chat_clothing_catalog DROP CONSTRAINT IF EXISTS chat_clothing_catalog_category_check');
+    await pool.query("ALTER TABLE chat_clothing_catalog ADD CONSTRAINT chat_clothing_catalog_category_check CHECK (category IN ('headwear', 'hair', 'beard', 'glasses', 'clothing', 'left_hand', 'right_hand', 'accessory'))");
     await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_clothing_assignments (
             id BIGSERIAL PRIMARY KEY,
@@ -2072,7 +2076,7 @@ async function startServer() {
             const isPng=image&&image.length>=8&&image.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
             const isWebp=image&&image.length>=12&&image.toString('ascii',0,4)==='RIFF'&&image.toString('ascii',8,12)==='WEBP';
             const validTransform=Number.isFinite(x)&&x>=-270&&x<=270&&Number.isFinite(y)&&y>=-180&&y<=180&&Number.isFinite(rotation)&&rotation>=-180&&rotation<=180&&Number.isFinite(scale)&&scale>=0.25&&scale<=3&&Number.isFinite(scaleX)&&scaleX>=0.25&&scaleX<=3&&Number.isFinite(scaleY)&&scaleY>=0.25&&scaleY<=3&&Number.isFinite(skewX)&&skewX>=-45&&skewX<=45&&Number.isFinite(skewY)&&skewY>=-45&&skewY<=45;
-            if((payload.username!=null&&typeof payload.username!=='string')||(payload.username?.trim()&&!username)||!name||name.length>60||/[\u0000-\u001f\u007f]/.test(name)||description.length>300||/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(description)||!['headwear','clothing','left_hand','right_hand','accessory'].includes(category)||!Number.isInteger(requiredLevel)||requiredLevel<1||requiredLevel>20||!Number.isInteger(price)||price<0||price>100000000||!validTransform||!image||image.length>950000||(!isPng&&!isWebp)){
+            if((payload.username!=null&&typeof payload.username!=='string')||(payload.username?.trim()&&!username)||!name||name.length>60||/[\u0000-\u001f\u007f]/.test(name)||description.length>300||/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(description)||!['headwear','hair','beard','glasses','clothing','left_hand','right_hand','accessory'].includes(category)||!Number.isInteger(requiredLevel)||requiredLevel<1||requiredLevel>20||!Number.isInteger(price)||price<0||price>100000000||!validTransform||!image||image.length>950000||(!isPng&&!isWebp)){
                 socket.emit('admin-clothing-action-result',{success:false,message:'Kontroll?r brugernavn (valgfrit), navn, kategori, level, pris og placering. Billedet skal v?re PNG/WebP p? h?jst 950 KB.'});return;
             }
             try{
