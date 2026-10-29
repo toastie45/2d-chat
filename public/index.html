@@ -948,14 +948,20 @@
         .admin-clothing-preview-note { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
         .admin-clothing-form-actions { display: flex; gap: 8px; grid-column: 1 / -1; }
         .admin-clothing-form-actions button { flex: 1; }
-        .admin-clothing-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 8px; border: 1px solid #393b33; border-radius: 7px; background: #20211d; }
-        .admin-clothing-thumb { width: 40px; height: 48px; object-fit: contain; border-radius: 4px; background: #10110f; }
-        .admin-clothing-meta { display: grid; gap: 3px; min-width: 0; color: var(--muted); font-size: 9px; }
-        .admin-clothing-meta strong { color: #f2f0e9; font-size: 11px; }
-        .admin-clothing-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+        .admin-clothing-catalog-tools { display: grid; grid-template-columns: minmax(180px, 1fr) repeat(2, minmax(130px, .45fr)); gap: 8px; margin: 10px 0 6px; }
+        .admin-clothing-catalog-tools input, .admin-clothing-catalog-tools select { min-width: 0; min-height: 34px; padding: 7px 9px; border: 1px solid #3b3e36; border-radius: 7px; background: #151613; color: #f2f0e9; font: inherit; font-size: 11px; }
+        .admin-clothing-catalog-count { margin: 5px 0 10px; color: var(--muted); font-size: 10px; }
+        .admin-clothing-row { display: grid; grid-template-columns: 56px minmax(0, 1fr) minmax(210px, auto); align-items: center; gap: 12px; padding: 10px; border: 1px solid #393b33; border-radius: 9px; background: linear-gradient(110deg, #24251f, #1c1d19 65%); transition: border-color .16s ease, background .16s ease; }
+        .admin-clothing-row:hover { border-color: #66764b; background: #252720; }
+        .admin-clothing-thumb { width: 56px; height: 60px; object-fit: contain; border: 1px solid #363930; border-radius: 7px; background: #11120f; }
+        .admin-clothing-meta { display: grid; gap: 5px; min-width: 0; color: var(--muted); font-size: 10px; }
+        .admin-clothing-meta strong { color: #f2f0e9; font-size: 12px; }
+        .admin-clothing-meta span { overflow-wrap: anywhere; }
+        .admin-clothing-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
         .admin-clothing-actions input { width: 118px; min-width: 0; padding: 5px 7px; border: 1px solid #3b3e36; border-radius: 6px; background: #151613; color: #f2f0e9; font: inherit; font-size: 10px; }
         .admin-clothing-info-button { display: inline-grid; width: 30px; min-width: 30px; height: 30px; place-items: center; padding: 0; }
         .admin-clothing-info-button svg { width: 15px; height: 15px; }
+        @media (max-width: 680px) { .admin-clothing-catalog-tools { grid-template-columns: 1fr 1fr; } .admin-clothing-catalog-tools input { grid-column: 1 / -1; } .admin-clothing-row { grid-template-columns: 48px minmax(0, 1fr); } .admin-clothing-thumb { width: 48px; height: 54px; } .admin-clothing-actions { grid-column: 1 / -1; justify-content: flex-start; } }
         .admin-clothing-owners-dialog { width: min(430px, calc(100vw - 32px)); max-height: 80vh; overflow-y: auto; padding: 18px; border: 1px solid #44483b; border-radius: 12px; background: #1c1e1a; color: #f2f0e9; box-shadow: 0 24px 90px #000a; }
         .admin-clothing-owners-dialog::backdrop { background: #050605c9; }
         .admin-clothing-owners-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
@@ -1971,7 +1977,19 @@
                                     <p class="admin-status wide" id="admin-clothing-status" aria-live="polite"></p>
                                 </form>
                                 <h3 class="admin-subsection-title">T&oslash;jkatalog</h3>
-                                <p class="admin-status">Hver t&oslash;jdel vises &eacute;n gang. Brug infoikonet for at se, hvem den er tildelt til.</p>
+                                <p class="admin-status">Find, rediger og tildel gemte tøjdele. Brug infoikonet for at se, hvem der har fået hver del.</p>
+                                <div class="admin-clothing-catalog-tools" role="search">
+                                    <input id="admin-clothing-catalog-search" type="search" placeholder="Søg på navn eller beskrivelse" aria-label="Søg i tøjkataloget">
+                                    <select id="admin-clothing-catalog-category" aria-label="Filtrér efter kategori">
+                                        <option value="">Alle kategorier</option>
+                                        <option value="headwear">Hovedbeklædning</option><option value="hair">Hår</option><option value="beard">Skæg</option><option value="glasses">Briller</option>
+                                        <option value="clothing">Tøj</option><option value="left_hand">Venstre hånd</option><option value="right_hand">Højre hånd</option><option value="accessory">Tilbehør</option>
+                                    </select>
+                                    <select id="admin-clothing-catalog-avatar" aria-label="Filtrér efter avatartype">
+                                        <option value="">Alle avatarer</option><option value="boy">Mand</option><option value="girl">Kvinde</option>
+                                    </select>
+                                </div>
+                                <p class="admin-clothing-catalog-count" id="admin-clothing-catalog-count" aria-live="polite"></p>
                                 <div class="admin-list" id="admin-clothing-catalog" role="list"></div>
                             </section>
                             <section class="admin-section" id="admin-shop-view" aria-labelledby="admin-shop-title" hidden>
@@ -2448,6 +2466,10 @@
             let adminClothingEditingId = '';
             const adminClothingStatus = document.getElementById('admin-clothing-status');
             const adminClothingCatalog = document.getElementById('admin-clothing-catalog');
+            const adminClothingCatalogSearch = document.getElementById('admin-clothing-catalog-search');
+            const adminClothingCatalogCategory = document.getElementById('admin-clothing-catalog-category');
+            const adminClothingCatalogAvatar = document.getElementById('admin-clothing-catalog-avatar');
+            const adminClothingCatalogCount = document.getElementById('admin-clothing-catalog-count');
             const adminClothingOwnersDialog = document.getElementById('admin-clothing-owners-dialog');
             const adminClothingOwnersTitle = document.getElementById('admin-clothing-owners-title');
             const adminClothingOwnerList = document.getElementById('admin-clothing-owner-list');
@@ -4897,12 +4919,28 @@
                 }
                 drawWardrobeAvatarPreview();
             }
-            function renderAdminClothingCatalog(items = []) {
+            let adminClothingCatalogItems = [];
+            function renderAdminClothingCatalog(items = adminClothingCatalogItems) {
+                if (Array.isArray(items)) adminClothingCatalogItems = items;
                 adminClothingCatalog.replaceChildren();
-                if (!items.length) {
+                const query = adminClothingCatalogSearch.value.trim().toLocaleLowerCase('da-DK');
+                const category = adminClothingCatalogCategory.value;
+                const avatarType = adminClothingCatalogAvatar.value;
+                const filteredItems = adminClothingCatalogItems.filter((item) => {
+                    const searchableText = `${item.name || ''} ${item.description || ''}`.toLocaleLowerCase('da-DK');
+                    return (!query || searchableText.includes(query))
+                        && (!category || item.category === category)
+                        && (!avatarType || item.avatarType === avatarType);
+                });
+                adminClothingCatalogCount.textContent = query || category || avatarType
+                    ? `Viser ${filteredItems.length} af ${adminClothingCatalogItems.length} tøjdele`
+                    : `${adminClothingCatalogItems.length} tøjdele i kataloget`;
+                if (!adminClothingCatalogItems.length || !filteredItems.length) {
                     const empty = document.createElement('p');
                     empty.className = 'admin-status';
-                    empty.textContent = 'Kataloget er tomt. Gem en t\u00f8jdel ovenfor for at genbruge den senere.';
+                    empty.textContent = adminClothingCatalogItems.length
+                        ? 'Ingen tøjdele passer til din søgning eller filtrering.'
+                        : 'Kataloget er tomt. Gem en tøjdel ovenfor, så den kan genbruges og tildeles senere.';
                     adminClothingCatalog.append(empty);
                     return;
                 }
@@ -4910,7 +4948,7 @@
                     headwear: 'Hovedbekl\u00e6dning', hair: 'H\u00e5r', beard: 'Sk\u00e6g', glasses: 'Briller',
                     clothing: 'T\u00f8j', left_hand: 'Venstre h\u00e5nd', right_hand: 'H\u00f8jre h\u00e5nd', accessory: 'Tilbeh\u00f8r'
                 };
-                for (const item of items) {
+                for (const item of filteredItems) {
                     const row = document.createElement('div');
                     row.className = 'admin-clothing-row';
                     row.setAttribute('role', 'listitem');
@@ -6021,6 +6059,9 @@
                 adminAvatarsView.hidden = true;
             });
             adminSectionSelect.addEventListener('change', selectAdminSection);
+            adminClothingCatalogSearch.addEventListener('input', () => renderAdminClothingCatalog());
+            adminClothingCatalogCategory.addEventListener('change', () => renderAdminClothingCatalog());
+            adminClothingCatalogAvatar.addEventListener('change', () => renderAdminClothingCatalog());
             adminShopRoomSelect.addEventListener('change', () => {
                 adminSelectedShopRoomId = adminShopRoomSelect.value;
                 if (adminSelectedShopRoomId) socket.emit('admin-shop-room-data-request', { roomId: adminSelectedShopRoomId });
