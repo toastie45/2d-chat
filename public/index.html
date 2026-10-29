@@ -458,6 +458,14 @@
         .shop-item-details span { color: var(--muted); font-size: 10px; }
         .shop-coming-soon { padding: 6px 8px; border: 1px solid #41463a; border-radius: 6px; color: #a8c879; font-size: 9px; white-space: nowrap; }
         .admin-shop-note { margin: 8px 0 12px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+        .admin-shop-groups { display: grid; gap: 9px; }
+        .admin-shop-group { overflow: hidden; border: 1px solid #383d32; border-radius: 8px; background: #191b18; }
+        .admin-shop-group > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 12px; color: #e8e9e2; font-size: 11px; font-weight: 700; cursor: pointer; list-style: none; }
+        .admin-shop-group > summary::-webkit-details-marker { display: none; }
+        .admin-shop-group > summary::after { content: '+'; color: #a8c879; font-size: 15px; }
+        .admin-shop-group[open] > summary::after { content: '−'; }
+        .admin-shop-group-count { color: var(--muted); font-size: 9px; font-weight: 500; }
+        .admin-shop-group-list { display: grid; gap: 7px; padding: 0 8px 8px; }
         @media (max-width: 700px) {
             .wardrobe-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "preview preview" "left right"; gap: 9px; }
             .wardrobe-avatar-stage { width: 158px; }
@@ -4715,7 +4723,51 @@
                     adminShopCatalog.append(empty);
                     return;
                 }
-                for (const item of items) {
+                const sections = [
+                    { key: 'level_1_8', title: 'Level 1-8' },
+                    { key: 'level_9_16', title: 'Level 9-16' },
+                    { key: 'level_17_20', title: 'Level 17-20' },
+                    { key: 'accessories', title: 'Tilbehør' }
+                ];
+                const getSectionForItem = (item) => {
+                    if (item.category !== 'clothing') return 'accessories';
+                    const level = Math.max(1, Number(item.requiredLevel) || 1);
+                    return level <= 8 ? 'level_1_8' : level <= 16 ? 'level_9_16' : 'level_17_20';
+                };
+                const categoryOrder = ['clothing', 'headwear', 'hair', 'beard', 'glasses', 'left_hand', 'right_hand', 'accessory'];
+                const groups = new Map(sections.map((section) => [section.key, []]));
+                for (const item of items) groups.get(getSectionForItem(item)).push(item);
+                const wrapper = document.createElement('div');
+                wrapper.className = 'admin-shop-groups';
+                sections.forEach((section, sectionIndex) => {
+                    const groupItems = groups.get(section.key);
+                    const group = document.createElement('details');
+                    group.className = 'admin-shop-group';
+                    const listedCount = groupItems.filter((item) => item.shopListed).length;
+                    group.open = listedCount > 0 || (sectionIndex === 0 && items.length > 0);
+                    const summary = document.createElement('summary');
+                    const title = document.createElement('span');
+                    title.textContent = section.title;
+                    const count = document.createElement('span');
+                    count.className = 'admin-shop-group-count';
+                    count.textContent = `${listedCount} i butik · ${groupItems.length} i kataloget`;
+                    summary.append(title, count);
+                    const list = document.createElement('div');
+                    list.className = 'admin-shop-group-list';
+                    list.setAttribute('role', 'group');
+                    list.setAttribute('aria-label', section.title);
+                    groupItems.sort((a, b) => {
+                        if (Boolean(a.shopListed) !== Boolean(b.shopListed)) return a.shopListed ? -1 : 1;
+                        if (section.key === 'accessories') {
+                            const categoryDifference = categoryOrder.indexOf(a.category) - categoryOrder.indexOf(b.category);
+                            if (categoryDifference) return categoryDifference;
+                        } else {
+                            const levelDifference = Number(a.requiredLevel) - Number(b.requiredLevel);
+                            if (levelDifference) return levelDifference;
+                        }
+                        return String(a.name).localeCompare(String(b.name), 'da');
+                    });
+                    for (const item of groupItems) {
                     const row = document.createElement('div');
                     row.className = 'admin-clothing-row';
                     row.setAttribute('role', 'listitem');
@@ -4740,8 +4792,12 @@
                         socket.emit('admin-shop-item-set', { id: item.id, listed: !item.shopListed });
                     });
                     row.append(image, details, toggle);
-                    adminShopCatalog.append(row);
-                }
+                        list.append(row);
+                    }
+                    group.append(summary, list);
+                    wrapper.append(group);
+                });
+                adminShopCatalog.append(wrapper);
             }
 
             function renderShopItems(items = [], error = '', closed = false) {
