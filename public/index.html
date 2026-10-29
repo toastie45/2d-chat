@@ -1561,9 +1561,6 @@
                             <button class="toolbar-button" id="wardrobe-nav-button" type="button" aria-pressed="false" aria-controls="wardrobe-panel" aria-label="Tøjskab" title="Tøjskab">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v15H4Z"/><path d="M12 3v17M8 8v2M16 8v2M8 20v-5h8v5"/></svg>
                             </button>
-                            <button class="toolbar-button" id="shop-nav-button" type="button" aria-pressed="false" aria-controls="shop-panel" aria-label="Butik" title="Butik">
-                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16l-1 12H5L4 8Z"/><path d="M8 9V6a4 4 0 0 1 8 0v3M9 13v3h6v-3"/></svg>
-                            </button>
                             <button class="toolbar-button" id="private-mail-nav-button" type="button" aria-pressed="false" aria-controls="private-mail-panel" aria-label="Privat mail" title="Post"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg><span class="mail-unread-badge" id="mail-unread-badge" hidden></span></button>
                             <button class="toolbar-button" id="navigator-nav-button" type="button" aria-pressed="false" aria-controls="navigator-panel" aria-label="Navigator" title="Navigator">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.8 8.2-2.4 5.2-5.2 2.4 2.4-5.2z"/></svg>
@@ -2371,7 +2368,6 @@
             const membersNavButton = document.getElementById('members-nav-button');
             const navigatorNavButton = document.getElementById('navigator-nav-button');
             const wardrobeNavButton = document.getElementById('wardrobe-nav-button');
-            const shopNavButton = document.getElementById('shop-nav-button');
             const adminNavButton = document.getElementById('admin-nav-button');
             const navigatorPanel = document.getElementById('navigator-panel');
             const wardrobePanel = document.getElementById('wardrobe-panel');
@@ -3043,7 +3039,6 @@
                 bottomToolbar.classList.toggle('hidden', !isAuthenticated);
                 pageWrapper.classList.toggle('has-session', isAuthenticated);
                 roomStripUser.textContent = isAuthenticated ? currentUser.username : '';
-                updateShopNavigationVisibility();
                 adminNavButton.hidden = !isAuthenticated || !isAdminUser;
                 if (!isAuthenticated) setFriendMenuOpen(false);
             }
@@ -3052,16 +3047,11 @@
                 return roomId === activeRoom && activeRoomIsShop;
             }
 
-            function updateShopNavigationVisibility() {
-                shopNavButton.hidden = !currentUser || !shopIsOpen || !isClothingShopRoom();
-            }
-
             function showCurrentRoomLandingPanel() {
                 if (isClothingShopRoom()) {
                     activeShopCategory = '';
                     shopBackButton.hidden = true;
                     selectSidePanel('shop', { remember: false });
-                    updateShopNavigationVisibility();
                     if (shopIsOpen) {
                         shopStatus.textContent = 'Henter butikkens varer…';
                         socket.emit('shop-request');
@@ -3070,7 +3060,6 @@
                     }
                     return;
                 }
-                updateShopNavigationVisibility();
                 selectSidePanel('welcome', { remember: false });
             }
 
@@ -3078,7 +3067,6 @@
                 membersNavButton.setAttribute('aria-pressed', String(!membersPanel.hidden));
                 navigatorNavButton.setAttribute('aria-pressed', String(!navigatorPanel.hidden));
                 wardrobeNavButton.setAttribute('aria-pressed', String(!wardrobePanel.hidden));
-                shopNavButton.setAttribute('aria-pressed', String(!shopPanel.hidden));
                 chatNavButton.setAttribute('aria-pressed', String(!chatPanel.hidden));
                 profileNavButton.setAttribute('aria-pressed', String(!profileEditorPanel.hidden));
                 searchNavButton.setAttribute('aria-pressed', String(!searchPanel.hidden));
@@ -3262,7 +3250,6 @@
                 activeRoom = roomId;
                 activeRoomIsShop = welcome.isShop === true;
                 shopIsOpen = welcome.shopIsOpen === true;
-                updateShopNavigationVisibility();
                 setRoomBackground(roomId, welcome.roomBackgroundUrl);
                 setRoomOverlay(welcome.roomOverlayUrl, welcome.roomOverlayTransform);
                 roomStripName.textContent = roomName;
@@ -5986,14 +5973,6 @@
                 wardrobeStatus.textContent = 'Henter dit tøjskab…';
                 socket.emit('wardrobe-request');
             });
-            shopNavButton.addEventListener('click', () => {
-                if (!isClothingShopRoom() || !shopIsOpen) return;
-                selectSidePanel('shop');
-                shopStatus.textContent = 'Henter butikkens varer…';
-                activeShopCategory = '';
-                shopBackButton.hidden = true;
-                socket.emit('shop-request');
-            });
             shopBackButton.addEventListener('click', () => {
                 activeShopCategory = '';
                 renderShopItems(shopItemsCache);
@@ -6932,7 +6911,6 @@
                 const shopTypeChanged = typeof isShop === 'boolean' && isShop !== activeRoomIsShop;
                 if (typeof isShop === 'boolean') activeRoomIsShop = isShop;
                 if (typeof roomShopIsOpen === 'boolean') shopIsOpen = roomShopIsOpen;
-                updateShopNavigationVisibility();
                 setRoomBackground(roomId, roomBackgroundUrl);
                 setRoomOverlay(roomOverlayUrl, roomOverlayTransform);
                 updateApartmentRoomTitle(roomName, welcomeTitle);
@@ -7144,7 +7122,6 @@
             socket.on('shop-status', ({ roomId, isOpen = false } = {}) => {
                 if (roomId !== activeRoom) return;
                 shopIsOpen = isOpen === true;
-                updateShopNavigationVisibility();
                 if (!shopIsOpen) {
                     shopList.replaceChildren();
                     if (activeSidePanel === 'shop') shopStatus.textContent = 'Butikken er lukket lige nu.';
