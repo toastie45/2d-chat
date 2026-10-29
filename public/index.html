@@ -1600,7 +1600,7 @@
                                     <p class="wardrobe-preview-label">Din figur</p>
                                     <div class="wardrobe-avatar-stage">
                                         <canvas class="wardrobe-avatar-preview" id="wardrobe-avatar-preview" width="216" height="300" aria-label="Preview af din avatar med tøjet på"></canvas>
-                                        <button class="wardrobe-hand-layer-toggle" id="wardrobe-hand-layer-toggle" type="button" aria-label="Vis håndting foran tøjet" aria-pressed="true" title="Vis håndting foran tøjet" disabled hidden>
+                                        <button class="wardrobe-hand-layer-toggle" id="wardrobe-hand-layer-toggle" type="button" aria-label="Fremhæv laget foran tøjet" aria-pressed="true" title="Fremhæv laget foran tøjet" disabled hidden>
                                             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 4.5-8 4.5-8-4.5L12 3Z"/><path d="m4 12 8 4.5 8-4.5"/><path d="m4 16.5 8 4.5 8-4.5"/></svg>
                                         </button>
                                     </div>
@@ -4885,8 +4885,8 @@
                 wardrobeHandLayerToggle.hidden = !handItemsEquipped;
                 wardrobeHandLayerToggle.disabled = !handItemsEquipped;
                 wardrobeHandLayerToggle.setAttribute('aria-pressed', String(handsInFront));
-                wardrobeHandLayerToggle.setAttribute('aria-label', handsInFront ? 'Håndting vises foran tøjet' : 'Håndting vises bag tøjet');
-                wardrobeHandLayerToggle.title = handsInFront ? 'Håndting foran tøjet · tryk for at lægge bagved' : 'Håndting bag tøjet · tryk for at vise foran';
+                wardrobeHandLayerToggle.setAttribute('aria-label', handsInFront ? 'Laget vises foran tøjet' : 'Laget vises bag tøjet');
+                wardrobeHandLayerToggle.title = handsInFront ? 'Laget vises foran tøjet · tryk for at lægge bagved' : 'Laget vises bag tøjet · tryk for at fremhæve foran';
                 wardrobeSaveButton.disabled = !isDirty;
                 wardrobeDiscardButton.disabled = !isDirty;
                 if (!isDirty && wardrobeStatus.textContent.startsWith('Outfit ikke gemt endnu')) {
@@ -6036,8 +6036,8 @@
                 order.splice(clothingIndex + (shouldMoveInFront ? 0 : 1), 0, ...handCategories);
                 wardrobeDraftCategoryOrder = order;
                 wardrobeStatus.textContent = shouldMoveInFront
-                    ? 'Håndtingene vises foran tøjet i previewet. Gem outfittet for at bruge rækkefølgen i chatten.'
-                    : 'Håndtingene vises bag tøjet i previewet. Gem outfittet for at bruge rækkefølgen i chatten.';
+                    ? 'Laget er fremhævet foran tøjet i previewet. Gem outfittet for at bruge rækkefølgen i chatten.'
+                    : 'Laget vises bag tøjet i previewet. Gem outfittet for at bruge rækkefølgen i chatten.';
                 renderWardrobeItems(wardrobeItems, wardrobeLevel, true);
             });
             wardrobeDiscardButton.addEventListener('click', () => {
@@ -7079,7 +7079,7 @@
             socket.on('wardrobe-items', ({ items = [], level = 1, categoryOrder } = {}) => {
                 renderWardrobeItems(Array.isArray(items) ? items : [], Math.max(1, Number(level) || 1), false, categoryOrder);
                 if (wardrobeStatus.textContent.startsWith('Henter')) {
-                    wardrobeStatus.textContent = 'Tryk på lagikonet for at flytte håndting frem eller tilbage i lagene.';
+                    wardrobeStatus.textContent = 'Tryk på ikonet i previewet for at fremhæve laget.';
                 }
             });
             socket.on('clothing-ownership-counts', (counts = {}) => {
