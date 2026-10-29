@@ -1993,12 +1993,13 @@
                                     <fieldset class="admin-clothing-animation wide">
                                         <legend>Spritesheet-opsætning</legend>
                                         <div class="admin-clothing-transform">
+                                            <label>Frames i billedet<input id="admin-clothing-animation-frames" type="number" min="1" max="256" value="1"></label>
                                             <label>Kolonner<input id="admin-clothing-animation-columns" type="number" min="1" max="16" value="1"></label>
-                                            <label>Rækker<input id="admin-clothing-animation-rows" type="number" min="1" max="16" value="1"></label>
-                                            <label>Frames<input id="admin-clothing-animation-frames" type="number" min="1" max="256" value="1"></label>
+                                            <label>Rækker (beregnes)<input id="admin-clothing-animation-rows" type="number" min="1" max="256" value="1" readonly></label>
                                             <label>FPS<input id="admin-clothing-animation-fps" type="number" min="1" max="24" value="8"></label>
                                         </div>
-                                        <p>Brug 1 × 1 til et almindeligt billede. På et spritesheet læses frames fra venstre mod højre og derefter næste række. Alle felter skal have samme størrelse.</p>
+                                        <p>Upload et spritesheet, angiv antal frames og kolonner. Rækker og størrelse pr. frame beregnes automatisk. Frames læses fra venstre mod højre og derefter næste række.</p>
+                                        <p id="admin-clothing-animation-summary" aria-live="polite">Et almindeligt billede bruger 1 frame.</p>
                                     </fieldset>
                                     <label>Levelkrav (1–20)
                                         <input id="admin-clothing-level" type="number" min="1" max="20" value="1" required>
@@ -2473,7 +2474,7 @@
             }
             function normalizeClothingAnimation(value = {}) {
                 const columns = Math.max(1, Math.min(16, Math.floor(Number(value?.columns) || 1)));
-                const rows = Math.max(1, Math.min(16, Math.floor(Number(value?.rows) || 1)));
+                const rows = Math.max(1, Math.min(256, Math.floor(Number(value?.rows) || 1)));
                 const frames = Math.max(1, Math.min(columns * rows, 256, Math.floor(Number(value?.frames) || 1)));
                 const fps = Math.max(1, Math.min(24, Number(value?.fps) || 8));
                 return { columns, rows, frames, fps };
@@ -2495,6 +2496,24 @@
                     frames: Number(adminClothingAnimationFrames.value),
                     fps: Number(adminClothingAnimationFps.value)
                 };
+            }
+            function syncAdminClothingAnimationGrid() {
+                const frames = Math.floor(Number(adminClothingAnimationFrames.value));
+                const columns = Math.floor(Number(adminClothingAnimationColumns.value));
+                if (!Number.isFinite(frames) || frames < 1 || !Number.isFinite(columns) || columns < 1) return;
+                const rows = Math.ceil(frames / columns);
+                adminClothingAnimationRows.value = String(rows);
+                if (adminClothingPreviewImage?.naturalWidth && rows <= 256 && columns <= 16
+                    && adminClothingPreviewImage.naturalWidth % columns === 0
+                    && adminClothingPreviewImage.naturalHeight % rows === 0) {
+                    adminClothingAnimationSummary.textContent = `Spritesheet opdelt i ${columns} × ${rows} · ${adminClothingPreviewImage.naturalWidth / columns} × ${adminClothingPreviewImage.naturalHeight / rows} px pr. frame.`;
+                } else if (rows > 256 || columns > 16) {
+                    adminClothingAnimationSummary.textContent = 'Vælg højst 16 kolonner og 256 rækker.';
+                } else if (adminClothingPreviewImage?.naturalWidth) {
+                    adminClothingAnimationSummary.textContent = 'Billedets mål passer ikke til denne opdeling. Justér antal frames eller kolonner.';
+                } else {
+                    adminClothingAnimationSummary.textContent = `Rækker beregnes til ${rows}. Upload billedet for at kontrollere frame-størrelsen.`;
+                }
             }
             function drawClothingLayer(context, image, item, centerX, centerY, avatarWidth, avatarHeight, now = Date.now()) {
                 if (!image?.naturalWidth || !image?.naturalHeight) return null;
@@ -2643,6 +2662,7 @@
             const adminClothingAnimationRows = document.getElementById('admin-clothing-animation-rows');
             const adminClothingAnimationFrames = document.getElementById('admin-clothing-animation-frames');
             const adminClothingAnimationFps = document.getElementById('admin-clothing-animation-fps');
+            const adminClothingAnimationSummary = document.getElementById('admin-clothing-animation-summary');
             const adminClothingAssignmentField = document.getElementById('admin-clothing-assignment-field');
             const adminClothingLevel = document.getElementById('admin-clothing-level');
             const adminClothingPrice = document.getElementById('admin-clothing-price');
@@ -4381,10 +4401,16 @@
             adminClothingPreviewAvatar.addEventListener('load', drawAdminClothingPreview);
             [adminClothingX, adminClothingY, adminClothingRotation, adminClothingScale,
                 adminClothingScaleX, adminClothingScaleY, adminClothingSkewX, adminClothingSkewY,
-                adminClothingAnimationColumns, adminClothingAnimationRows, adminClothingAnimationFrames,
                 adminClothingAnimationFps].forEach((input) =>
                 input.addEventListener('input', drawAdminClothingPreview)
             );
+            [adminClothingAnimationColumns, adminClothingAnimationFrames].forEach((input) => {
+                input.addEventListener('input', () => {
+                    syncAdminClothingAnimationGrid();
+                    drawAdminClothingPreview();
+                });
+            });
+            syncAdminClothingAnimationGrid();
             adminClothingImageInput.addEventListener('change', () => {
                 if (adminClothingPreviewUrl) URL.revokeObjectURL(adminClothingPreviewUrl);
                 adminClothingPreviewUrl = '';
@@ -4406,6 +4432,7 @@
                         adminClothingPreviewImage = null;
                     } else {
                         adminClothingPreviewImage = image;
+                        syncAdminClothingAnimationGrid();
                         adminClothingStatus.textContent = getAdminClothingAnimationError(image) || '';
                     }
                     drawAdminClothingPreview();
@@ -4421,7 +4448,7 @@
             function getAdminClothingAnimationError(image = adminClothingPreviewImage) {
                 const animation = getAdminClothingAnimation();
                 if (!Number.isInteger(animation.columns) || animation.columns < 1 || animation.columns > 16
-                    || !Number.isInteger(animation.rows) || animation.rows < 1 || animation.rows > 16
+                    || !Number.isInteger(animation.rows) || animation.rows < 1 || animation.rows > 256
                     || !Number.isInteger(animation.frames) || animation.frames < 1 || animation.frames > 256
                     || !Number.isInteger(animation.fps) || animation.fps < 1 || animation.fps > 24
                     || animation.frames > animation.columns * animation.rows) {
@@ -4487,6 +4514,7 @@
                 if (adminClothingPreviewUrl) URL.revokeObjectURL(adminClothingPreviewUrl);
                 adminClothingPreviewUrl = '';
                 adminClothingPreviewImage = null;
+                syncAdminClothingAnimationGrid();
                 adminClothingPreviewZoomValue.value = `${adminClothingPreviewZoom.value}%`;
                 adminClothingPreviewZoomValue.textContent = `${adminClothingPreviewZoom.value}%`;
                 adminClothingStatus.textContent = message;
@@ -4529,7 +4557,10 @@
                 if (adminClothingPreviewUrl) URL.revokeObjectURL(adminClothingPreviewUrl);
                 adminClothingPreviewUrl = '';
                 adminClothingPreviewImage = new Image();
-                adminClothingPreviewImage.addEventListener('load', drawAdminClothingPreview, { once: true });
+                adminClothingPreviewImage.addEventListener('load', () => {
+                    syncAdminClothingAnimationGrid();
+                    drawAdminClothingPreview();
+                }, { once: true });
                 adminClothingPreviewImage.addEventListener('error', () => {
                     adminClothingStatus.textContent = 'Det gemte billede kunne ikke indlæses i previewet.';
                 }, { once: true });
@@ -4642,7 +4673,7 @@
                     const frameHeight = source.naturalHeight / animation.rows;
                     const output = document.createElement('canvas');
                     const cellWidth = isSpriteSheet
-                        ? Math.max(256, Math.min(768, Math.floor(4096 / animation.columns), Math.floor(6144 / animation.rows)))
+                        ? Math.max(16, Math.min(768, Math.floor(4096 / animation.columns), Math.floor(6144 / animation.rows)))
                         : 1536;
                     const cellHeight = isSpriteSheet ? Math.round(cellWidth * 2 / 3) : 1024;
                     output.width = cellWidth * animation.columns;

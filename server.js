@@ -428,7 +428,7 @@ function normalizeClothingAnimation(value = {}) {
     const columns = Number.isInteger(Number(value?.columns)) ? Number(value.columns) : 1;
     const rows = Number.isInteger(Number(value?.rows)) ? Number(value.rows) : 1;
     const safeColumns = Math.min(16, Math.max(1, columns));
-    const safeRows = Math.min(16, Math.max(1, rows));
+    const safeRows = Math.min(256, Math.max(1, rows));
     const frames = Number.isInteger(Number(value?.frames)) ? Number(value.frames) : 1;
     const fps = Number.isInteger(Number(value?.fps)) ? Number(value.fps) : 8;
     return {
@@ -703,7 +703,7 @@ async function startServer() {
     function isValidClothingAnimation(value = {}) {
         return value && typeof value === 'object' && !Array.isArray(value)
             && Number.isInteger(value.columns) && value.columns >= 1 && value.columns <= 16
-            && Number.isInteger(value.rows) && value.rows >= 1 && value.rows <= 16
+            && Number.isInteger(value.rows) && value.rows >= 1 && value.rows <= 256
             && Number.isInteger(value.frames) && value.frames >= 1 && value.frames <= 256
             && value.frames <= value.columns * value.rows
             && Number.isInteger(value.fps) && value.fps >= 1 && value.fps <= 24;
