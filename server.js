@@ -196,7 +196,7 @@ if not encoded then return false end
 local player = cjson.decode(encoded)
 local nextCell = ARGV[2] .. ':' .. ARGV[3]
 local tileState = redis.call('HGET', KEYS[3], nextCell)
-if ARGV[4] ~= '1' and (tileState == 'closed' or (tileState and string.sub(tileState, 1, 7) == 'closed|')) then return false end
+if ARGV[5] ~= '1' and (tileState == 'closed' or (tileState and string.sub(tileState, 1, 7) == 'closed|')) then return false end
 local occupant = redis.call('HGET', KEYS[2], nextCell)
 local invisible = player.invisible == true
 if not invisible and occupant and occupant ~= ARGV[1] then return false end
