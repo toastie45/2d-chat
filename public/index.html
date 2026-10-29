@@ -2184,6 +2184,25 @@
             }
             const avatarWidth = 54;
             const avatarHeight = 75;
+            function drawAvatarMoodFace(context, moodImage, isGirl, centerX, centerY, width, height) {
+                if (!context || !moodImage || !width || !height) return;
+                context.save();
+                context.beginPath();
+                context.ellipse(centerX, centerY - height * 0.19, width * 0.275, height * 0.255, 0, 0, Math.PI * 2);
+                context.clip();
+                if (isGirl) {
+                    // Female mood assets contain only the head. Keep their native aspect ratio
+                    // so the face does not look stretched compared with the neutral avatar.
+                    const faceHeight = height * 0.51;
+                    const faceWidth = faceHeight * (moodImage.naturalWidth / moodImage.naturalHeight);
+                    const faceCenterY = centerY - height * 0.19;
+                    context.drawImage(moodImage, centerX - faceWidth / 2, faceCenterY - faceHeight / 2, faceWidth, faceHeight);
+                } else {
+                    // Male mood assets are full-avatar images; clipping keeps the body and ears fixed.
+                    context.drawImage(moodImage, centerX - width / 2, centerY - height / 2, width, height);
+                }
+                context.restore();
+            }
             let avatarImageLoaded = false;
             let girlAvatarImageLoaded = false;
             let girlMobsetAvatarImageLoaded = false;
@@ -4714,22 +4733,7 @@
                 };
                 const moodImage = moodImages[mood];
                 if (moodImage && moodImage !== ownAvatarImage) {
-                    renderContext.save();
-                    renderContext.beginPath();
-                    renderContext.ellipse(avatarCenterX, avatarCenterY - height * 0.19, width * 0.275, height * 0.255, 0, 0, Math.PI * 2);
-                    renderContext.clip();
-                    if (ownPlayer?.avatarType === 'girl') {
-                        const faceWidth = width * 0.66;
-                        const faceHeight = height * 0.66;
-                        renderContext.drawImage(moodImage,
-                            avatarCenterX - faceWidth / 2,
-                            avatarCenterY - height * 0.12 - faceHeight / 2,
-                            faceWidth,
-                            faceHeight);
-                    } else {
-                        renderContext.drawImage(moodImage, avatarLeft, avatarTop, width, height);
-                    }
-                    renderContext.restore();
+                    drawAvatarMoodFace(renderContext, moodImage, ownPlayer?.avatarType === 'girl', avatarCenterX, avatarCenterY, width, height);
                 }
                 const customLayerOrder = wardrobeSavedCategoryOrder !== null
                     || JSON.stringify(wardrobeDraftCategoryOrder) !== JSON.stringify(defaultWardrobeCategoryOrder);
@@ -5645,38 +5649,7 @@
                         // Keep the avatar silhouette, ears, and body fixed. Only replace
                         // the inner face area so mood changes cannot make the outline jump.
                         if (moodFaceImage && moodFaceImage !== playerAvatarImage) {
-                            ctx.save();
-                            ctx.beginPath();
-                            ctx.ellipse(
-                                position.x,
-                                avatarY - visualHeight * 0.19,
-                                visualWidth * 0.275,
-                                visualHeight * 0.255,
-                                0,
-                                0,
-                                Math.PI * 2
-                            );
-                            ctx.clip();
-                            if (player.avatarType === 'girl') {
-                                const faceWidth = visualWidth * 0.66;
-                                const faceHeight = visualHeight * 0.66;
-                                ctx.drawImage(
-                                    moodFaceImage,
-                                    position.x - faceWidth / 2,
-                                    avatarY - visualHeight * 0.12 - faceHeight / 2,
-                                    faceWidth,
-                                    faceHeight
-                                );
-                            } else {
-                                ctx.drawImage(
-                                    moodFaceImage,
-                                    position.x - visualWidth / 2,
-                                    avatarY - visualHeight / 2,
-                                    visualWidth,
-                                    visualHeight
-                                );
-                            }
-                            ctx.restore();
+                            drawAvatarMoodFace(ctx, moodFaceImage, player.avatarType === 'girl', position.x, avatarY, visualWidth, visualHeight);
                         }
                     } else {
                         ctx.beginPath();
