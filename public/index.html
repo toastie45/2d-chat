@@ -1912,6 +1912,12 @@
                                             <option value="accessory">Tilbehør</option>
                                         </select>
                                     </label>
+                                    <label>Avatar / køn
+                                        <select id="admin-clothing-avatar-type" required>
+                                            <option value="boy">Mand</option>
+                                            <option value="girl">Kvinde</option>
+                                        </select>
+                                    </label>
                                     <label id="admin-clothing-image-field"><span>Billede (PNG/WebP, maks. 950 KB)</span>
                                         <input id="admin-clothing-image" type="file" accept="image/png,image/webp">
                                     </label>
@@ -2168,6 +2174,7 @@
                 updateGirlAvatarChoice(true);
                 requestBoardRender();
                 drawWardrobeAvatarPreview();
+                drawAdminClothingPreview();
                 const adminGirlAvatarPreview = document.getElementById('admin-girl-avatar-preview');
                 if (adminGirlAvatarPreview) {
                     adminGirlAvatarPreview.src = girlAvatarImage.src;
@@ -2327,6 +2334,7 @@
             const adminClothingName = document.getElementById('admin-clothing-name');
             const adminClothingDescription = document.getElementById('admin-clothing-description');
             const adminClothingCategory = document.getElementById('admin-clothing-category');
+            const adminClothingAvatarType = document.getElementById('admin-clothing-avatar-type');
             const adminClothingImageInput = document.getElementById('admin-clothing-image');
             const adminClothingImageField = document.getElementById('admin-clothing-image-field');
             const adminClothingAssignmentField = document.getElementById('admin-clothing-assignment-field');
@@ -3829,8 +3837,11 @@
                 context.translate(adminClothingPreview.width / 2, adminClothingPreview.height / 2);
                 context.scale(viewScale, viewScale);
                 context.translate(-adminClothingPreview.width / 2, -adminClothingPreview.height / 2);
-                if (adminClothingPreviewAvatar.complete && adminClothingPreviewAvatar.naturalWidth) {
-                    context.drawImage(adminClothingPreviewAvatar, 0, 0, adminClothingPreview.width, adminClothingPreview.height);
+                const previewAvatar = adminClothingAvatarType.value === 'girl'
+                    ? (girlAvatarImageLoaded ? girlAvatarImage : null)
+                    : adminClothingPreviewAvatar;
+                if (previewAvatar?.complete && previewAvatar.naturalWidth) {
+                    context.drawImage(previewAvatar, 0, 0, adminClothingPreview.width, adminClothingPreview.height);
                 }
                 if (!adminClothingPreviewImage?.naturalWidth) {
                     context.restore();
@@ -4108,6 +4119,7 @@
                 adminClothingForm.reset();
                 adminClothingAssignmentField.hidden = false;
                 adminClothingImageField.querySelector('span').textContent = 'Billede (PNG/WebP, maks. 950 KB)';
+                adminClothingAvatarType.value = 'boy';
                 adminClothingSaveButton.textContent = 'Gem tøjdelen';
                 adminClothingCancelEditButton.hidden = true;
                 adminClothingImageInput.value = '';
@@ -4127,6 +4139,7 @@
                 adminClothingName.value = item.name || '';
                 adminClothingDescription.value = item.description || '';
                 adminClothingCategory.value = item.category || 'clothing';
+                adminClothingAvatarType.value = item.avatarType === 'girl' ? 'girl' : 'boy';
                 adminClothingLevel.value = String(item.requiredLevel || 1);
                 adminClothingPrice.value = String(item.price || 0);
                 const transform = item.transform || {};
@@ -4170,6 +4183,7 @@
                         name: adminClothingName.value,
                         description: adminClothingDescription.value,
                         category: adminClothingCategory.value,
+                        targetAvatarType: adminClothingAvatarType.value,
                         requiredLevel: Number(adminClothingLevel.value),
                         price: Number(adminClothingPrice.value),
                         x: Number(adminClothingX.value),
@@ -4196,6 +4210,12 @@
                 }
             }
             adminClothingForm.addEventListener('submit', submitAdminClothing);
+            adminClothingAvatarType.addEventListener('change', () => {
+                if (adminClothingAvatarType.value === 'girl' && !girlAvatarImageLoaded) {
+                    adminClothingStatus.textContent = 'Upload kvindeavataren under Admin → Avatarer for at kunne se den i preview.';
+                }
+                drawAdminClothingPreview();
+            });
             adminClothingCancelEditButton.addEventListener('click', () => resetAdminClothingForm('Redigeringen blev annulleret.'));
 
             async function uploadAdminRoomBackground(roomId, file, statusElement) {
@@ -4749,7 +4769,8 @@
                     const name = document.createElement('strong');
                     name.textContent = item.name;
                     const meta = document.createElement('span');
-                    meta.textContent = `${categoryNames[item.category] || item.category} · Level ${item.requiredLevel} · ${Number(item.price).toLocaleString('da-DK')} mønter · ${item.assignmentCount} tildelt`;
+                    const avatarLabel = item.avatarType === 'girl' ? 'Kvindeavatar' : 'Mandeavatar';
+                    meta.textContent = `${avatarLabel} · ${categoryNames[item.category] || item.category} · Level ${item.requiredLevel} · ${Number(item.price).toLocaleString('da-DK')} mønter · ${item.assignmentCount} tildelt`;
                     details.append(name, meta);
                     if (item.description) {
                         const description = document.createElement('span');
@@ -4880,7 +4901,8 @@
                     const name = document.createElement('strong');
                     name.textContent = item.name;
                     const meta = document.createElement('span');
-                    meta.textContent = `${shopCategoryNames[item.category] || item.category} · Level ${item.requiredLevel} · ${Number(item.price).toLocaleString('da-DK')} mønter`;
+                    const avatarLabel = item.avatarType === 'girl' ? 'Kvindeavatar' : 'Mandeavatar';
+                    meta.textContent = `${avatarLabel} · ${shopCategoryNames[item.category] || item.category} · Level ${item.requiredLevel} · ${Number(item.price).toLocaleString('da-DK')} mønter`;
                     details.append(name, meta);
                     const toggle = document.createElement('button');
                     toggle.className = item.shopListed ? 'admin-row-button ban' : 'admin-row-button';
