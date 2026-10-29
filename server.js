@@ -703,6 +703,7 @@ async function startServer() {
     await pool.query('ALTER TABLE chat_clothing_catalog DROP CONSTRAINT IF EXISTS chat_clothing_catalog_category_check');
     await pool.query("ALTER TABLE chat_clothing_catalog ADD CONSTRAINT chat_clothing_catalog_category_check CHECK (category IN ('headwear', 'hair', 'beard', 'glasses', 'clothing', 'left_hand', 'right_hand', 'accessory'))");
     await pool.query('ALTER TABLE chat_clothing_catalog ADD COLUMN IF NOT EXISTS image_version BIGINT NOT NULL DEFAULT 1');
+    await pool.query('ALTER TABLE chat_clothing_catalog ADD COLUMN IF NOT EXISTS is_shop_listed BOOLEAN NOT NULL DEFAULT FALSE');
     await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_clothing_assignments (
             id BIGSERIAL PRIMARY KEY,
@@ -2034,6 +2035,7 @@ async function startServer() {
         async function sendAdminClothingItems() {
             const { rows } = await pool.query(`
                 SELECT item.id, item.name, item.description, item.category, item.required_level, item.price,
+                       item.is_shop_listed,
                        item.transform_json, item.image_version, item.created_at,
                        COUNT(assignment.id)::integer AS assignment_count
                 FROM chat_clothing_catalog item
@@ -2043,6 +2045,7 @@ async function startServer() {
             const mapItem = (item) => ({
                 id: String(item.id), name: item.name, description: item.description, category: item.category,
                 requiredLevel: Number(item.required_level), price: Number(item.price),
+                shopListed: Boolean(item.is_shop_listed),
                 imageVersion: Number(item.image_version || 1),
                 imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.image_version || 1}`,
                 transform: normalizeClothingTransform(item.transform_json)
@@ -2058,6 +2061,51 @@ async function startServer() {
             catch (error) {
                 console.error('Could not list admin clothing items:', getSafeErrorCode(error));
                 socket.emit('admin-clothing-action-result', { success: false, message: 'Tøjlisten kunne ikke hentes.' });
+            }
+        });
+
+        socket.on('admin-shop-item-set', async ({ id, listed } = {}) => {
+            if (!socket.data.canManageClothing || !activeSocketIds.has(socket.id)) return;
+            if (typeof id !== 'string' || !/^[1-9]\d{0,18}$/.test(id) || typeof listed !== 'boolean') return;
+            try {
+                const { rows: [item] } = await pool.query(
+                    'UPDATE chat_clothing_catalog SET is_shop_listed = $2 WHERE id = $1 RETURNING name',
+                    [id, listed]
+                );
+                if (!item) {
+                    socket.emit('admin-shop-action-result', { success: false, message: 'Tøjdelen findes ikke længere.' });
+                    return;
+                }
+                socket.emit('admin-shop-action-result', {
+                    success: true,
+                    message: listed ? `${item.name} er nu synlig i butikken.` : `${item.name} er fjernet fra butikken.`
+                });
+                await sendAdminClothingItems();
+            } catch (error) {
+                console.error('Could not update shop listing:', getSafeErrorCode(error));
+                socket.emit('admin-shop-action-result', { success: false, message: 'Butikken kunne ikke opdateres.' });
+            }
+        });
+
+        socket.on('shop-request', async () => {
+            if (!activeSocketIds.has(socket.id)) return;
+            try {
+                const { rows } = await pool.query(`
+                    SELECT id, name, description, category, required_level, price, image_version
+                    FROM chat_clothing_catalog
+                    WHERE is_shop_listed = TRUE
+                    ORDER BY category, required_level, name, id
+                    LIMIT 300
+                `);
+                socket.emit('shop-items', { items: rows.map((item) => ({
+                    id: String(item.id), name: item.name, description: item.description,
+                    category: item.category, requiredLevel: Number(item.required_level),
+                    price: Number(item.price), imageVersion: Number(item.image_version || 1),
+                    imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.image_version || 1}`
+                })) });
+            } catch (error) {
+                console.error('Could not load shop listings:', getSafeErrorCode(error));
+                socket.emit('shop-items', { items: [], error: 'Butikken kunne ikke hentes lige nu.' });
             }
         });
 
@@ -2279,13 +2327,17 @@ async function startServer() {
                 getTotalOnlineMs(socket.data.user.id),
                 pool.query(`
                     SELECT accepted_chat_messages,
-                           (SELECT COUNT(*)::integer FROM chat_clothing_catalog) AS total_clothing_count
+                           (SELECT COALESCE(jsonb_object_agg(category, category_count), '{}'::jsonb)
+                            FROM (
+                                SELECT category, COUNT(*)::integer AS category_count
+                                FROM chat_clothing_catalog GROUP BY category
+                            ) clothing_counts) AS clothing_category_counts
                     FROM chat_users WHERE id = $1
                 `, [socket.data.user.id])
             ]);
             socket.emit('wardrobe-items', {
                 level: getUserLevel(totalOnlineMs, Number(progress?.accepted_chat_messages || 0)),
-                totalClothingCount: Number(progress?.total_clothing_count || 0),
+                clothingCategoryCounts: progress?.clothing_category_counts || {},
                 items: rows.map((item) => ({
                     id: String(item.id),
                     name: item.name,

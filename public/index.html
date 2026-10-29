@@ -430,7 +430,6 @@
         .wardrobe-avatar-preview { display: block; width: 100%; height: 100%; object-fit: contain; }
         .wardrobe-preview-level { color: #a8c879; font-size: 9px; font-weight: 650; }
         .wardrobe-status { min-height: 16px; margin: 8px 0; color: var(--muted); font-size: 10px; }
-        .wardrobe-total-count { width: fit-content; margin: 0 0 10px; padding: 5px 8px; border: 1px solid #383d32; border-radius: 999px; background: #171914; color: #c8d4b2; font-size: 10px; font-weight: 650; }
         .wardrobe-actions { display: flex; gap: 8px; margin-top: 12px; }
         .wardrobe-actions button { flex: 1; min-height: 36px; }
         .wardrobe-selection { margin-top: 14px; padding: 12px; border: 1px solid #383d32; border-radius: 9px; background: #191b18; }
@@ -443,6 +442,16 @@
         .wardrobe-select-item span { display: grid; min-width: 0; gap: 4px; color: #a5a89b; font-size: 9px; }
         .wardrobe-select-item strong { overflow: hidden; color: #f2f0e9; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
         .wardrobe-empty { color: var(--muted); font-size: 11px; }
+        .shop-intro { margin: 0 0 14px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+        .shop-list { display: grid; gap: 9px; }
+        .shop-category-title { margin: 14px 0 6px; color: #dce6cc; font-size: 12px; }
+        .shop-item { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 9px; border: 1px solid #383d32; border-radius: 8px; background: #191b18; }
+        .shop-item img { width: 58px; height: 64px; object-fit: contain; border-radius: 5px; background: #10110f; }
+        .shop-item-details { display: grid; min-width: 0; gap: 4px; }
+        .shop-item-details strong { color: #f2f0e9; font-size: 11px; }
+        .shop-item-details span { color: var(--muted); font-size: 10px; }
+        .shop-coming-soon { padding: 6px 8px; border: 1px solid #41463a; border-radius: 6px; color: #a8c879; font-size: 9px; white-space: nowrap; }
+        .admin-shop-note { margin: 8px 0 12px; color: var(--muted); font-size: 10px; line-height: 1.5; }
         @media (max-width: 700px) {
             .wardrobe-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "preview preview" "left right"; gap: 9px; }
             .wardrobe-avatar-stage { width: 158px; }
@@ -1519,6 +1528,9 @@
                             <button class="toolbar-button" id="wardrobe-nav-button" type="button" aria-pressed="false" aria-controls="wardrobe-panel" aria-label="Tøjskab" title="Tøjskab">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v15H4Z"/><path d="M12 3v17M8 8v2M16 8v2M8 20v-5h8v5"/></svg>
                             </button>
+                            <button class="toolbar-button" id="shop-nav-button" type="button" aria-pressed="false" aria-controls="shop-panel" aria-label="Butik" title="Butik">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16l-1 12H5L4 8Z"/><path d="M8 9V6a4 4 0 0 1 8 0v3M9 13v3h6v-3"/></svg>
+                            </button>
                             <button class="toolbar-button" id="private-mail-nav-button" type="button" aria-pressed="false" aria-controls="private-mail-panel" aria-label="Privat mail" title="Post"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg><span class="mail-unread-badge" id="mail-unread-badge" hidden></span></button>
                             <button class="toolbar-button" id="navigator-nav-button" type="button" aria-pressed="false" aria-controls="navigator-panel" aria-label="Navigator" title="Navigator">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.8 8.2-2.4 5.2-5.2 2.4 2.4-5.2z"/></svg>
@@ -1549,7 +1561,6 @@
                         <section class="side-panel" id="wardrobe-panel" aria-labelledby="wardrobe-title" hidden>
                             <h2 class="side-title" id="wardrobe-title">Mit tøjskab</h2>
                             <p class="wardrobe-status" id="wardrobe-status" aria-live="polite">Tøjdele, du får tildelt, lander her.</p>
-                            <p class="wardrobe-total-count" id="wardrobe-total-count">Udgivne tøjdele i alt: 0</p>
                             <div class="wardrobe-layout">
                                 <div class="wardrobe-category-stack left" id="wardrobe-left-categories"></div>
                                 <div class="wardrobe-preview-column">
@@ -1570,6 +1581,12 @@
                                 <div class="wardrobe-selection-items" id="wardrobe-category-items" role="list"></div>
                             </section>
                             <p class="wardrobe-empty" id="wardrobe-empty" hidden></p>
+                        </section>
+                        <section class="side-panel" id="shop-panel" aria-labelledby="shop-title" hidden>
+                            <h2 class="side-title" id="shop-title">Butik</h2>
+                            <p class="shop-intro">Se tøj, hår og tilbehør, der er sat til salg. Køb bliver åbnet, når chatten har en valuta.</p>
+                            <p class="admin-status" id="shop-status" aria-live="polite">Henter butikkens varer…</p>
+                            <div class="shop-list" id="shop-list" role="list"></div>
                         </section>
                         <section class="side-panel" id="members-panel" aria-labelledby="members-title" hidden>
                             <h2 class="side-title" id="members-title">Online på Chatten</h2>
@@ -1806,6 +1823,7 @@
                                 <option value="users">Brugerkontrol</option>
                                 <option value="rooms">Navigator - etager og rum</option>
                                 <option value="clothing">Tøj og tilbehør</option>
+                                <option value="shop">Butik</option>
                             </select>
                             <section class="admin-welcome" id="admin-welcome-view" aria-labelledby="admin-welcome-title">
                                 <h3 id="admin-welcome-title">Velkommen til adminpanelet</h3>
@@ -1906,6 +1924,12 @@
                                 <h3 class="admin-subsection-title">T&oslash;jkatalog</h3>
                                 <p class="admin-status">Hver t&oslash;jdel vises &eacute;n gang. Brug infoikonet for at se, hvem den er tildelt til.</p>
                                 <div class="admin-list" id="admin-clothing-catalog" role="list"></div>
+                            </section>
+                            <section class="admin-section" id="admin-shop-view" aria-labelledby="admin-shop-title" hidden>
+                                <h3 id="admin-shop-title">Butik</h3>
+                                <p class="admin-shop-note">Vælg tøjdele, hår, skæg, briller eller tilbehør fra kataloget, som skal vises i brugerbutikken. Herfra kan du fjerne dem igen. Køb er slået fra, indtil valuta er klar.</p>
+                                <p class="admin-status" id="admin-shop-status" aria-live="polite"></p>
+                                <div class="admin-list" id="admin-shop-catalog" role="list"></div>
                             </section>
                         </section>
                     </aside>
@@ -2182,16 +2206,20 @@
             const membersNavButton = document.getElementById('members-nav-button');
             const navigatorNavButton = document.getElementById('navigator-nav-button');
             const wardrobeNavButton = document.getElementById('wardrobe-nav-button');
+            const shopNavButton = document.getElementById('shop-nav-button');
             const adminNavButton = document.getElementById('admin-nav-button');
             const navigatorPanel = document.getElementById('navigator-panel');
             const wardrobePanel = document.getElementById('wardrobe-panel');
+            const shopPanel = document.getElementById('shop-panel');
+            const shopStatus = document.getElementById('shop-status');
+            const shopList = document.getElementById('shop-list');
             const wardrobeLeftCategories = document.getElementById('wardrobe-left-categories');
             const wardrobeRightCategories = document.getElementById('wardrobe-right-categories');
             const wardrobeAvatarPreview = document.getElementById('wardrobe-avatar-preview');
             const wardrobePreviewLevel = document.getElementById('wardrobe-preview-level');
             const wardrobeEmpty = document.getElementById('wardrobe-empty');
             const wardrobeStatus = document.getElementById('wardrobe-status');
-            const wardrobeTotalCount = document.getElementById('wardrobe-total-count');
+            let wardrobeCategoryCounts = {};
             const wardrobeSaveButton = document.getElementById('wardrobe-save-button');
             const wardrobeDiscardButton = document.getElementById('wardrobe-discard-button');
             const wardrobeCategoryPreview = document.getElementById('wardrobe-category-preview');
@@ -2209,6 +2237,9 @@
             const adminUsersView = document.getElementById('admin-users-view');
             const adminRoomsView = document.getElementById('admin-rooms-view');
             const adminClothingView = document.getElementById('admin-clothing-view');
+            const adminShopView = document.getElementById('admin-shop-view');
+            const adminShopStatus = document.getElementById('admin-shop-status');
+            const adminShopCatalog = document.getElementById('admin-shop-catalog');
             const adminClothingForm = document.getElementById('admin-clothing-form');
             const adminClothingUsername = document.getElementById('admin-clothing-username');
             const adminClothingName = document.getElementById('admin-clothing-name');
@@ -2806,6 +2837,7 @@
                 membersNavButton.setAttribute('aria-pressed', String(!membersPanel.hidden));
                 navigatorNavButton.setAttribute('aria-pressed', String(!navigatorPanel.hidden));
                 wardrobeNavButton.setAttribute('aria-pressed', String(!wardrobePanel.hidden));
+                shopNavButton.setAttribute('aria-pressed', String(!shopPanel.hidden));
                 chatNavButton.setAttribute('aria-pressed', String(!chatPanel.hidden));
                 profileNavButton.setAttribute('aria-pressed', String(!profileEditorPanel.hidden));
                 searchNavButton.setAttribute('aria-pressed', String(!searchPanel.hidden));
@@ -2836,6 +2868,7 @@
                 membersPanel.hidden = panel !== 'members';
                 navigatorPanel.hidden = panel !== 'navigator';
                 wardrobePanel.hidden = panel !== 'wardrobe';
+                shopPanel.hidden = panel !== 'shop';
                 roomWelcomePanel.hidden = panel !== 'welcome';
                 apartmentEditorPanel.hidden = panel !== 'apartment-editor';
                 chatPanel.hidden = panel !== 'chat';
@@ -3616,22 +3649,24 @@
             function selectAdminSection() {
                 if (adminSectionSelect.value === 'users' && !isFullAdminUser
                     || adminSectionSelect.value === 'rooms' && !canManagePublicRooms
-                    || adminSectionSelect.value === 'clothing' && !canManageClothing) {
+                    || ['clothing', 'shop'].includes(adminSectionSelect.value) && !canManageClothing) {
                     adminSectionSelect.value = '';
                 }
                 const showUsers = adminSectionSelect.value === 'users' && isFullAdminUser;
                 const showRooms = adminSectionSelect.value === 'rooms' && canManagePublicRooms;
                 const showClothing = adminSectionSelect.value === 'clothing' && canManageClothing;
-                adminWelcomeView.hidden = showUsers || showRooms || showClothing;
+                const showAdminShop = adminSectionSelect.value === 'shop' && canManageClothing;
+                adminWelcomeView.hidden = showUsers || showRooms || showClothing || showAdminShop;
                 adminUsersView.hidden = !showUsers;
                 adminRoomsView.hidden = !showRooms;
                 adminClothingView.hidden = !showClothing;
+                adminShopView.hidden = !showAdminShop;
                 if (showUsers) {
                     requestAdminUserList();
                     socket.emit('admin-ip-bans-request');
                 }
                 if (showRooms) socket.emit('admin-public-rooms-request');
-                if (showClothing) socket.emit('admin-clothing-items-request');
+                if (showClothing || showAdminShop) socket.emit('admin-clothing-items-request');
             }
 
             let adminClothingPreviewImage = null;
@@ -4461,7 +4496,9 @@
                     title.textContent = categoryNames[category];
                     const count = document.createElement('span');
                     count.className = 'wardrobe-category-count';
-                    count.textContent = `${categoryItems.filter((item) => wardrobeDraftIds.has(String(item.id))).length}/${categoryItems.length} valgt`;
+                    const selectedCount = categoryItems.filter((item) => wardrobeDraftIds.has(String(item.id))).length;
+                    const publishedCount = Math.max(0, Number(wardrobeCategoryCounts[category]) || 0);
+                    count.textContent = `${selectedCount}/${categoryItems.length} valgt · ${publishedCount} i chatten`;
                     heading.append(title, count);
                     heading.addEventListener('click', () => {
                         activeWardrobeCategory = selected ? '' : category;
@@ -4619,6 +4656,93 @@
                     actions.append(owners, username, assign, edit, remove);
                     row.append(image, details, actions);
                     adminClothingCatalog.append(row);
+                }
+            }
+
+            const shopCategoryNames = {
+                headwear: 'Hovedbeklædning', hair: 'Hår', beard: 'Skæg', glasses: 'Briller',
+                clothing: 'Tøj', left_hand: 'Venstre hånd', right_hand: 'Højre hånd', accessory: 'Tilbehør'
+            };
+
+            function renderAdminShopCatalog(items = []) {
+                adminShopCatalog.replaceChildren();
+                if (!items.length) {
+                    const empty = document.createElement('p');
+                    empty.className = 'admin-status';
+                    empty.textContent = 'Tøjkataloget er tomt. Tilføj tøjdele under “Tøj og tilbehør” først.';
+                    adminShopCatalog.append(empty);
+                    return;
+                }
+                for (const item of items) {
+                    const row = document.createElement('div');
+                    row.className = 'admin-clothing-row';
+                    row.setAttribute('role', 'listitem');
+                    const image = document.createElement('img');
+                    image.className = 'admin-clothing-thumb';
+                    image.src = item.imageUrl;
+                    image.alt = '';
+                    const details = document.createElement('div');
+                    details.className = 'admin-clothing-meta';
+                    const name = document.createElement('strong');
+                    name.textContent = item.name;
+                    const meta = document.createElement('span');
+                    meta.textContent = `${shopCategoryNames[item.category] || item.category} · Level ${item.requiredLevel} · ${Number(item.price).toLocaleString('da-DK')} mønter`;
+                    details.append(name, meta);
+                    const toggle = document.createElement('button');
+                    toggle.className = item.shopListed ? 'admin-row-button ban' : 'admin-row-button';
+                    toggle.type = 'button';
+                    toggle.textContent = item.shopListed ? 'Fjern fra butik' : 'Sæt i butik';
+                    toggle.setAttribute('aria-label', `${item.shopListed ? 'Fjern' : 'Sæt'} ${item.name} ${item.shopListed ? 'fra' : 'i'} butikken`);
+                    toggle.addEventListener('click', () => {
+                        adminShopStatus.textContent = item.shopListed ? 'Fjerner fra butikken…' : 'Lægger i butikken…';
+                        socket.emit('admin-shop-item-set', { id: item.id, listed: !item.shopListed });
+                    });
+                    row.append(image, details, toggle);
+                    adminShopCatalog.append(row);
+                }
+            }
+
+            function renderShopItems(items = [], error = '') {
+                shopList.replaceChildren();
+                if (error) shopStatus.textContent = error;
+                else shopStatus.textContent = items.length ? `${items.length} varer i butikken.` : 'Butikken er tom lige nu.';
+                if (!items.length) return;
+                const groups = new Map();
+                for (const item of items) {
+                    const category = shopCategoryNames[item.category] || item.category;
+                    if (!groups.has(category)) groups.set(category, []);
+                    groups.get(category).push(item);
+                }
+                for (const [category, categoryItems] of groups) {
+                    const heading = document.createElement('h3');
+                    heading.className = 'shop-category-title';
+                    heading.textContent = category;
+                    shopList.append(heading);
+                    for (const item of categoryItems) {
+                        const card = document.createElement('article');
+                        card.className = 'shop-item';
+                        card.setAttribute('role', 'listitem');
+                        const image = document.createElement('img');
+                        image.src = item.imageUrl;
+                        image.alt = '';
+                        const details = document.createElement('div');
+                        details.className = 'shop-item-details';
+                        const name = document.createElement('strong');
+                        name.textContent = item.name;
+                        const meta = document.createElement('span');
+                        meta.textContent = `Level ${item.requiredLevel} · ${Number(item.price).toLocaleString('da-DK')} mønter`;
+                        details.append(name, meta);
+                        if (item.description) {
+                            const description = document.createElement('span');
+                            description.textContent = item.description;
+                            details.append(description);
+                        }
+                        const future = document.createElement('span');
+                        future.className = 'shop-coming-soon';
+                        future.textContent = 'Køb senere';
+                        card.append(image, details, future);
+                        shopList.append(card);
+                    }
                 }
             }
 
@@ -5407,6 +5531,11 @@
                 wardrobeStatus.textContent = 'Henter dit tøjskab…';
                 socket.emit('wardrobe-request');
             });
+            shopNavButton.addEventListener('click', () => {
+                selectSidePanel('shop');
+                shopStatus.textContent = 'Henter butikkens varer…';
+                socket.emit('shop-request');
+            });
             wardrobeSaveButton.addEventListener('click', () => {
                 if (!socket.connected || wardrobeSaveButton.disabled) return;
                 wardrobeSaveButton.disabled = true;
@@ -5431,6 +5560,7 @@
                 adminUsersView.hidden = true;
                 adminRoomsView.hidden = true;
                 adminClothingView.hidden = true;
+                adminShopView.hidden = true;
             });
             adminSectionSelect.addEventListener('change', selectAdminSection);
             adminClothingOwnersClose.addEventListener('click', () => adminClothingOwnersDialog.close());
@@ -6355,10 +6485,13 @@
                 adminSectionSelect.querySelector('option[value="users"]').hidden = !isFullAdminUser;
                 adminSectionSelect.querySelector('option[value="rooms"]').hidden = !canManagePublicRooms;
                 adminSectionSelect.querySelector('option[value="clothing"]').hidden = !canManageClothing;
+                adminSectionSelect.querySelector('option[value="shop"]').hidden = !canManageClothing;
                 selectAdminSection();
             });
-            socket.on('wardrobe-items', ({ items = [], level = 1, totalClothingCount = 0 } = {}) => {
-                wardrobeTotalCount.textContent = `Udgivne tøjdele i alt: ${Math.max(0, Number(totalClothingCount) || 0)}`;
+            socket.on('wardrobe-items', ({ items = [], level = 1, clothingCategoryCounts = {} } = {}) => {
+                wardrobeCategoryCounts = clothingCategoryCounts && typeof clothingCategoryCounts === 'object'
+                    ? clothingCategoryCounts
+                    : {};
                 renderWardrobeItems(Array.isArray(items) ? items : [], Math.max(1, Number(level) || 1));
             });
             socket.on('wardrobe-action-result', ({ success, message } = {}) => {
@@ -6367,7 +6500,17 @@
             });
             socket.on('admin-clothing-items', ({ catalog = [] } = {}) => {
                 if (!isAdminUser) return;
-                renderAdminClothingCatalog(Array.isArray(catalog) ? catalog : []);
+                const items = Array.isArray(catalog) ? catalog : [];
+                renderAdminClothingCatalog(items);
+                renderAdminShopCatalog(items);
+            });
+            socket.on('admin-shop-action-result', ({ success, message } = {}) => {
+                if (!canManageClothing) return;
+                adminShopStatus.textContent = message || (success ? 'Butikken er opdateret.' : 'Butikken kunne ikke opdateres.');
+                if (success && !shopPanel.hidden) socket.emit('shop-request');
+            });
+            socket.on('shop-items', ({ items = [], error = '' } = {}) => {
+                renderShopItems(Array.isArray(items) ? items : [], error);
             });
             socket.on('admin-clothing-owners', (payload = {}) => {
                 if (!canManageClothing) return;
