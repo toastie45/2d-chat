@@ -4892,8 +4892,9 @@
                             : `${Number(item.price).toLocaleString('da-DK')} mønter`;
                         const activeCount = document.createElement('span');
                         activeCount.className = 'wardrobe-item-live-count';
-                        const activeUsers = Math.max(0, Number(item.activeInChat) || 0);
-                        activeCount.textContent = `${activeUsers} på i chatten`;
+                        const owners = Math.max(0, Number(item.wardrobeCount) || 0);
+                        activeCount.textContent = `${owners} ${owners === 1 ? 'bruger har' : 'brugere har'} den`;
+                        activeCount.title = 'Samlet antal brugere, der har tøjdelen i garderoben eller på figuren';
                         details.append(name, meta, activeCount);
                         button.append(image, details);
                         button.addEventListener('click', () => {
@@ -7118,14 +7119,14 @@
             socket.on('wardrobe-items', ({ items = [], level = 1, categoryOrder } = {}) => {
                 renderWardrobeItems(Array.isArray(items) ? items : [], Math.max(1, Number(level) || 1), false, categoryOrder);
                 if (wardrobeStatus.textContent.startsWith('Henter')) {
-                    wardrobeStatus.textContent = 'Træk kategorierne for at ændre rækkefølgen. Dit outfit vises i chatten, når du gemmer.';
+                    wardrobeStatus.textContent = 'Træk kategorierne for at ændre rækkefølgen. Tryk på lagikonet på previewet for at flytte håndting foran eller bag tøjet. Gem for at vise ændringerne i chatten.';
                 }
             });
-            socket.on('clothing-active-counts', (counts = {}) => {
+            socket.on('clothing-ownership-counts', (counts = {}) => {
                 if (!counts || typeof counts !== 'object') return;
                 wardrobeItems = wardrobeItems.map((item) => ({
                     ...item,
-                    activeInChat: Math.max(0, Number(counts[String(item.id)]) || 0)
+                    wardrobeCount: Math.max(0, Number(counts[String(item.id)]) || 0)
                 }));
                 renderWardrobeItems(wardrobeItems, wardrobeLevel, true);
             });
