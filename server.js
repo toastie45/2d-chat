@@ -705,6 +705,14 @@ async function startServer() {
     await pool.query('ALTER TABLE chat_clothing_catalog ADD COLUMN IF NOT EXISTS image_version BIGINT NOT NULL DEFAULT 1');
     await pool.query('ALTER TABLE chat_clothing_catalog ADD COLUMN IF NOT EXISTS is_shop_listed BOOLEAN NOT NULL DEFAULT FALSE');
     await pool.query(`
+        CREATE TABLE IF NOT EXISTS chat_shop_settings (
+            singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton = TRUE),
+            is_open BOOLEAN NOT NULL DEFAULT FALSE,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await pool.query('INSERT INTO chat_shop_settings (singleton, is_open) VALUES (TRUE, FALSE) ON CONFLICT (singleton) DO NOTHING');
+    await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_clothing_assignments (
             id BIGSERIAL PRIMARY KEY,
             target_user_id BIGINT NOT NULL REFERENCES chat_users(id) ON DELETE CASCADE,
@@ -2087,9 +2095,55 @@ async function startServer() {
             }
         });
 
+        socket.on('shop-status-request', async () => {
+            if (!socket.data.user) return;
+            try {
+                const { rows: [status] } = await pool.query('SELECT is_open FROM chat_shop_settings WHERE singleton = TRUE');
+                socket.emit('shop-status', { isOpen: status?.is_open === true });
+            } catch (error) {
+                console.error('Could not read shop status:', getSafeErrorCode(error));
+                socket.emit('shop-status', { isOpen: false });
+            }
+        });
+
+        socket.on('admin-shop-status-request', async () => {
+            if (!socket.data.canManageClothing || !activeSocketIds.has(socket.id)) return;
+            try {
+                const { rows: [status] } = await pool.query('SELECT is_open FROM chat_shop_settings WHERE singleton = TRUE');
+                socket.emit('admin-shop-status', { isOpen: status?.is_open === true });
+            } catch (error) {
+                console.error('Could not read admin shop status:', getSafeErrorCode(error));
+                socket.emit('admin-shop-status', { isOpen: false });
+            }
+        });
+
+        socket.on('admin-shop-status-set', async ({ isOpen } = {}) => {
+            if (!socket.data.canManageClothing || !activeSocketIds.has(socket.id) || typeof isOpen !== 'boolean') return;
+            try {
+                await pool.query(`
+                    INSERT INTO chat_shop_settings (singleton, is_open, updated_at)
+                    VALUES (TRUE, $1, NOW())
+                    ON CONFLICT (singleton) DO UPDATE SET is_open = EXCLUDED.is_open, updated_at = NOW()
+                `, [isOpen]);
+                io.emit('shop-status', { isOpen });
+                socket.emit('admin-shop-status-result', {
+                    success: true,
+                    message: isOpen ? 'Butikken er nu åben for brugerne.' : 'Butikken er lukket for brugerne.'
+                });
+            } catch (error) {
+                console.error('Could not update shop status:', getSafeErrorCode(error));
+                socket.emit('admin-shop-status-result', { success: false, message: 'Butikkens status kunne ikke gemmes.' });
+            }
+        });
+
         socket.on('shop-request', async () => {
             if (!activeSocketIds.has(socket.id)) return;
             try {
+                const { rows: [status] } = await pool.query('SELECT is_open FROM chat_shop_settings WHERE singleton = TRUE');
+                if (status?.is_open !== true) {
+                    socket.emit('shop-items', { items: [], closed: true });
+                    return;
+                }
                 const { rows } = await pool.query(`
                     SELECT id, name, description, category, required_level, price, image_version
                     FROM chat_clothing_catalog

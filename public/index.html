@@ -1928,6 +1928,7 @@
                             <section class="admin-section" id="admin-shop-view" aria-labelledby="admin-shop-title" hidden>
                                 <h3 id="admin-shop-title">Butik</h3>
                                 <p class="admin-shop-note">Vælg tøjdele, hår, skæg, briller eller tilbehør fra kataloget, som skal vises i brugerbutikken. Herfra kan du fjerne dem igen. Køb er slået fra, indtil valuta er klar.</p>
+                                <button class="admin-row-button" id="admin-shop-open-toggle" type="button">Åbn butik for brugere</button>
                                 <p class="admin-status" id="admin-shop-status" aria-live="polite"></p>
                                 <div class="admin-list" id="admin-shop-catalog" role="list"></div>
                             </section>
@@ -2213,6 +2214,8 @@
             const shopPanel = document.getElementById('shop-panel');
             const shopStatus = document.getElementById('shop-status');
             const shopList = document.getElementById('shop-list');
+            const adminShopOpenToggle = document.getElementById('admin-shop-open-toggle');
+            let shopIsOpen = false;
             const wardrobeLeftCategories = document.getElementById('wardrobe-left-categories');
             const wardrobeRightCategories = document.getElementById('wardrobe-right-categories');
             const wardrobeAvatarPreview = document.getElementById('wardrobe-avatar-preview');
@@ -2829,6 +2832,7 @@
                 bottomToolbar.classList.toggle('hidden', !isAuthenticated);
                 pageWrapper.classList.toggle('has-session', isAuthenticated);
                 roomStripUser.textContent = isAuthenticated ? currentUser.username : '';
+                shopNavButton.hidden = !isAuthenticated || !shopIsOpen;
                 adminNavButton.hidden = !isAuthenticated || !isAdminUser;
                 if (!isAuthenticated) setFriendMenuOpen(false);
             }
@@ -3667,6 +3671,7 @@
                 }
                 if (showRooms) socket.emit('admin-public-rooms-request');
                 if (showClothing || showAdminShop) socket.emit('admin-clothing-items-request');
+                if (showAdminShop) socket.emit('admin-shop-status-request');
             }
 
             let adminClothingPreviewImage = null;
@@ -4702,9 +4707,10 @@
                 }
             }
 
-            function renderShopItems(items = [], error = '') {
+            function renderShopItems(items = [], error = '', closed = false) {
                 shopList.replaceChildren();
                 if (error) shopStatus.textContent = error;
+                else if (closed) shopStatus.textContent = 'Butikken er lukket lige nu.';
                 else shopStatus.textContent = items.length ? `${items.length} varer i butikken.` : 'Butikken er tom lige nu.';
                 if (!items.length) return;
                 const groups = new Map();
@@ -5536,6 +5542,11 @@
                 shopStatus.textContent = 'Henter butikkens varer…';
                 socket.emit('shop-request');
             });
+            adminShopOpenToggle.addEventListener('click', () => {
+                adminShopOpenToggle.disabled = true;
+                adminShopStatus.textContent = shopIsOpen ? 'Lukker butikken…' : 'Åbner butikken…';
+                socket.emit('admin-shop-status-set', { isOpen: !shopIsOpen });
+            });
             wardrobeSaveButton.addEventListener('click', () => {
                 if (!socket.connected || wardrobeSaveButton.disabled) return;
                 wardrobeSaveButton.disabled = true;
@@ -6205,6 +6216,7 @@
             socket.on('connect', () => {
                 if (currentUser) {
                     socket.emit('join');
+                    socket.emit('shop-status-request');
                 }
             });
 
@@ -6509,8 +6521,33 @@
                 adminShopStatus.textContent = message || (success ? 'Butikken er opdateret.' : 'Butikken kunne ikke opdateres.');
                 if (success && !shopPanel.hidden) socket.emit('shop-request');
             });
-            socket.on('shop-items', ({ items = [], error = '' } = {}) => {
-                renderShopItems(Array.isArray(items) ? items : [], error);
+            socket.on('admin-shop-status', ({ isOpen = false } = {}) => {
+                if (!canManageClothing) return;
+                adminShopOpenToggle.disabled = false;
+                adminShopOpenToggle.textContent = isOpen ? 'Luk butik for brugere' : 'Åbn butik for brugere';
+                adminShopOpenToggle.setAttribute('aria-pressed', String(isOpen));
+            });
+            socket.on('admin-shop-status-result', ({ success, message } = {}) => {
+                adminShopStatus.textContent = message || (success ? 'Butikkens status er gemt.' : 'Butikkens status kunne ikke gemmes.');
+                adminShopOpenToggle.disabled = false;
+            });
+            socket.on('shop-status', ({ isOpen = false } = {}) => {
+                shopIsOpen = isOpen === true;
+                shopNavButton.hidden = !currentUser || !shopIsOpen;
+                if (canManageClothing) {
+                    adminShopOpenToggle.textContent = shopIsOpen ? 'Luk butik for brugere' : 'Åbn butik for brugere';
+                    adminShopOpenToggle.setAttribute('aria-pressed', String(shopIsOpen));
+                    adminShopOpenToggle.disabled = false;
+                }
+                if (!shopIsOpen) {
+                    shopList.replaceChildren();
+                    if (activeSidePanel === 'shop') shopStatus.textContent = 'Butikken er lukket lige nu.';
+                } else if (activeSidePanel === 'shop') {
+                    socket.emit('shop-request');
+                }
+            });
+            socket.on('shop-items', ({ items = [], error = '', closed = false } = {}) => {
+                renderShopItems(Array.isArray(items) ? items : [], error, closed);
             });
             socket.on('admin-clothing-owners', (payload = {}) => {
                 if (!canManageClothing) return;
