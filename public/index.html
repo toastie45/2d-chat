@@ -2031,7 +2031,7 @@
                                     </div>
                                     <div class="admin-clothing-form-actions">
                                         <button class="admin-row-button" id="admin-clothing-save" type="submit">Gem t&oslash;jdelen</button>
-                                        <button class="admin-row-button" id="admin-clothing-cancel-edit" type="button" hidden>Annuller redigering</button>
+                                        <button class="admin-row-button" id="admin-clothing-cancel-edit" type="button">Ryd formular</button>
                                     </div>
                                     <p class="admin-status wide" id="admin-clothing-status" aria-live="polite"></p>
                                 </form>
@@ -2660,6 +2660,7 @@
             const adminClothingSaveButton = document.getElementById('admin-clothing-save');
             const adminClothingCancelEditButton = document.getElementById('admin-clothing-cancel-edit');
             let adminClothingEditingId = '';
+            let adminClothingFormRevision = 0;
             const adminClothingStatus = document.getElementById('admin-clothing-status');
             const adminClothingCatalog = document.getElementById('admin-clothing-catalog');
             const adminClothingCatalogSearch = document.getElementById('admin-clothing-catalog-search');
@@ -4467,6 +4468,7 @@
             }
 
             function resetAdminClothingForm(message = '') {
+                adminClothingFormRevision += 1;
                 adminClothingEditingId = '';
                 adminClothingForm.reset();
                 adminClothingAssignmentField.hidden = false;
@@ -4478,7 +4480,9 @@
                 adminClothingAnimationFps.value = '8';
                 adminClothingAvatarType.value = 'boy';
                 adminClothingSaveButton.textContent = 'Gem tøjdelen';
-                adminClothingCancelEditButton.hidden = true;
+                adminClothingCancelEditButton.hidden = false;
+                adminClothingCancelEditButton.disabled = false;
+                adminClothingCancelEditButton.textContent = 'Ryd formular';
                 adminClothingImageInput.value = '';
                 if (adminClothingPreviewUrl) URL.revokeObjectURL(adminClothingPreviewUrl);
                 adminClothingPreviewUrl = '';
@@ -4520,6 +4524,7 @@
                 adminClothingImageField.querySelector('span').textContent = 'Erstat billede/spritesheet (valgfrit, PNG/WebP, maks. 950 KB)';
                 adminClothingSaveButton.textContent = 'Gem ændringer';
                 adminClothingCancelEditButton.hidden = false;
+                adminClothingCancelEditButton.textContent = 'Annuller redigering';
                 adminClothingStatus.textContent = `Redigerer ${item.name}. Lad billedfeltet være tomt for at beholde billedet.`;
                 if (adminClothingPreviewUrl) URL.revokeObjectURL(adminClothingPreviewUrl);
                 adminClothingPreviewUrl = '';
@@ -4535,6 +4540,7 @@
 
             async function submitAdminClothing(event) {
                 event.preventDefault();
+                const formRevision = adminClothingFormRevision;
                 const file = adminClothingImageInput.files?.[0];
                 const isEditing = Boolean(adminClothingEditingId);
                 if (!file && !isEditing) {
@@ -4568,14 +4574,18 @@
                     else payload.username = adminClothingUsername.value;
                     if (file) {
                         const { blob, mimeType } = await prepareAdminClothingImage(file);
+                        if (formRevision !== adminClothingFormRevision) return;
                         payload.mimeType = mimeType;
                         payload.image = new Uint8Array(await blob.arrayBuffer());
                     }
+                    if (formRevision !== adminClothingFormRevision) return;
                     adminClothingSaveButton.disabled = true;
+                    adminClothingCancelEditButton.disabled = true;
                     socket.emit(isEditing ? 'admin-clothing-item-update' : 'admin-clothing-item-create', payload);
                 } catch (error) {
                     adminClothingStatus.textContent = error.message || 'Tøjdelen kunne ikke uploades.';
                     document.getElementById('admin-clothing-save').disabled = false;
+                    adminClothingCancelEditButton.disabled = false;
                 }
             }
             adminClothingForm.addEventListener('submit', submitAdminClothing);
@@ -4592,7 +4602,10 @@
                 }
                 drawAdminClothingPreview();
             });
-            adminClothingCancelEditButton.addEventListener('click', () => resetAdminClothingForm('Redigeringen blev annulleret.'));
+            adminClothingCancelEditButton.addEventListener('click', () => {
+                const wasEditing = Boolean(adminClothingEditingId);
+                resetAdminClothingForm(wasEditing ? 'Redigeringen blev annulleret.' : 'Formularen er ryddet.');
+            });
 
             async function uploadAdminRoomBackground(roomId, file, statusElement, animationInput) {
                 if (!file || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
@@ -7736,6 +7749,7 @@
             socket.on('admin-clothing-action-result', ({ success, message, action } = {}) => {
                 adminClothingStatus.textContent = message || (success ? 'Tøjdelen er gemt.' : 'Handlingen mislykkedes.');
                 document.getElementById('admin-clothing-save').disabled = false;
+                adminClothingCancelEditButton.disabled = false;
                 if (success && action === 'assignment-delete' && adminClothingOwnersDialog.open) {
                     socket.emit('admin-clothing-owners-request', { id: adminClothingOwnersDialog.dataset.itemId });
                 }
