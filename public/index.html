@@ -421,8 +421,10 @@
         .wardrobe-category-stack { display: grid; gap: 9px; min-width: 0; }
         .wardrobe-category-stack.left { grid-area: left; }
         .wardrobe-category-stack.right { grid-area: right; }
-        .wardrobe-category-box { min-width: 0; overflow: hidden; border: 1px solid #383d32; border-radius: 9px; background: linear-gradient(150deg, #242720, #191b18); }
-        .wardrobe-category-heading { display: flex; align-items: center; justify-content: space-between; gap: 5px; width: 100%; padding: 8px 9px; border: 0; background: transparent; color: #dce6cc; font: inherit; font-size: 10px; font-weight: 700; text-align: left; cursor: pointer; }
+        .wardrobe-category-box { min-width: 0; overflow: hidden; border: 1px solid #383d32; border-radius: 9px; background: linear-gradient(150deg, #242720, #191b18); transition: border-color .15s ease, transform .15s ease; }
+        .wardrobe-category-box[data-drag-over="true"] { border-color: #a8c879; transform: translateY(-2px); }
+        .wardrobe-category-heading { display: flex; align-items: center; justify-content: space-between; gap: 5px; width: 100%; padding: 8px 9px; border: 0; background: transparent; color: #dce6cc; font: inherit; font-size: 10px; font-weight: 700; text-align: left; cursor: grab; }
+        .wardrobe-category-heading:active { cursor: grabbing; }
         .wardrobe-category-heading::after { color: #a8c879; content: "+"; font-size: 14px; line-height: 1; }
         .wardrobe-category-box[data-selected="true"] { border-color: #829b5a; }
         .wardrobe-category-box[data-selected="true"] > .wardrobe-category-heading { background: #2a3323; }
@@ -927,6 +929,7 @@
         .admin-room-overlay-hint { flex: 1 0 100%; margin: 0; color: var(--muted); font-size: 9px; }
         .admin-clothing-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin: 12px 0; }
         .admin-clothing-form label { display: grid; min-width: 0; gap: 4px; color: var(--muted); font-size: 10px; }
+        .admin-clothing-form label[hidden] { display: none; }
         .admin-clothing-form input, .admin-clothing-form select, .admin-clothing-form textarea { width: 100%; min-width: 0; min-height: 32px; padding: 6px 8px; border: 1px solid #3b3e36; border-radius: 6px; background: #151613; color: #f2f0e9; font: inherit; font-size: 11px; }
         .admin-clothing-form textarea { min-height: 54px; resize: vertical; }
         .admin-clothing-form .wide { grid-column: 1 / -1; }
@@ -1918,6 +1921,13 @@
                                             <option value="girl">Kvinde</option>
                                         </select>
                                     </label>
+                                    <label id="admin-clothing-layer-field" hidden>Lag på figuren
+                                        <select id="admin-clothing-layer-position">
+                                            <option value="front">Foran tøjet</option>
+                                            <option value="normal">Normal rækkefølge</option>
+                                            <option value="back">Bag tøjet</option>
+                                        </select>
+                                    </label>
                                     <label id="admin-clothing-image-field"><span>Billede (PNG/WebP, maks. 950 KB)</span>
                                         <input id="admin-clothing-image" type="file" accept="image/png,image/webp">
                                     </label>
@@ -2159,6 +2169,13 @@
             const boevetAvatarImage = new Image();
             const clothingImageCache = new Map();
             const clothingCategoryOrder = { left_hand: 0, right_hand: 1, clothing: 2, beard: 3, hair: 4, glasses: 5, accessory: 6, headwear: 7 };
+            function getClothingDrawOrder(item) {
+                if (Number.isFinite(Number(item.layerOrder))) return Number(item.layerOrder) * 100;
+                const categoryOrder = clothingCategoryOrder[item.category] ?? 2;
+                const defaultLayer = ['left_hand', 'right_hand'].includes(item.category) ? 'front' : 'normal';
+                const layer = item.layerPosition || defaultLayer;
+                return (layer === 'back' ? -100 : layer === 'front' ? 100 : 0) + categoryOrder;
+            }
             const avatarWidth = 54;
             const avatarHeight = 75;
             let avatarImageLoaded = false;
@@ -2353,9 +2370,14 @@
             const wardrobeCategoryPreview = document.getElementById('wardrobe-category-preview');
             const wardrobeCategoryTitle = document.getElementById('wardrobe-category-title');
             const wardrobeCategoryItems = document.getElementById('wardrobe-category-items');
+            const wardrobeCategoryKeys = ['headwear', 'hair', 'beard', 'glasses', 'clothing', 'left_hand', 'right_hand', 'accessory'];
+            const defaultWardrobeCategoryOrder = ['headwear', 'hair', 'beard', 'glasses', 'left_hand', 'right_hand', 'clothing', 'accessory'];
             let wardrobeItems = [];
             let wardrobeSavedIds = new Set();
             let wardrobeDraftIds = new Set();
+            let wardrobeSavedCategoryOrder = null;
+            let wardrobeDraftCategoryOrder = [...defaultWardrobeCategoryOrder];
+            let draggedWardrobeCategory = '';
             let wardrobeLevel = 1;
             let activeWardrobeCategory = '';
             const adminPanel = document.getElementById('admin-panel');
@@ -2378,6 +2400,8 @@
             const adminClothingName = document.getElementById('admin-clothing-name');
             const adminClothingDescription = document.getElementById('admin-clothing-description');
             const adminClothingCategory = document.getElementById('admin-clothing-category');
+            const adminClothingLayerField = document.getElementById('admin-clothing-layer-field');
+            const adminClothingLayerPosition = document.getElementById('admin-clothing-layer-position');
             const adminClothingAvatarType = document.getElementById('admin-clothing-avatar-type');
             const adminClothingImageInput = document.getElementById('admin-clothing-image');
             const adminClothingImageField = document.getElementById('admin-clothing-image-field');
@@ -4162,6 +4186,7 @@
                 adminClothingEditingId = '';
                 adminClothingForm.reset();
                 adminClothingAssignmentField.hidden = false;
+                adminClothingLayerField.hidden = !['left_hand', 'right_hand'].includes(adminClothingCategory.value);
                 adminClothingImageField.querySelector('span').textContent = 'Billede (PNG/WebP, maks. 950 KB)';
                 adminClothingAvatarType.value = 'boy';
                 adminClothingSaveButton.textContent = 'Gem tøjdelen';
@@ -4183,6 +4208,9 @@
                 adminClothingName.value = item.name || '';
                 adminClothingDescription.value = item.description || '';
                 adminClothingCategory.value = item.category || 'clothing';
+                adminClothingLayerPosition.value = item.transform?.layerPosition
+                    || (['left_hand', 'right_hand'].includes(item.category) ? 'front' : 'normal');
+                adminClothingLayerField.hidden = !['left_hand', 'right_hand'].includes(item.category);
                 adminClothingAvatarType.value = item.avatarType === 'girl' ? 'girl' : 'boy';
                 adminClothingLevel.value = String(item.requiredLevel || 1);
                 adminClothingPrice.value = String(item.price || 0);
@@ -4227,6 +4255,7 @@
                         name: adminClothingName.value,
                         description: adminClothingDescription.value,
                         category: adminClothingCategory.value,
+                        layerPosition: adminClothingLayerPosition.value,
                         targetAvatarType: adminClothingAvatarType.value,
                         requiredLevel: Number(adminClothingLevel.value),
                         price: Number(adminClothingPrice.value),
@@ -4254,6 +4283,13 @@
                 }
             }
             adminClothingForm.addEventListener('submit', submitAdminClothing);
+            adminClothingCategory.addEventListener('change', () => {
+                const isHandItem = ['left_hand', 'right_hand'].includes(adminClothingCategory.value);
+                adminClothingLayerField.hidden = !isHandItem;
+                if (isHandItem && !adminClothingEditingId && adminClothingLayerPosition.value === 'normal') {
+                    adminClothingLayerPosition.value = 'front';
+                }
+            });
             adminClothingAvatarType.addEventListener('change', () => {
                 if (adminClothingAvatarType.value === 'girl' && !girlAvatarImageLoaded) {
                     adminClothingStatus.textContent = 'Upload kvindeavataren under Admin → Avatarer for at kunne se den i preview.';
@@ -4683,9 +4719,12 @@
                     }
                     context.restore();
                 }
-                const equipped = wardrobeItems.filter((item) => wardrobeDraftIds.has(String(item.id))).sort((first, second) =>
-                    (clothingCategoryOrder[first.category] ?? 2) - (clothingCategoryOrder[second.category] ?? 2)
-                );
+                const customLayerOrder = wardrobeSavedCategoryOrder !== null
+                    || JSON.stringify(wardrobeDraftCategoryOrder) !== JSON.stringify(defaultWardrobeCategoryOrder);
+                const equipped = wardrobeItems.filter((item) => wardrobeDraftIds.has(String(item.id))).map((item) => customLayerOrder ? ({
+                    ...item,
+                    layerOrder: wardrobeDraftCategoryOrder.length - wardrobeDraftCategoryOrder.indexOf(item.category)
+                }) : item).sort((first, second) => getClothingDrawOrder(first) - getClothingDrawOrder(second));
                 for (const item of equipped) {
                     const image = getClothingImage(item);
                     if (!image) continue;
@@ -4694,7 +4733,7 @@
                 context.restore();
             }
 
-            function renderWardrobeItems(items = [], level = 1, preserveDraft = false) {
+            function renderWardrobeItems(items = [], level = 1, preserveDraft = false, categoryOrder = undefined) {
                 wardrobeItems = items.map((item) => ({
                     ...item,
                     imageUrl: item.imageUrl || `/api/clothing-items/${encodeURIComponent(item.id)}/image`
@@ -4702,6 +4741,13 @@
                 if (!preserveDraft) {
                     wardrobeSavedIds = new Set(wardrobeItems.filter((item) => item.equipped).map((item) => String(item.id)));
                     wardrobeDraftIds = new Set(wardrobeSavedIds);
+                    wardrobeSavedCategoryOrder = Array.isArray(categoryOrder)
+                        && categoryOrder.length === wardrobeCategoryKeys.length
+                        && new Set(categoryOrder).size === wardrobeCategoryKeys.length
+                        && wardrobeCategoryKeys.every((category) => categoryOrder.includes(category))
+                        ? [...categoryOrder]
+                        : null;
+                    wardrobeDraftCategoryOrder = [...(wardrobeSavedCategoryOrder || defaultWardrobeCategoryOrder)];
                 }
                 wardrobeLevel = Math.max(1, Number(level) || 1);
                 wardrobeEmpty.hidden = true;
@@ -4713,10 +4759,22 @@
                 const createCategoryBox = (category) => {
                     const box = document.createElement('div');
                     box.className = 'wardrobe-category-box';
+                    box.dataset.wardrobeCategory = category;
                     const categoryItems = wardrobeItems.filter((item) => item.category === category);
                     const heading = document.createElement('button');
                     heading.className = 'wardrobe-category-heading';
                     heading.type = 'button';
+                    heading.draggable = true;
+                    heading.title = 'Træk kategorien for at ændre rækkefølge og tøjets lag';
+                    heading.addEventListener('dragstart', (event) => {
+                        draggedWardrobeCategory = category;
+                        event.dataTransfer?.setData('text/plain', category);
+                        if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+                    });
+                    heading.addEventListener('dragend', () => {
+                        draggedWardrobeCategory = '';
+                        document.querySelectorAll('.wardrobe-category-box[data-drag-over="true"]').forEach((element) => delete element.dataset.dragOver);
+                    });
                     const selected = activeWardrobeCategory === category;
                     box.dataset.selected = String(selected);
                     heading.setAttribute('aria-expanded', String(selected));
@@ -4733,17 +4791,38 @@
                         activeWardrobeCategory = selected ? '' : category;
                         renderWardrobeItems(wardrobeItems, wardrobeLevel, true);
                     });
+                    box.addEventListener('dragover', (event) => {
+                        if (!draggedWardrobeCategory || draggedWardrobeCategory === category) return;
+                        const leftCategories = ['headwear', 'hair', 'beard', 'glasses'];
+                        if (leftCategories.includes(draggedWardrobeCategory) !== leftCategories.includes(category)) return;
+                        event.preventDefault();
+                        box.dataset.dragOver = 'true';
+                        if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+                    });
+                    box.addEventListener('dragleave', (event) => {
+                        if (!box.contains(event.relatedTarget)) delete box.dataset.dragOver;
+                    });
+                    box.addEventListener('drop', (event) => {
+                        event.preventDefault();
+                        delete box.dataset.dragOver;
+                        if (!draggedWardrobeCategory || draggedWardrobeCategory === category) return;
+                        const leftCategories = ['headwear', 'hair', 'beard', 'glasses'];
+                        if (leftCategories.includes(draggedWardrobeCategory) !== leftCategories.includes(category)) return;
+                        const order = [...wardrobeDraftCategoryOrder];
+                        order.splice(order.indexOf(draggedWardrobeCategory), 1);
+                        order.splice(order.indexOf(category), 0, draggedWardrobeCategory);
+                        wardrobeDraftCategoryOrder = order;
+                        draggedWardrobeCategory = '';
+                        wardrobeStatus.textContent = 'Rækkefølgen er ændret. Gem outfittet for at vise den nye lagorden i chatten.';
+                        renderWardrobeItems(wardrobeItems, wardrobeLevel, true);
+                    });
                     box.append(heading);
                     return box;
                 };
-                wardrobeLeftCategories.replaceChildren(
-                    createCategoryBox('headwear'), createCategoryBox('hair'),
-                    createCategoryBox('beard'), createCategoryBox('glasses')
-                );
-                wardrobeRightCategories.replaceChildren(
-                    createCategoryBox('clothing'), createCategoryBox('left_hand'),
-                    createCategoryBox('right_hand'), createCategoryBox('accessory')
-                );
+                const leftCategories = ['headwear', 'hair', 'beard', 'glasses'];
+                const rightCategories = ['clothing', 'left_hand', 'right_hand', 'accessory'];
+                wardrobeLeftCategories.replaceChildren(...wardrobeDraftCategoryOrder.filter((category) => leftCategories.includes(category)).map(createCategoryBox));
+                wardrobeRightCategories.replaceChildren(...wardrobeDraftCategoryOrder.filter((category) => rightCategories.includes(category)).map(createCategoryBox));
 
                 const categoryItems = wardrobeItems.filter((item) => item.category === activeWardrobeCategory);
                 wardrobeCategoryPreview.hidden = !activeWardrobeCategory;
@@ -4794,7 +4873,9 @@
                     }
                 }
 
-                const isDirty = wardrobeDraftIds.size !== wardrobeSavedIds.size || [...wardrobeDraftIds].some((id) => !wardrobeSavedIds.has(id));
+                const outfitDirty = wardrobeDraftIds.size !== wardrobeSavedIds.size || [...wardrobeDraftIds].some((id) => !wardrobeSavedIds.has(id));
+                const orderDirty = JSON.stringify(wardrobeDraftCategoryOrder) !== JSON.stringify(wardrobeSavedCategoryOrder || defaultWardrobeCategoryOrder);
+                const isDirty = outfitDirty || orderDirty;
                 wardrobeSaveButton.disabled = !isDirty;
                 wardrobeDiscardButton.disabled = !isDirty;
                 if (!isDirty && wardrobeStatus.textContent.startsWith('Outfit ikke gemt endnu')) {
@@ -5608,7 +5689,7 @@
                     }
 
                     const clothingLayers = Array.isArray(player.clothing) ? player.clothing.slice().sort((first, second) =>
-                        (clothingCategoryOrder[first.category] ?? 2) - (clothingCategoryOrder[second.category] ?? 2)
+                        getClothingDrawOrder(first) - getClothingDrawOrder(second)
                     ) : [];
                     for (const item of clothingLayers) {
                         const clothingImage = getClothingImage(item);
@@ -5931,11 +6012,15 @@
                 wardrobeSaveButton.disabled = true;
                 wardrobeDiscardButton.disabled = true;
                 wardrobeStatus.textContent = 'Gemmer dit outfit...';
-                socket.emit('wardrobe-save', { equippedItemIds: [...wardrobeDraftIds] });
+                socket.emit('wardrobe-save', {
+                    equippedItemIds: [...wardrobeDraftIds],
+                    categoryOrder: wardrobeDraftCategoryOrder
+                });
             });
             wardrobeDiscardButton.addEventListener('click', () => {
                 if (wardrobeDiscardButton.disabled) return;
                 wardrobeDraftIds = new Set(wardrobeSavedIds);
+                wardrobeDraftCategoryOrder = [...(wardrobeSavedCategoryOrder || defaultWardrobeCategoryOrder)];
                 wardrobeStatus.textContent = 'Dine \u00e6ndringer er fortrudt.';
                 renderWardrobeItems(wardrobeItems, wardrobeLevel, true);
             });
@@ -6968,11 +7053,11 @@
                 setRoomNotice(message);
                 addChatSystemEntry(message);
             });
-            socket.on('wardrobe-items', ({ items = [], level = 1, clothingCategoryCounts = {} } = {}) => {
+            socket.on('wardrobe-items', ({ items = [], level = 1, clothingCategoryCounts = {}, categoryOrder } = {}) => {
                 wardrobeCategoryCounts = clothingCategoryCounts && typeof clothingCategoryCounts === 'object'
                     ? clothingCategoryCounts
                     : {};
-                renderWardrobeItems(Array.isArray(items) ? items : [], Math.max(1, Number(level) || 1));
+                renderWardrobeItems(Array.isArray(items) ? items : [], Math.max(1, Number(level) || 1), false, categoryOrder);
             });
             socket.on('wardrobe-action-result', ({ success, message } = {}) => {
                 wardrobeStatus.textContent = message || (success ? 'Tøjskabet er opdateret.' : 'Handlingen mislykkedes.');
