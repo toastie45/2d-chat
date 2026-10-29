@@ -1999,6 +1999,18 @@
                                 <select class="profile-page-select" id="admin-shop-room-select"><option value="">Henter butikker…</option></select>
                                 <button class="admin-row-button" id="admin-shop-open-toggle" type="button" disabled>Åbn butik for gæster</button>
                                 <p class="admin-status" id="admin-shop-status" aria-live="polite"></p>
+                                <div class="admin-clothing-catalog-tools" role="search">
+                                    <input id="admin-shop-catalog-search" type="search" placeholder="Søg på navn eller beskrivelse" aria-label="Søg i butikkens tøjudvalg">
+                                    <select id="admin-shop-catalog-category" aria-label="Filtrér butikkens tøjudvalg efter kategori">
+                                        <option value="">Alle kategorier</option>
+                                        <option value="headwear">Hovedbeklædning</option><option value="hair">Hår</option><option value="beard">Skæg</option><option value="glasses">Briller</option>
+                                        <option value="clothing">Tøj</option><option value="left_hand">Venstre hånd</option><option value="right_hand">Højre hånd</option><option value="accessory">Tilbehør</option>
+                                    </select>
+                                    <select id="admin-shop-catalog-avatar" aria-label="Filtrér butikkens tøjudvalg efter avatartype">
+                                        <option value="">Alle avatarer</option><option value="boy">Mand</option><option value="girl">Kvinde</option>
+                                    </select>
+                                </div>
+                                <p class="admin-clothing-catalog-count" id="admin-shop-catalog-count" aria-live="polite"></p>
                                 <div class="admin-list" id="admin-shop-catalog" role="list"></div>
                             </section>
                             <section class="admin-section" id="admin-avatars-view" aria-labelledby="admin-avatars-title" hidden>
@@ -2437,6 +2449,10 @@
             const adminGirlAvatarPreview = document.getElementById('admin-girl-avatar-preview');
             const adminShopStatus = document.getElementById('admin-shop-status');
             const adminShopCatalog = document.getElementById('admin-shop-catalog');
+            const adminShopCatalogSearch = document.getElementById('admin-shop-catalog-search');
+            const adminShopCatalogCategory = document.getElementById('admin-shop-catalog-category');
+            const adminShopCatalogAvatar = document.getElementById('admin-shop-catalog-avatar');
+            const adminShopCatalogCount = document.getElementById('admin-shop-catalog-count');
             const adminClothingForm = document.getElementById('admin-clothing-form');
             const adminClothingUsername = document.getElementById('admin-clothing-username');
             const adminClothingName = document.getElementById('admin-clothing-name');
@@ -5027,12 +5043,27 @@
                 clothing: 'Tøj', left_hand: 'Venstre hånd', right_hand: 'Højre hånd', accessory: 'Tilbehør'
             };
 
-            function renderAdminShopCatalog(items = []) {
+            let adminShopCatalogItems = [];
+            function renderAdminShopCatalog(items = adminShopCatalogItems) {
+                if (Array.isArray(items)) adminShopCatalogItems = items;
                 adminShopCatalog.replaceChildren();
-                if (!items.length) {
+                const query = adminShopCatalogSearch.value.trim().toLocaleLowerCase('da-DK');
+                const category = adminShopCatalogCategory.value;
+                const avatarType = adminShopCatalogAvatar.value;
+                const filteredItems = adminShopCatalogItems.filter((item) => {
+                    const searchableText = `${item.name || ''} ${item.description || ''}`.toLocaleLowerCase('da-DK');
+                    return (!query || searchableText.includes(query))
+                        && (!category || item.category === category)
+                        && (!avatarType || item.avatarType === avatarType);
+                });
+                adminShopCatalogCount.textContent = query || category || avatarType
+                    ? `Viser ${filteredItems.length} af ${adminShopCatalogItems.length} tøjdele`
+                    : `${adminShopCatalogItems.length} tøjdele i kataloget`;
+                if (!adminShopCatalogItems.length || !filteredItems.length) {
                     const empty = document.createElement('p');
                     empty.className = 'admin-status';
                     empty.textContent = 'Tøjkataloget er tomt. Tilføj tøjdele under “Tøj og tilbehør” først.';
+                    if (adminShopCatalogItems.length) empty.textContent = 'Ingen tøjdele passer til din søgning eller filtrering.';
                     adminShopCatalog.append(empty);
                     return;
                 }
@@ -5049,15 +5080,16 @@
                 };
                 const categoryOrder = ['clothing', 'headwear', 'hair', 'beard', 'glasses', 'left_hand', 'right_hand', 'accessory'];
                 const groups = new Map(sections.map((section) => [section.key, []]));
-                for (const item of items) groups.get(getSectionForItem(item)).push(item);
+                for (const item of filteredItems) groups.get(getSectionForItem(item)).push(item);
                 const wrapper = document.createElement('div');
                 wrapper.className = 'admin-shop-groups';
                 sections.forEach((section, sectionIndex) => {
                     const groupItems = groups.get(section.key);
+                    if (!groupItems.length) return;
                     const group = document.createElement('details');
                     group.className = 'admin-shop-group';
                     const listedCount = groupItems.filter((item) => item.shopListed).length;
-                    group.open = listedCount > 0 || (sectionIndex === 0 && items.length > 0);
+                    group.open = listedCount > 0 || Boolean(query || category || avatarType) || (sectionIndex === 0 && filteredItems.length > 0);
                     const summary = document.createElement('summary');
                     const title = document.createElement('span');
                     title.textContent = section.title;
@@ -5096,6 +5128,11 @@
                     const avatarLabel = item.avatarType === 'girl' ? 'Kvindeavatar' : 'Mandeavatar';
                     meta.textContent = `${avatarLabel} · ${shopCategoryNames[item.category] || item.category} · Level ${item.requiredLevel} · ${Number(item.price).toLocaleString('da-DK')} mønter`;
                     details.append(name, meta);
+                    if (item.description) {
+                        const description = document.createElement('span');
+                        description.textContent = item.description;
+                        details.append(description);
+                    }
                     const toggle = document.createElement('button');
                     toggle.className = item.shopListed ? 'admin-row-button ban' : 'admin-row-button';
                     toggle.type = 'button';
@@ -6062,6 +6099,9 @@
             adminClothingCatalogSearch.addEventListener('input', () => renderAdminClothingCatalog());
             adminClothingCatalogCategory.addEventListener('change', () => renderAdminClothingCatalog());
             adminClothingCatalogAvatar.addEventListener('change', () => renderAdminClothingCatalog());
+            adminShopCatalogSearch.addEventListener('input', () => renderAdminShopCatalog());
+            adminShopCatalogCategory.addEventListener('change', () => renderAdminShopCatalog());
+            adminShopCatalogAvatar.addEventListener('change', () => renderAdminShopCatalog());
             adminShopRoomSelect.addEventListener('change', () => {
                 adminSelectedShopRoomId = adminShopRoomSelect.value;
                 if (adminSelectedShopRoomId) socket.emit('admin-shop-room-data-request', { roomId: adminSelectedShopRoomId });
