@@ -1969,6 +1969,7 @@
             <button class="avatar-context-action" id="avatar-context-whisper" type="button" role="menuitem" hidden>Hvisk</button>
             <button class="avatar-context-action" id="avatar-context-mute" type="button" role="menuitem" hidden></button>
             <button class="avatar-context-action danger" id="avatar-context-kick" type="button" role="menuitem" hidden>Kyl ud</button>
+            <button class="avatar-context-action" id="avatar-context-invisible" type="button" role="menuitem" hidden>Usynlig</button>
             <button class="avatar-context-action" id="avatar-context-highlight" type="button" role="menuitem" aria-pressed="false">Fremhæv</button>
             <button class="avatar-context-action" id="avatar-context-status" type="button" role="menuitem" aria-expanded="false" hidden>Humør</button>
             <button class="avatar-context-action avatar-context-subaction" id="avatar-context-mood-glad" type="button" role="menuitemradio" data-avatar-mood="glad" aria-checked="true" hidden>Glad</button>
@@ -2319,6 +2320,7 @@
             const adminBanCancel = document.getElementById('admin-ban-cancel');
             let isAdminUser = false;
             let isFullAdminUser = false;
+            let isAdminInvisible = false;
             let canManagePublicRooms = false;
             let canManageClothing = false;
             let pendingAdminBanTarget = null;
@@ -2468,6 +2470,7 @@
             const avatarContextHighlight = document.getElementById('avatar-context-highlight');
             const avatarContextMute = document.getElementById('avatar-context-mute');
             const avatarContextKick = document.getElementById('avatar-context-kick');
+            const avatarContextInvisible = document.getElementById('avatar-context-invisible');
             const avatarContextEditApartment = document.getElementById('avatar-context-edit-apartment');
             const avatarContextStatus = document.getElementById('avatar-context-status');
             const avatarContextMoodGlad = document.getElementById('avatar-context-mood-glad');
@@ -3288,6 +3291,8 @@
                 const player = contextPlayerId ? players[contextPlayerId] : null;
                 const isSelf = contextPlayerId === myId;
                 const canEditCurrentRoom = canEditCurrentApartment || canEditCurrentPublicRoom;
+                avatarContextInvisible.hidden = !player || !isSelf || !isFullAdminUser;
+                avatarContextInvisible.textContent = isAdminInvisible ? 'Bliv synlig' : 'Usynlig';
                 avatarContextEditApartment.hidden = !player || !isSelf || !canEditCurrentRoom;
                 avatarContextEditApartment.textContent = activeRoom.startsWith('apartment:') ? 'Indret lejlighed' : 'Indret rum';
                 avatarContextStatus.hidden = !player || !isSelf;
@@ -5844,6 +5849,11 @@
             avatarContextProfile.addEventListener('click', () => {
                 if (contextPlayerId) showPublicProfile(contextPlayerId);
             });
+            avatarContextInvisible.addEventListener('click', () => {
+                if (contextPlayerId !== myId || !isFullAdminUser) return;
+                socket.emit('admin-invisibility-toggle');
+                closeAvatarContextMenu();
+            });
             avatarContextStatus.addEventListener('click', () => {
                 if (contextPlayerId !== myId) return;
                 const expanded = avatarContextStatus.getAttribute('aria-expanded') !== 'true';
@@ -6656,6 +6666,16 @@
                 adminSectionSelect.querySelector('option[value="clothing"]').hidden = !canManageClothing;
                 adminSectionSelect.querySelector('option[value="shop"]').hidden = !canManageClothing;
                 selectAdminSection();
+                if (contextPlayerId === myId) updateAvatarContextMute();
+            });
+            socket.on('admin-invisibility-state', ({ invisible } = {}) => {
+                isAdminInvisible = invisible === true;
+                if (contextPlayerId === myId) updateAvatarContextMute();
+            });
+            socket.on('admin-invisibility-result', ({ message } = {}) => {
+                if (!message) return;
+                setRoomNotice(message);
+                addChatSystemEntry(message);
             });
             socket.on('wardrobe-items', ({ items = [], level = 1, clothingCategoryCounts = {} } = {}) => {
                 wardrobeCategoryCounts = clothingCategoryCounts && typeof clothingCategoryCounts === 'object'

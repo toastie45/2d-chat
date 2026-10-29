@@ -511,6 +511,7 @@ async function startServer() {
     const activeSocketIds = new Set();
     const activeSocketRooms = new Map();
     const activeSocketUsers = new Map();
+    const invisibleSocketIds = new Set();
     const roomChannel = (roomId) => `chatroom:${roomId}`;
     const roomKeys = (roomId) => ({
         players: `chat:${roomId}:players`,
@@ -575,7 +576,13 @@ async function startServer() {
     async function broadcastChatOnlineCount() {
         try {
             const count = await getChatOnlineCount();
-            io.emit('chat-online-count', { count });
+            for (const socketId of activeSocketIds) {
+                const recipient = io.sockets.sockets.get(socketId);
+                if (!recipient) continue;
+                recipient.emit('chat-online-count', {
+                    count: recipient.data.isAdmin ? count : Math.max(0, count - invisibleSocketIds.size)
+                });
+            }
             return count;
         } catch (error) {
             console.error('Could not count online chat participants:', getSafeErrorCode(error));
@@ -1064,6 +1071,7 @@ async function startServer() {
         activeSocketIds.delete(oldSocketId);
         activeSocketRooms.delete(oldSocketId);
         activeSocketUsers.delete(oldSocketId);
+        invisibleSocketIds.delete(oldSocketId);
         await accountOnlineSession(oldSocketId, true);
         io.in(oldSocketId).disconnectSockets(true);
     }
@@ -1243,6 +1251,7 @@ async function startServer() {
 
             for (const { socket_id: socketId } of onlineSockets) {
                 activeSocketIds.delete(socketId);
+                invisibleSocketIds.delete(socketId);
                 activeSocketRooms.delete(socketId);
                 activeSocketUsers.delete(socketId);
                 try {
@@ -1612,6 +1621,7 @@ async function startServer() {
             for (const id of removedIds) {
                 removedAnyPlayers = true;
                 activeSocketIds.delete(id);
+                invisibleSocketIds.delete(id);
                 activeSocketRooms.delete(id);
                 activeSocketUsers.delete(id);
                 try {
@@ -1672,6 +1682,7 @@ async function startServer() {
             for (const id of removedIds) {
                 removedAnyPlayers = true;
                 activeSocketIds.delete(id);
+                invisibleSocketIds.delete(id);
                 activeSocketRooms.delete(id);
                 activeSocketUsers.delete(id);
                 try {
@@ -1708,6 +1719,7 @@ async function startServer() {
         activeSocketIds.delete(socketId);
         activeSocketRooms.delete(socketId);
         activeSocketUsers.delete(socketId);
+        invisibleSocketIds.delete(socketId);
         try {
             const removed = await redis.eval(REMOVE_PLAYER_SCRIPT, {
                 keys: [keys.players, keys.cells],
@@ -1735,9 +1747,34 @@ async function startServer() {
         setTimeout(() => io.in(socketId).disconnectSockets(true), 100);
     }
 
-    async function getPlayers(roomId = 'common') {
+    async function getPlayers(roomId = 'common', viewerSocket = null) {
         await cleanupStalePlayers(roomId);
-        return getPublicPlayers(await redis.hGetAll(roomKeys(roomId).players));
+        const allPlayers = getPublicPlayers(await redis.hGetAll(roomKeys(roomId).players));
+        if (!viewerSocket || viewerSocket.data.isAdmin) return allPlayers;
+        for (const socketId of invisibleSocketIds) delete allPlayers[socketId];
+        return allPlayers;
+    }
+
+    async function emitPlayerPresence(roomId, eventName, player) {
+        if (!invisibleSocketIds.has(player.id)) {
+            io.to(roomChannel(roomId)).emit(eventName, player);
+            return;
+        }
+        const recipients = await io.in(roomChannel(roomId)).fetchSockets();
+        for (const recipient of recipients) {
+            if (recipient.id === player.id || recipient.data.isAdmin) recipient.emit(eventName, player);
+        }
+    }
+
+    async function emitRoomEventForVisibleSender(roomId, eventName, payload, senderSocketId) {
+        if (!invisibleSocketIds.has(senderSocketId)) {
+            io.to(roomChannel(roomId)).emit(eventName, payload);
+            return;
+        }
+        const recipients = await io.in(roomChannel(roomId)).fetchSockets();
+        for (const recipient of recipients) {
+            if (recipient.id === senderSocketId || recipient.data.isAdmin) recipient.emit(eventName, payload);
+        }
     }
 
     async function getUserClothing(userId) {
@@ -1779,7 +1816,7 @@ async function startServer() {
                 arguments: [socketId, JSON.stringify(clothing)]
             });
             if (!updated) continue;
-            io.to(roomChannel(roomId)).emit('player-clothing-updated', { id: socketId, clothing });
+            await emitRoomEventForVisibleSender(roomId, 'player-clothing-updated', { id: socketId, clothing }, socketId);
         }
     }
 
@@ -1947,7 +1984,7 @@ async function startServer() {
         socket.data.roomId = roomId;
         await pool.query('UPDATE chat_online_sessions SET room_id = $2 WHERE socket_id = $1', [socket.id, roomId]);
         await socket.join(roomChannel(roomId));
-        const players = await getPlayers(roomId);
+        const players = await getPlayers(roomId, socket);
         for (const player of Object.values(players)) {
             player.text = '';
             player.messageTime = 0;
@@ -1973,7 +2010,7 @@ async function startServer() {
         ]);
         const canEditPublicRoom = Boolean(socket.data.canManagePublicRooms && isPublicChatRoomId(roomId));
         socket.emit('room-changed', { roomId, roomName, players, apartmentTiles, canEditApartment, canEditPublicRoom, ...welcome });
-        socket.to(roomChannel(roomId)).emit('newPlayer', publicPlayer(JSON.parse(joined)));
+        await emitPlayerPresence(roomId, 'newPlayer', publicPlayer(JSON.parse(joined)));
         io.emit('navigator-refresh');
         await broadcastChatOnlineCount();
         return publicPlayer(JSON.parse(joined));
@@ -2002,7 +2039,7 @@ async function startServer() {
             });
             if (!movedJson) continue;
             const player = publicPlayer(JSON.parse(movedJson));
-            io.to(roomChannel(roomId)).emit('playerMoved', { id: player.id, col: player.col, row: player.row });
+            await emitRoomEventForVisibleSender(roomId, 'playerMoved', { id: player.id, col: player.col, row: player.row }, player.id);
             return true;
         }
         return false;
@@ -2016,6 +2053,43 @@ async function startServer() {
             canManageUsers: Boolean(socket.data.isAdmin),
             canManagePublicRooms: Boolean(socket.data.canManagePublicRooms),
             canManageClothing: Boolean(socket.data.canManageClothing)
+        });
+        socket.emit('admin-invisibility-state', { invisible: invisibleSocketIds.has(socket.id) });
+
+        socket.on('admin-invisibility-toggle', async () => {
+            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            const roomId = activeSocketRooms.get(socket.id);
+            if (!roomId) return;
+            try {
+                const keys = roomKeys(roomId);
+                const encodedPlayer = await redis.hGet(keys.players, socket.id);
+                if (!encodedPlayer) return;
+                const player = publicPlayer(JSON.parse(encodedPlayer));
+                const invisible = !invisibleSocketIds.has(socket.id);
+                if (invisible) {
+                    invisibleSocketIds.add(socket.id);
+                    const recipients = await io.in(roomChannel(roomId)).fetchSockets();
+                    for (const recipient of recipients) {
+                        if (recipient.id !== socket.id && !recipient.data.isAdmin) {
+                            recipient.emit('playerDisconnected', socket.id);
+                        }
+                    }
+                } else {
+                    invisibleSocketIds.delete(socket.id);
+                    socket.to(roomChannel(roomId)).emit('newPlayer', { ...player, text: '', messageTime: 0 });
+                    socket.emit('admin-invisibility-state', { invisible: false });
+                    socket.emit('admin-invisibility-result', { invisible: false, message: 'Du er synlig for andre igen.' });
+                }
+                if (invisible) {
+                    socket.emit('admin-invisibility-state', { invisible: true });
+                    socket.emit('admin-invisibility-result', { invisible: true, message: 'Du er nu usynlig for almindelige brugere.' });
+                }
+                io.emit('navigator-refresh');
+                await broadcastChatOnlineCount();
+            } catch (error) {
+                console.error('Could not toggle administrator invisibility:', getSafeErrorCode(error));
+                socket.emit('admin-invisibility-result', { invisible: invisibleSocketIds.has(socket.id), message: 'Usynlighed kunne ikke ændres. Prøv igen.' });
+            }
         });
 
         async function sendAdminPublicRooms() {
@@ -3680,16 +3754,25 @@ async function startServer() {
                     floorNumber: Number(room.floor_number),
                     isLocked: room.is_locked
                 }));
-                const { rows: apartments } = await pool.query(`
-                    SELECT DISTINCT a.id, a.apartment_number, a.apartment_name, u.username
+                const { rows: apartmentRows } = await pool.query(`
+                    SELECT DISTINCT a.id, a.apartment_number, a.apartment_name, a.owner_id::text AS owner_id, u.username
                     FROM chat_apartments a
                     JOIN chat_users u ON u.id = a.owner_id
                     ${socket.data.isAdmin ? '' : 'JOIN chat_online_sessions s ON s.user_id = a.owner_id'}
                     ORDER BY a.apartment_number
                 `);
+                const visibleOnlineOwners = new Set([...activeSocketUsers.entries()]
+                    .filter(([socketId]) => !invisibleSocketIds.has(socketId))
+                    .map(([, userId]) => String(userId)));
+                const apartments = socket.data.isAdmin
+                    ? apartmentRows
+                    : apartmentRows.filter((apartment) => visibleOnlineOwners.has(apartment.owner_id));
                 for (const apartment of apartments) {
                     const id = `apartment:${apartment.id}`;
-                    const presentCount = await redis.hLen(roomKeys(id).players);
+                    const roomPlayers = await redis.hGetAll(roomKeys(id).players);
+                    const presentCount = socket.data.isAdmin
+                        ? Object.keys(roomPlayers).length
+                        : Object.keys(roomPlayers).filter((playerId) => !invisibleSocketIds.has(playerId)).length;
                     rooms.push({
                         id,
                         name: getApartmentRoomName(apartment),
@@ -3731,7 +3814,9 @@ async function startServer() {
                         unresolved.delete(playerId);
                     }
                 }
-                const users = sessions.map((session) => {
+                const users = sessions
+                    .filter((session) => socket.data.isAdmin || !invisibleSocketIds.has(session.socket_id))
+                    .map((session) => {
                     const roomId = roomBySocketId.get(session.socket_id) || null;
                     const isPrivate = Boolean(roomId && hiddenRoomIds.has(roomId) && !socket.data.isAdmin);
                     return {
@@ -3858,7 +3943,8 @@ async function startServer() {
                     return;
                 }
                 const ownerSocketIds = [...activeSocketUsers.entries()]
-                    .filter(([, userId]) => String(userId) === String(apartment.owner_id))
+                    .filter(([socketId, userId]) => !invisibleSocketIds.has(socketId)
+                        && String(userId) === String(apartment.owner_id))
                     .map(([socketId]) => socketId);
                 if (ownerSocketIds.length === 0) {
                     socket.emit('apartment-visit-result', { message: 'Ejeren er ikke hjemme lige nu.' });
@@ -4127,6 +4213,7 @@ async function startServer() {
 
             const targetEntry = [...activeSocketUsers.entries()].find(([targetId, onlineUserId]) =>
                 String(onlineUserId) === String(targetUserId) && activeSocketIds.has(targetId)
+                    && (socket.data.isAdmin || !invisibleSocketIds.has(targetId))
             );
             const targetSocketId = targetEntry?.[0];
             const targetSocket = targetSocketId ? io.sockets.sockets.get(targetSocketId) : null;
@@ -4214,6 +4301,7 @@ async function startServer() {
                 }
                 const online = [...activeSocketUsers.entries()].some(([onlineSocketId, onlineUserId]) =>
                     String(onlineUserId) === String(profile.id) && activeSocketIds.has(onlineSocketId)
+                        && (socket.data.isAdmin || !invisibleSocketIds.has(onlineSocketId))
                 );
                 const { rows: [relationship] } = await pool.query(
                     'SELECT relationship FROM chat_profile_relationships WHERE user_id = $1 AND target_user_id = $2',
@@ -4807,7 +4895,7 @@ async function startServer() {
                         ORDER BY username_normalized ASC
                         LIMIT $2
                     `, [patterns.contains, USER_SEARCH_RESULT_LIMIT]),
-                    getPlayers(socket.data.roomId || 'common')
+                    getPlayers(socket.data.roomId || 'common', socket)
                 ]);
                 const onlinePlayerIds = new Map();
                 for (const [id, player] of Object.entries(players)) {
@@ -4891,7 +4979,7 @@ async function startServer() {
                 await socket.join(roomChannel(initialRoomId));
                 await socket.join(`private-mail:${socket.data.user.id}`);
                 await socket.join(`chat-progress:${socket.data.user.id}`);
-                const currentPlayers = await getPlayers(initialRoomId);
+                const currentPlayers = await getPlayers(initialRoomId, socket);
                 for (const player of Object.values(currentPlayers)) {
                     player.text = '';
                     player.messageTime = 0;
@@ -4962,7 +5050,7 @@ async function startServer() {
                 const player = JSON.parse(encodedPlayer);
                 player.mood = mood;
                 await redis.hSet(keys.players, socket.id, JSON.stringify(player));
-                io.to(roomChannel(roomId)).emit('playerMoodChanged', { id: socket.id, mood });
+                await emitRoomEventForVisibleSender(roomId, 'playerMoodChanged', { id: socket.id, mood }, socket.id);
             } catch (error) {
                 console.error('Could not change chat participant mood:', getSafeErrorCode(error));
             }
@@ -4988,11 +5076,11 @@ async function startServer() {
                     return;
                 }
                 const player = publicPlayer(JSON.parse(movedPlayerJson));
-                io.to(roomChannel(roomId)).emit('playerMoved', {
+                await emitRoomEventForVisibleSender(roomId, 'playerMoved', {
                     id: player.id,
                     col: player.col,
                     row: player.row
-                });
+                }, player.id);
             } catch (error) {
                 console.error('Could not move chat participant:', getSafeErrorCode(error));
                 socket.emit('room-error', { message: 'Kunne ikke flytte avataren. Prøv igen.' });
@@ -5020,6 +5108,12 @@ async function startServer() {
 
             try {
                 const keys = roomKeys(socket.data.roomId || 'common');
+                const targetSocket = io.sockets.sockets.get(targetPlayerId);
+                if ((invisibleSocketIds.has(socket.id) && !targetSocket?.data.isAdmin)
+                    || (invisibleSocketIds.has(targetPlayerId) && !socket.data.isAdmin)) {
+                    socket.emit('private-whisper-error', { message: 'Hvisk er ikke tilgængelig, mens en deltager er usynlig.' });
+                    return;
+                }
                 const [senderJson, targetJson] = await Promise.all([
                     redis.hGet(keys.players, socket.id),
                     redis.hGet(keys.players, targetPlayerId)
@@ -5138,13 +5232,13 @@ async function startServer() {
                 });
                 if (!updatedPlayerJson) return;
 
-                io.to(roomChannel(socket.data.roomId || 'common')).emit('playerChatMessage', {
+                await emitRoomEventForVisibleSender(socket.data.roomId || 'common', 'playerChatMessage', {
                     id: socket.id,
                     text: cleanText,
                     messageTime,
                     messageId: savedMessage.id,
                     createdAt: savedMessage.created_at
-                });
+                }, socket.id);
 
                 if (progressionFilterReason) {
                     socket.emit('progression-message-filtered', { reason: progressionFilterReason });
@@ -5156,7 +5250,7 @@ async function startServer() {
                             keys: [keys.players],
                             arguments: [socket.id, String(messageTime)]
                         });
-                        if (expired) io.to(roomChannel(socket.data.roomId || 'common')).emit('playerChatExpired', { id: socket.id, messageTime });
+                        if (expired) await emitRoomEventForVisibleSender(socket.data.roomId || 'common', 'playerChatExpired', { id: socket.id, messageTime }, socket.id);
                     } catch (error) {
                         console.error('Could not expire chat bubble:', getSafeErrorCode(error));
                     }
@@ -5170,6 +5264,7 @@ async function startServer() {
         socket.on('disconnect', async () => {
             activeSocketIds.delete(socket.id);
             activeSocketUsers.delete(socket.id);
+            invisibleSocketIds.delete(socket.id);
             const roomId = activeSocketRooms.get(socket.id) || socket.data.roomId || 'common';
             const keys = roomKeys(roomId);
             activeSocketRooms.delete(socket.id);
@@ -5210,6 +5305,7 @@ async function startServer() {
                     removedAnyPlayers = true;
                     activeSocketRooms.delete(id);
                     activeSocketUsers.delete(id);
+                    invisibleSocketIds.delete(id);
                     io.to(roomChannel(roomId)).emit('playerDisconnected', id);
                     io.emit('navigator-refresh');
                     try { await accountOnlineSession(id, true); }
