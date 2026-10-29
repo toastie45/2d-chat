@@ -690,22 +690,20 @@ async function startServer() {
     async function broadcastChatOnlineCount() {
         try {
             const count = await getChatOnlineCount();
-            const { rows: activeClothingRows } = await pool.query(`
+            const { rows: clothingOwnerRows } = await pool.query(`
                 SELECT assignment.clothing_item_id::text AS item_id,
-                       COUNT(DISTINCT assignment.target_user_id)::int AS active_count
+                       COUNT(DISTINCT assignment.target_user_id)::int AS owner_count
                 FROM chat_clothing_assignments assignment
-                JOIN chat_online_sessions online_session ON online_session.user_id = assignment.target_user_id
-                WHERE assignment.is_equipped = TRUE
                 GROUP BY assignment.clothing_item_id
             `);
-            const activeClothingCounts = Object.fromEntries(activeClothingRows.map((row) => [row.item_id, Number(row.active_count || 0)]));
+            const clothingOwnerCounts = Object.fromEntries(clothingOwnerRows.map((row) => [row.item_id, Number(row.owner_count || 0)]));
             for (const socketId of activeSocketIds) {
                 const recipient = io.sockets.sockets.get(socketId);
                 if (!recipient) continue;
                 recipient.emit('chat-online-count', {
                     count: Math.max(0, count - invisibleSocketIds.size)
                 });
-                recipient.emit('clothing-active-counts', activeClothingCounts);
+                recipient.emit('clothing-ownership-counts', clothingOwnerCounts);
             }
             return count;
         } catch (error) {
@@ -2515,6 +2513,7 @@ async function startServer() {
                     await client.query('COMMIT');
                 }catch(error){try{await client.query('ROLLBACK')}catch{}throw error;}finally{client.release();}
                 if(target)await refreshOnlineUserClothing(target.id);
+                if(target)await broadcastChatOnlineCount();
                 socket.emit('admin-clothing-action-result',{success:true,action:'create',message:target?(name+' blev gemt og lagt i '+target.username+'s tojskab.'):name+' blev gemt i tojkataloget.'});
                 await sendAdminClothingItems();
             }catch(error){console.error('Could not create clothing item:',getSafeErrorCode(error));socket.emit('admin-clothing-action-result',{success:false,message:'T?jdelen kunne ikke gemmes.'});}
@@ -2611,6 +2610,7 @@ async function startServer() {
                     return;
                 }
                 await refreshOnlineUserClothing(item.target_user_id);
+                await broadcastChatOnlineCount();
                 socket.emit('admin-clothing-action-result', { success: true, action: 'assignment-delete', message: 'Tojdelen blev fjernet fra brugerens skab.' });
                 await sendAdminClothingItems();
             } catch (error) {
@@ -2651,6 +2651,7 @@ async function startServer() {
                     RETURNING clothing_item_id
                 `, [target.id, id, target.avatar_type]);
                 if (item) await refreshOnlineUserClothing(target.id);
+                if (item) await broadcastChatOnlineCount();
                 socket.emit('admin-clothing-action-result', {
                     success: true,
                     message: item ? `${template.name} blev lagt i ${target.username}s tøjskab.` : `${target.username} har allerede ${template.name}.`
@@ -2677,6 +2678,7 @@ async function startServer() {
                     return;
                 }
                 await Promise.all([...new Set(assignments.map((assignment) => assignment.target_user_id))].map(refreshOnlineUserClothing));
+                await broadcastChatOnlineCount();
                 socket.emit('admin-clothing-action-result', { success: true, action: 'template-delete', message: `${item.name} og dens tildelinger blev slettet.` });
                 await sendAdminClothingItems();
             } catch (error) {
@@ -2690,12 +2692,9 @@ async function startServer() {
                 pool.query(`
                     SELECT item.id, item.name, item.description, item.category, item.required_level, item.price,
                            assignment.is_equipped, item.image_version, item.transform_json,
-                           (SELECT COUNT(DISTINCT live_assignment.target_user_id)::int
-                            FROM chat_clothing_assignments live_assignment
-                            JOIN chat_online_sessions online_session
-                              ON online_session.user_id = live_assignment.target_user_id
-                            WHERE live_assignment.clothing_item_id = item.id
-                              AND live_assignment.is_equipped = TRUE) AS active_in_chat
+                           (SELECT COUNT(DISTINCT owned_assignment.target_user_id)::int
+                            FROM chat_clothing_assignments owned_assignment
+                            WHERE owned_assignment.clothing_item_id = item.id) AS owner_count
                     FROM chat_clothing_assignments assignment
                     JOIN chat_clothing_catalog item ON item.id = assignment.clothing_item_id
                     JOIN chat_users target ON target.id = assignment.target_user_id
@@ -2716,7 +2715,7 @@ async function startServer() {
                     requiredLevel: Number(item.required_level),
                     price: Number(item.price),
                     equipped: item.is_equipped,
-                    activeInChat: Number(item.active_in_chat || 0),
+                    wardrobeCount: Number(item.owner_count || 0),
                     imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.image_version || 1}`,
                     ...normalizeClothingTransform(item.transform_json, item.category)
                 }))
