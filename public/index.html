@@ -1961,7 +1961,7 @@
                                             <option value="back">Bag tøjet</option>
                                         </select>
                                     </label>
-                                    <label id="admin-clothing-image-field"><span>Billede (PNG/WebP, maks. 950 KB)</span>
+                                    <label id="admin-clothing-image-field"><span>Billede eller spritesheet (PNG/WebP, maks. 950 KB)</span>
                                         <input id="admin-clothing-image" type="file" accept="image/png,image/webp">
                                     </label>
                                     <fieldset class="admin-clothing-animation wide">
@@ -4407,7 +4407,7 @@
                 adminClothingForm.reset();
                 adminClothingAssignmentField.hidden = false;
                 adminClothingLayerField.hidden = !['left_hand', 'right_hand'].includes(adminClothingCategory.value);
-                adminClothingImageField.querySelector('span').textContent = 'Billede (PNG/WebP, maks. 950 KB)';
+                adminClothingImageField.querySelector('span').textContent = 'Billede eller spritesheet (PNG/WebP, maks. 950 KB)';
                 adminClothingAnimationColumns.value = '1';
                 adminClothingAnimationRows.value = '1';
                 adminClothingAnimationFrames.value = '1';
@@ -4453,7 +4453,7 @@
                 adminClothingSkewX.value = String(transform.skewX || 0);
                 adminClothingSkewY.value = String(transform.skewY || 0);
                 adminClothingImageInput.value = '';
-                adminClothingImageField.querySelector('span').textContent = 'Erstat billede (valgfrit, PNG/WebP, maks. 950 KB)';
+                adminClothingImageField.querySelector('span').textContent = 'Erstat billede/spritesheet (valgfrit, PNG/WebP, maks. 950 KB)';
                 adminClothingSaveButton.textContent = 'Gem ændringer';
                 adminClothingCancelEditButton.hidden = false;
                 adminClothingStatus.textContent = `Redigerer ${item.name}. Lad billedfeltet være tomt for at beholde billedet.`;
