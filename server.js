@@ -2408,7 +2408,10 @@ async function startServer() {
         ]);
         const canEditPublicRoom = Boolean(socket.data.canManagePublicRooms && isPublicChatRoomId(roomId));
         socket.emit('room-changed', { roomId, roomName, players, apartmentTiles, canEditApartment, canEditPublicRoom, ...welcome });
-        await emitPlayerPresence(roomId, 'newPlayer', publicPlayer(JSON.parse(joined)));
+        // getPlayers(refreshClothing: true) above refreshes the Redis record from
+        // the database. Emit that authoritative player snapshot so other clients
+        // receive the same equipped spritesheets as the player entering the room.
+        await emitPlayerPresence(roomId, 'newPlayer', players[socket.id] || publicPlayer(JSON.parse(joined)));
         io.emit('navigator-refresh');
         await broadcastChatOnlineCount();
         return publicPlayer(JSON.parse(joined));
@@ -5884,7 +5887,10 @@ async function startServer() {
                     level: getUserLevel(totalOnlineMs, acceptedChatMessages),
                     levelRequirements: LEVEL_REQUIREMENTS.map(([timeMs, messageCount], index) => ({ level: index + 1, timeMs, messageCount }))
                 });
-                socket.to(roomChannel(initialRoomId)).emit('newPlayer', player);
+                // currentPlayers was refreshed from the saved wardrobe above.
+                // The original `player` came from before that refresh and could
+                // make other clients see an outdated outfit after a room join.
+                socket.to(roomChannel(initialRoomId)).emit('newPlayer', currentPlayers[socket.id] || player);
                 io.emit('navigator-refresh');
                 await broadcastChatOnlineCount();
             } catch (error) {

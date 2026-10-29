@@ -5290,15 +5290,20 @@
                 const handItemsEquipped = wardrobeItems.some((item) =>
                     ['left_hand', 'right_hand'].includes(item.category) && wardrobeDraftIds.has(String(item.id))
                 );
-                const handsInFront = Math.max(
-                    wardrobeDraftCategoryOrder.indexOf('left_hand'),
-                    wardrobeDraftCategoryOrder.indexOf('right_hand')
-                ) < wardrobeDraftCategoryOrder.indexOf('clothing');
+                const handIndexes = ['left_hand', 'right_hand']
+                    .map((category) => wardrobeDraftCategoryOrder.indexOf(category))
+                    .filter((index) => index >= 0);
+                const otherIndexes = wardrobeDraftCategoryOrder
+                    .map((category, index) => ({ category, index }))
+                    .filter(({ category }) => !['left_hand', 'right_hand'].includes(category))
+                    .map(({ index }) => index);
+                const handsOnTop = handIndexes.length > 0
+                    && Math.max(...handIndexes) < Math.min(...otherIndexes);
                 wardrobeHandLayerToggle.hidden = !handItemsEquipped;
                 wardrobeHandLayerToggle.disabled = !handItemsEquipped;
-                wardrobeHandLayerToggle.setAttribute('aria-pressed', String(handsInFront));
-                wardrobeHandLayerToggle.setAttribute('aria-label', handsInFront ? 'Laget vises foran tøjet' : 'Laget vises bag tøjet');
-                wardrobeHandLayerToggle.title = handsInFront ? 'Laget vises foran tøjet · tryk for at lægge bagved' : 'Laget vises bag tøjet · tryk for at fremhæve foran';
+                wardrobeHandLayerToggle.setAttribute('aria-pressed', String(handsOnTop));
+                wardrobeHandLayerToggle.setAttribute('aria-label', handsOnTop ? 'Håndlaget er øverst; tryk for at lægge det bag tøjet' : 'Flyt håndlaget helt øverst');
+                wardrobeHandLayerToggle.title = handsOnTop ? 'Håndlaget er øverst · tryk for at lægge det bag tøjet' : 'Flyt håndlaget helt øverst';
                 wardrobeSaveButton.disabled = !isDirty;
                 wardrobeDiscardButton.disabled = !isDirty;
                 if (!isDirty && wardrobeStatus.textContent.startsWith('Outfit ikke gemt endnu')) {
@@ -6577,15 +6582,19 @@
                 });
             });
             wardrobeHandLayerToggle.addEventListener('click', () => {
-                const shouldMoveInFront = wardrobeHandLayerToggle.getAttribute('aria-pressed') !== 'true';
+                const shouldMoveOnTop = wardrobeHandLayerToggle.getAttribute('aria-pressed') !== 'true';
                 const handCategories = wardrobeDraftCategoryOrder.filter((category) => ['left_hand', 'right_hand'].includes(category));
                 const order = wardrobeDraftCategoryOrder.filter((category) => !['left_hand', 'right_hand'].includes(category));
-                const clothingIndex = order.indexOf('clothing');
-                order.splice(clothingIndex + (shouldMoveInFront ? 0 : 1), 0, ...handCategories);
+                if (shouldMoveOnTop) {
+                    order.unshift(...handCategories);
+                } else {
+                    const clothingIndex = order.indexOf('clothing');
+                    order.splice(clothingIndex + 1, 0, ...handCategories);
+                }
                 wardrobeDraftCategoryOrder = order;
-                wardrobeStatus.textContent = shouldMoveInFront
-                    ? 'Laget er fremhævet foran tøjet i previewet. Gem outfittet for at bruge rækkefølgen i chatten.'
-                    : 'Laget vises bag tøjet i previewet. Gem outfittet for at bruge rækkefølgen i chatten.';
+                wardrobeStatus.textContent = shouldMoveOnTop
+                    ? 'Håndlaget vises øverst i previewet. Gem outfittet for at bruge rækkefølgen i chatten.'
+                    : 'Håndlaget vises bag tøjet i previewet. Gem outfittet for at bruge rækkefølgen i chatten.';
                 renderWardrobeItems(wardrobeItems, wardrobeLevel, true);
             });
             wardrobeDiscardButton.addEventListener('click', () => {
