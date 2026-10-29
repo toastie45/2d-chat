@@ -2151,6 +2151,8 @@
             const girlAvatarImage = new Image();
             const girlMobsetAvatarImage = new Image();
             const girlKedAvatarImage = new Image();
+            const girlBlappetAvatarImage = new Image();
+            const girlBoevetAvatarImage = new Image();
             const mobsetAvatarImage = new Image();
             const kedAvatarImage = new Image();
             const blappetAvatarImage = new Image();
@@ -2163,6 +2165,8 @@
             let girlAvatarImageLoaded = false;
             let girlMobsetAvatarImageLoaded = false;
             let girlKedAvatarImageLoaded = false;
+            let girlBlappetAvatarImageLoaded = false;
+            let girlBoevetAvatarImageLoaded = false;
             let mobsetAvatarImageLoaded = false;
             let kedAvatarImageLoaded = false;
             let blappetAvatarImageLoaded = false;
@@ -2208,6 +2212,24 @@
                 girlKedAvatarImageLoaded = false;
             });
             girlKedAvatarImage.src = '/images/ked-kvinde.png';
+            girlBlappetAvatarImage.addEventListener('load', () => {
+                girlBlappetAvatarImageLoaded = true;
+                requestBoardRender();
+                drawWardrobeAvatarPreview();
+            });
+            girlBlappetAvatarImage.addEventListener('error', () => {
+                girlBlappetAvatarImageLoaded = false;
+            });
+            girlBlappetAvatarImage.src = '/images/blappet-kvinde.png';
+            girlBoevetAvatarImage.addEventListener('load', () => {
+                girlBoevetAvatarImageLoaded = true;
+                requestBoardRender();
+                drawWardrobeAvatarPreview();
+            });
+            girlBoevetAvatarImage.addEventListener('error', () => {
+                girlBoevetAvatarImageLoaded = false;
+            });
+            girlBoevetAvatarImage.src = '/images/boevet-kvinde.png';
             function getAvatarImageForPlayer(player) {
                 if (player?.avatarType === 'girl') return girlAvatarImageLoaded ? girlAvatarImage : null;
                 return avatarImageLoaded ? avatarImage : null;
@@ -4633,7 +4655,9 @@
                 const mood = players[myId]?.mood || 'glad';
                 const moodImages = ownPlayer?.avatarType === 'girl' ? {
                     mobset: girlMobsetAvatarImageLoaded ? girlMobsetAvatarImage : null,
-                    ked: girlKedAvatarImageLoaded ? girlKedAvatarImage : null
+                    ked: girlKedAvatarImageLoaded ? girlKedAvatarImage : null,
+                    blappet: girlBlappetAvatarImageLoaded ? girlBlappetAvatarImage : null,
+                    boevet: girlBoevetAvatarImageLoaded ? girlBoevetAvatarImage : null
                 } : {
                     mobset: mobsetAvatarImageLoaded ? mobsetAvatarImage : null,
                     ked: kedAvatarImageLoaded ? kedAvatarImage : null,
@@ -5474,6 +5498,8 @@
                     const moodFaceImage = player.avatarType === 'girl'
                         ? player.mood === 'mobset' && girlMobsetAvatarImageLoaded ? girlMobsetAvatarImage
                             : player.mood === 'ked' && girlKedAvatarImageLoaded ? girlKedAvatarImage
+                                : player.mood === 'blappet' && girlBlappetAvatarImageLoaded ? girlBlappetAvatarImage
+                                : player.mood === 'boevet' && girlBoevetAvatarImageLoaded ? girlBoevetAvatarImage
                                 : null
                         : player.mood === 'mobset'
                         ? (mobsetAvatarImageLoaded ? mobsetAvatarImage : avatarImageLoaded ? avatarImage : null)
