@@ -1085,6 +1085,7 @@
         .avatar-context-name { margin: 3px 6px 0; color: #f2f0e9; font-size: 12px; font-weight: 650; }
         .avatar-context-room { margin: 3px 6px 7px; color: var(--muted); font-size: 10px; }
         .avatar-context-separator { height: 1px; margin: 2px 2px 4px; background: #363831; }
+        .avatar-context-admin-heading { margin: 5px 6px 2px; color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
         .avatar-context-action {
             width: 100%;
             min-height: 28px;
@@ -1977,6 +1978,10 @@
             <button class="avatar-context-action avatar-context-subaction" id="avatar-context-mood-ked" type="button" role="menuitemradio" data-avatar-mood="ked" aria-checked="false" hidden>Ked</button>
             <button class="avatar-context-action avatar-context-subaction" id="avatar-context-mood-blappet" type="button" role="menuitemradio" data-avatar-mood="blappet" aria-checked="false" hidden>Blappet</button>
             <button class="avatar-context-action avatar-context-subaction" id="avatar-context-mood-boevet" type="button" role="menuitemradio" data-avatar-mood="boevet" aria-checked="false" hidden>B&#248;vet</button>
+            <div class="avatar-context-separator" id="avatar-context-admin-separator" role="separator" hidden></div>
+            <p class="avatar-context-admin-heading" id="avatar-context-admin-heading" hidden>Admin</p>
+            <button class="avatar-context-action danger" id="avatar-context-admin-kick" type="button" role="menuitem" hidden>Kick bruger</button>
+            <button class="avatar-context-action danger" id="avatar-context-admin-ban" type="button" role="menuitem" hidden>Ban bruger</button>
         </div>
         <dialog class="level-overview-dialog" id="level-overview-dialog" aria-labelledby="level-overview-title">
             <div class="level-overview-header">
@@ -2324,6 +2329,8 @@
             let canManagePublicRooms = false;
             let canManageClothing = false;
             let pendingAdminBanTarget = null;
+            let pendingContextBanSocketId = null;
+            let pendingAdminContextAction = '';
             let adminUserSearchTimer = 0;
             const navigatorPublicTab = document.getElementById('navigator-public-tab');
             const navigatorApartmentTab = document.getElementById('navigator-apartment-tab');
@@ -2470,6 +2477,10 @@
             const avatarContextHighlight = document.getElementById('avatar-context-highlight');
             const avatarContextMute = document.getElementById('avatar-context-mute');
             const avatarContextKick = document.getElementById('avatar-context-kick');
+            const avatarContextAdminSeparator = document.getElementById('avatar-context-admin-separator');
+            const avatarContextAdminHeading = document.getElementById('avatar-context-admin-heading');
+            const avatarContextAdminKick = document.getElementById('avatar-context-admin-kick');
+            const avatarContextAdminBan = document.getElementById('avatar-context-admin-ban');
             const avatarContextInvisible = document.getElementById('avatar-context-invisible');
             const avatarContextEditApartment = document.getElementById('avatar-context-edit-apartment');
             const avatarContextStatus = document.getElementById('avatar-context-status');
@@ -3241,6 +3252,7 @@
                 avatarContextMenu.classList.add('hidden');
                 contextPlayerId = null;
                 avatarContextKick.hidden = true;
+                pendingContextBanSocketId = null;
             }
 
             function updateProfileRelationship(relationship) {
@@ -3291,6 +3303,11 @@
                 const player = contextPlayerId ? players[contextPlayerId] : null;
                 const isSelf = contextPlayerId === myId;
                 const canEditCurrentRoom = canEditCurrentApartment || canEditCurrentPublicRoom;
+                const canAdminTarget = Boolean(player && !isSelf && isFullAdminUser);
+                avatarContextAdminSeparator.hidden = !canAdminTarget;
+                avatarContextAdminHeading.hidden = !canAdminTarget;
+                avatarContextAdminKick.hidden = !canAdminTarget;
+                avatarContextAdminBan.hidden = !canAdminTarget;
                 avatarContextInvisible.hidden = !player || !isSelf || !isFullAdminUser;
                 avatarContextInvisible.textContent = isAdminInvisible ? 'Bliv synlig' : 'Usynlig';
                 avatarContextEditApartment.hidden = !player || !isSelf || !canEditCurrentRoom;
@@ -6024,6 +6041,25 @@
                 socket.emit('apartment-guest-kick', { targetPlayerId });
                 closeAvatarContextMenu();
             });
+            avatarContextAdminKick.addEventListener('click', () => {
+                const targetSocketId = contextPlayerId;
+                const target = targetSocketId ? players[targetSocketId] : null;
+                if (!isFullAdminUser || !target || targetSocketId === myId) return;
+                if (!window.confirm(`Vil du kicke ${target.name}?`)) return;
+                pendingAdminContextAction = `Kick af ${target.name}`;
+                setRoomNotice(`Kicker ${target.name}…`);
+                socket.emit('admin-user-kick', { targetSocketId });
+                closeAvatarContextMenu();
+            });
+            avatarContextAdminBan.addEventListener('click', () => {
+                const targetSocketId = contextPlayerId;
+                const target = targetSocketId ? players[targetSocketId] : null;
+                if (!isFullAdminUser || !target || targetSocketId === myId) return;
+                closeAvatarContextMenu();
+                pendingContextBanSocketId = targetSocketId;
+                setRoomNotice(`Henter banoplysninger for ${target.name}…`);
+                socket.emit('admin-context-ban-target-request', { targetSocketId });
+            });
             profileFriendButton.addEventListener('click', () => {
                 if (viewingProfilePlayerId && !viewingOwnProfile) {
                     socket.emit('profile-relationship-toggle', {
@@ -6811,6 +6847,10 @@
                 const statusMessage = message || (success ? 'Handlingen er gennemført.' : 'Handlingen mislykkedes.');
                 adminUsersStatus.textContent = statusMessage;
                 adminBansStatus.textContent = statusMessage;
+                if (pendingAdminContextAction) {
+                    setRoomNotice(statusMessage);
+                    pendingAdminContextAction = '';
+                }
                 if (adminBanDialog.open) {
                     adminBanStatus.textContent = statusMessage;
                     if (success) adminBanDialog.close();
@@ -6819,6 +6859,25 @@
                 if (adminSectionSelect.value !== 'users') return;
                 requestAdminUserList();
                 socket.emit('admin-ip-bans-request');
+            });
+
+            socket.on('admin-context-ban-target', (payload = {}) => {
+                const { targetSocketId, userId, username, error } = payload;
+                if (pendingContextBanSocketId !== targetSocketId) return;
+                pendingContextBanSocketId = null;
+                if (error || typeof userId !== 'string' || typeof username !== 'string') {
+                    setRoomNotice(error || 'Brugeren kunne ikke findes til ban.');
+                    return;
+                }
+                pendingAdminBanTarget = { userId, socketId: targetSocketId };
+                adminBanTarget.textContent = `${username} · Online i rummet`;
+                adminBanDuration.value = '60';
+                adminBanCustomWrap.hidden = true;
+                adminBanReason.value = '';
+                adminBanInitials.value = '';
+                adminBanStatus.textContent = '';
+                adminBanCreatedAt.textContent = formatAdminDate(new Date());
+                adminBanDialog.showModal();
             });
 
             let navigatorRefreshTimer = null;

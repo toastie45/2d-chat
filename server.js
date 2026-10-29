@@ -3210,6 +3210,40 @@ async function startServer() {
             }
         });
 
+        socket.on('admin-context-ban-target-request', async ({ targetSocketId } = {}) => {
+            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            const fail = (message) => socket.emit('admin-context-ban-target', { targetSocketId, error: message });
+            if (typeof targetSocketId !== 'string' || targetSocketId.length > 128
+                || targetSocketId === socket.id || !activeSocketIds.has(targetSocketId)) {
+                fail('Brugeren er ikke længere online.');
+                return;
+            }
+            try {
+                const { rows: [target] } = await pool.query(`
+                    SELECT s.user_id::text AS user_id, u.username
+                    FROM chat_online_sessions s
+                    JOIN chat_users u ON u.id = s.user_id
+                    WHERE s.socket_id = $1
+                `, [targetSocketId]);
+                if (!target) {
+                    fail('Brugeren er ikke længere online.');
+                    return;
+                }
+                if (target.user_id === String(socket.data.user.id)) {
+                    fail('Du kan ikke banne din egen bruger.');
+                    return;
+                }
+                socket.emit('admin-context-ban-target', {
+                    targetSocketId,
+                    userId: target.user_id,
+                    username: target.username
+                });
+            } catch (error) {
+                console.error('Could not resolve context ban target:', getSafeErrorCode(error));
+                fail('Brugerens banoplysninger kunne ikke hentes.');
+            }
+        });
+
         socket.on('admin-user-kick', async ({ targetSocketId } = {}) => {
             if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
             if (typeof targetSocketId !== 'string' || targetSocketId.length > 128) {
