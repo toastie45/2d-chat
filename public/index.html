@@ -4755,10 +4755,10 @@
                 }
 
                 const sections = [
-                    { key: 'level_1_8', title: 'Level 1-8', description: 'Alt tøj er sorteret efter størrelserne i level 1-8. Kan du finde noget, der passer dig?' },
-                    { key: 'level_9_16', title: 'Level 9-16', description: 'Alt tøj er sorteret efter størrelserne i level 9-16. Kan du finde noget, der passer dig?' },
-                    { key: 'level_17_20', title: 'Level 17-20', description: 'Alt tøj er sorteret efter størrelserne i level 17-20. Kan du finde noget, der passer dig?' },
-                    { key: 'accessories', title: 'Accessories', description: 'Mangler dit outfit lige det sidste? Her finder du hår, hatte, skæg, briller og tilbehør.' }
+                    { key: 'level_1_8', title: 'Level 1-8', description: 'Kom godt i gang med chatten og find styles, der passer til de første levels.' },
+                    { key: 'level_9_16', title: 'Level 9-16', description: 'Se udvalget til dig, der har været med et stykke tid og vil prøve noget nyt.' },
+                    { key: 'level_17_20', title: 'Level 17-20', description: 'Gå på opdagelse blandt styles til de højeste levels.' },
+                    { key: 'accessories', title: 'Tilbehør', description: 'Sæt dit eget præg på figuren med hår, hatte, skæg, briller og andre detaljer.' }
                 ];
                 const getSectionForItem = (item) => {
                     if (item.category !== 'clothing') return 'accessories';
@@ -4788,7 +4788,7 @@
                         const open = document.createElement('button');
                         open.className = 'primary-button';
                         open.type = 'button';
-                        open.textContent = 'Åbn shop';
+                        open.textContent = 'Se varer';
                         open.addEventListener('click', () => {
                             activeShopCategory = section.key;
                             renderShopItems(shopItemsCache);
