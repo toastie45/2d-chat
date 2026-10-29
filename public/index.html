@@ -420,10 +420,8 @@
         .wardrobe-layout { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-areas: "preview preview preview preview"; align-items: start; gap: 10px; }
         .wardrobe-category-stack { display: contents; }
         .wardrobe-category-stack.left, .wardrobe-category-stack.right { grid-area: auto; }
-        .wardrobe-category-box { min-width: 0; overflow: hidden; border: 1px solid #383d32; border-radius: 9px; background: #191b18; transition: border-color .15s ease, transform .15s ease, background .15s ease; }
-        .wardrobe-category-box[data-drag-over="true"] { border-color: #a8c879; transform: translateY(-2px); }
-        .wardrobe-category-heading { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 7px; width: 100%; padding: 8px 10px; border: 0; background: transparent; color: #dce6cc; font: inherit; font-size: 10px; font-weight: 700; text-align: left; cursor: grab; }
-        .wardrobe-category-heading:active { cursor: grabbing; }
+        .wardrobe-category-box { min-width: 0; overflow: hidden; border: 1px solid #383d32; border-radius: 9px; background: #191b18; transition: border-color .15s ease, background .15s ease; }
+        .wardrobe-category-heading { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 7px; width: 100%; padding: 8px 10px; border: 0; background: transparent; color: #dce6cc; font: inherit; font-size: 10px; font-weight: 700; text-align: left; cursor: pointer; }
         .wardrobe-category-heading > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .wardrobe-category-heading::after { flex: 0 0 auto; color: #a8c879; content: "+"; font-size: 14px; line-height: 1; }
         .wardrobe-category-box[data-selected="true"] { border-color: #829b5a; }
@@ -2388,7 +2386,6 @@
             let wardrobeDraftIds = new Set();
             let wardrobeSavedCategoryOrder = null;
             let wardrobeDraftCategoryOrder = [...defaultWardrobeCategoryOrder];
-            let draggedWardrobeCategory = '';
             let wardrobeLevel = 1;
             let activeWardrobeCategory = '';
             const adminPanel = document.getElementById('admin-panel');
@@ -4794,22 +4791,10 @@
                 const createCategoryBox = (category) => {
                     const box = document.createElement('div');
                     box.className = 'wardrobe-category-box';
-                    box.dataset.wardrobeCategory = category;
                     const categoryItems = wardrobeItems.filter((item) => item.category === category);
                     const heading = document.createElement('button');
                     heading.className = 'wardrobe-category-heading';
                     heading.type = 'button';
-                    heading.draggable = true;
-                    heading.title = 'Træk kategorien for at ændre rækkefølge og tøjets lag';
-                    heading.addEventListener('dragstart', (event) => {
-                        draggedWardrobeCategory = category;
-                        event.dataTransfer?.setData('text/plain', category);
-                        if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
-                    });
-                    heading.addEventListener('dragend', () => {
-                        draggedWardrobeCategory = '';
-                        document.querySelectorAll('.wardrobe-category-box[data-drag-over="true"]').forEach((element) => delete element.dataset.dragOver);
-                    });
                     const selected = activeWardrobeCategory === category;
                     box.dataset.selected = String(selected);
                     heading.setAttribute('aria-expanded', String(selected));
@@ -4825,38 +4810,13 @@
                         activeWardrobeCategory = selected ? '' : category;
                         renderWardrobeItems(wardrobeItems, wardrobeLevel, true);
                     });
-                    box.addEventListener('dragover', (event) => {
-                        if (!draggedWardrobeCategory || draggedWardrobeCategory === category) return;
-                        const leftCategories = ['headwear', 'hair', 'beard', 'glasses'];
-                        if (leftCategories.includes(draggedWardrobeCategory) !== leftCategories.includes(category)) return;
-                        event.preventDefault();
-                        box.dataset.dragOver = 'true';
-                        if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
-                    });
-                    box.addEventListener('dragleave', (event) => {
-                        if (!box.contains(event.relatedTarget)) delete box.dataset.dragOver;
-                    });
-                    box.addEventListener('drop', (event) => {
-                        event.preventDefault();
-                        delete box.dataset.dragOver;
-                        if (!draggedWardrobeCategory || draggedWardrobeCategory === category) return;
-                        const leftCategories = ['headwear', 'hair', 'beard', 'glasses'];
-                        if (leftCategories.includes(draggedWardrobeCategory) !== leftCategories.includes(category)) return;
-                        const order = [...wardrobeDraftCategoryOrder];
-                        order.splice(order.indexOf(draggedWardrobeCategory), 1);
-                        order.splice(order.indexOf(category), 0, draggedWardrobeCategory);
-                        wardrobeDraftCategoryOrder = order;
-                        draggedWardrobeCategory = '';
-                        wardrobeStatus.textContent = 'Rækkefølgen er ændret. Gem outfittet for at vise den nye lagorden i chatten.';
-                        renderWardrobeItems(wardrobeItems, wardrobeLevel, true);
-                    });
                     box.append(heading);
                     return box;
                 };
                 const leftCategories = ['headwear', 'hair', 'beard', 'glasses'];
                 const rightCategories = ['clothing', 'left_hand', 'right_hand', 'accessory'];
-                wardrobeLeftCategories.replaceChildren(...wardrobeDraftCategoryOrder.filter((category) => leftCategories.includes(category)).map(createCategoryBox));
-                wardrobeRightCategories.replaceChildren(...wardrobeDraftCategoryOrder.filter((category) => rightCategories.includes(category)).map(createCategoryBox));
+                wardrobeLeftCategories.replaceChildren(...leftCategories.map(createCategoryBox));
+                wardrobeRightCategories.replaceChildren(...rightCategories.map(createCategoryBox));
 
                 const categoryItems = wardrobeItems.filter((item) => item.category === activeWardrobeCategory);
                 wardrobeCategoryPreview.hidden = !activeWardrobeCategory;
@@ -7119,7 +7079,7 @@
             socket.on('wardrobe-items', ({ items = [], level = 1, categoryOrder } = {}) => {
                 renderWardrobeItems(Array.isArray(items) ? items : [], Math.max(1, Number(level) || 1), false, categoryOrder);
                 if (wardrobeStatus.textContent.startsWith('Henter')) {
-                    wardrobeStatus.textContent = 'Træk kategorierne for at ændre rækkefølgen. Tryk på lagikonet for at flytte håndting frem eller tilbage i lagene.';
+                    wardrobeStatus.textContent = 'Tryk på lagikonet for at flytte håndting frem eller tilbage i lagene.';
                 }
             });
             socket.on('clothing-ownership-counts', (counts = {}) => {
