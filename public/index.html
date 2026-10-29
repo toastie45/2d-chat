@@ -467,8 +467,19 @@
         .shop-item-details { display: grid; min-width: 0; gap: 4px; }
         .shop-item-details strong { color: #f2f0e9; font-size: 11px; }
         .shop-item-details span { color: var(--muted); font-size: 10px; }
+        .shop-variant-options { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+        .shop-variant-button { min-height: 26px; padding: 4px 9px; border: 1px solid #41463a; border-radius: 999px; background: #22251f; color: #d9ddcf; font: inherit; font-size: 10px; cursor: pointer; }
+        .shop-variant-button:hover, .shop-variant-button[aria-pressed="true"] { border-color: #a8c879; background: #2b3423; color: #c9ee8b; }
         .shop-coming-soon { padding: 6px 8px; border: 1px solid #41463a; border-radius: 6px; color: #a8c879; font-size: 9px; white-space: nowrap; }
         .admin-shop-note { margin: 8px 0 12px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+        .admin-shop-copy-editor { margin: 12px 0; padding: 10px 12px; border: 1px solid #383d32; border-radius: 8px; background: #191b18; }
+        .admin-shop-copy-editor > summary { color: #e8e9e2; font-size: 11px; font-weight: 700; cursor: pointer; }
+        .admin-shop-copy-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin: 10px 0; }
+        .admin-shop-copy-grid label { display: grid; gap: 5px; color: var(--muted); font-size: 10px; }
+        .admin-shop-copy-grid input, .admin-shop-copy-grid textarea { width: 100%; min-width: 0; padding: 8px; border: 1px solid #383d32; border-radius: 6px; background: #141613; color: #f2f0e9; font: inherit; font-size: 11px; }
+        .admin-shop-copy-categories fieldset { display: grid; gap: 7px; min-width: 0; padding: 9px; border: 1px solid #383d32; border-radius: 6px; }
+        .admin-shop-copy-categories legend { padding: 0 4px; color: #c9ee8b; font-size: 10px; }
+        @media (max-width: 600px) { .admin-shop-copy-grid { grid-template-columns: 1fr; } }
         .admin-shop-groups { display: grid; gap: 9px; }
         .admin-shop-group { overflow: hidden; border: 1px solid #383d32; border-radius: 8px; background: #191b18; }
         .admin-shop-group > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 12px; color: #e8e9e2; font-size: 11px; font-weight: 700; cursor: pointer; list-style: none; }
@@ -1623,7 +1634,7 @@
                         </section>
                         <section class="side-panel" id="shop-panel" aria-labelledby="shop-title" hidden>
                             <h2 class="side-title" id="shop-title">Butik</h2>
-                            <p class="shop-intro">Find tøj og tilbehør til din figur. Køb bliver åbnet, når chatten har en valuta.</p>
+                            <p class="shop-intro" id="shop-intro">Find tøj og tilbehør til din figur. Køb bliver åbnet, når chatten har en valuta.</p>
                             <button class="admin-row-button shop-back" id="shop-back-button" type="button" hidden>← Kategorier</button>
                             <p class="admin-status" id="shop-status" aria-live="polite">Henter butikkens varer…</p>
                             <div class="shop-list" id="shop-list" role="list"></div>
@@ -1913,6 +1924,13 @@
                                     <label class="wide">Beskrivelse (valgfri)
                                         <textarea id="admin-clothing-description" maxlength="300" placeholder="Kort beskrivelse"></textarea>
                                     </label>
+                                    <label>Variantgruppe (valgfri)
+                                        <input id="admin-clothing-variant-group" type="text" maxlength="60" placeholder="Fx Trøje med mønster">
+                                    </label>
+                                    <label>Farve / variant (valgfri)
+                                        <input id="admin-clothing-variant-label" type="text" maxlength="30" placeholder="Fx Gul">
+                                    </label>
+                                    <p class="admin-status wide">Brug samme variantgruppe på flere farver, og giv hver vare sin egen farvebetegnelse. De vises samlet i shoppen.</p>
                                     <label>Kategori
                                         <select id="admin-clothing-category" required>
                                             <option value="headwear">Hovedbeklædning</option>
@@ -1999,6 +2017,22 @@
                                 <select class="profile-page-select" id="admin-shop-room-select"><option value="">Henter butikker…</option></select>
                                 <button class="admin-row-button" id="admin-shop-open-toggle" type="button" disabled>Åbn butik for gæster</button>
                                 <p class="admin-status" id="admin-shop-status" aria-live="polite"></p>
+                                <details class="admin-shop-copy-editor">
+                                    <summary>Rediger butikkens tekster</summary>
+                                    <p class="admin-shop-note">Teksterne gælder kun for den valgte butik.</p>
+                                    <div class="admin-shop-copy-grid">
+                                        <label>Butikkens overskrift<input id="admin-shop-copy-title" maxlength="60" placeholder="Butik"></label>
+                                        <label>Intro under overskriften<textarea id="admin-shop-copy-intro" maxlength="240" rows="2"></textarea></label>
+                                        <label>Velkomst over kategorierne<textarea id="admin-shop-copy-welcome" maxlength="240" rows="2"></textarea></label>
+                                    </div>
+                                    <div class="admin-shop-copy-grid admin-shop-copy-categories">
+                                        <fieldset><legend>Level 1-8</legend><label>Overskrift<input data-shop-copy-category="level_1_8" data-shop-copy-field="title" maxlength="40"></label><label>Beskrivelse<textarea data-shop-copy-category="level_1_8" data-shop-copy-field="description" maxlength="180" rows="2"></textarea></label></fieldset>
+                                        <fieldset><legend>Level 9-16</legend><label>Overskrift<input data-shop-copy-category="level_9_16" data-shop-copy-field="title" maxlength="40"></label><label>Beskrivelse<textarea data-shop-copy-category="level_9_16" data-shop-copy-field="description" maxlength="180" rows="2"></textarea></label></fieldset>
+                                        <fieldset><legend>Level 17-20</legend><label>Overskrift<input data-shop-copy-category="level_17_20" data-shop-copy-field="title" maxlength="40"></label><label>Beskrivelse<textarea data-shop-copy-category="level_17_20" data-shop-copy-field="description" maxlength="180" rows="2"></textarea></label></fieldset>
+                                        <fieldset><legend>Tilbehør</legend><label>Overskrift<input data-shop-copy-category="accessories" data-shop-copy-field="title" maxlength="40"></label><label>Beskrivelse<textarea data-shop-copy-category="accessories" data-shop-copy-field="description" maxlength="180" rows="2"></textarea></label></fieldset>
+                                    </div>
+                                    <button class="admin-row-button" id="admin-shop-copy-save" type="button">Gem tekster</button>
+                                </details>
                                 <div class="admin-clothing-catalog-tools" role="search">
                                     <input id="admin-shop-catalog-search" type="search" placeholder="Søg på navn eller beskrivelse" aria-label="Søg i butikkens tøjudvalg">
                                     <select id="admin-shop-catalog-category" aria-label="Filtrér butikkens tøjudvalg efter kategori">
@@ -2402,14 +2436,32 @@
             const navigatorPanel = document.getElementById('navigator-panel');
             const wardrobePanel = document.getElementById('wardrobe-panel');
             const shopPanel = document.getElementById('shop-panel');
+            const shopTitle = document.getElementById('shop-title');
+            const shopIntro = document.getElementById('shop-intro');
             const shopStatus = document.getElementById('shop-status');
             const shopList = document.getElementById('shop-list');
             const shopBackButton = document.getElementById('shop-back-button');
             const adminShopOpenToggle = document.getElementById('admin-shop-open-toggle');
+            const adminShopCopyTitle = document.getElementById('admin-shop-copy-title');
+            const adminShopCopyIntro = document.getElementById('admin-shop-copy-intro');
+            const adminShopCopyWelcome = document.getElementById('admin-shop-copy-welcome');
+            const adminShopCopySave = document.getElementById('admin-shop-copy-save');
             let shopIsOpen = false;
             let activeRoomIsShop = false;
             let shopItemsCache = [];
             let activeShopCategory = '';
+            const DEFAULT_SHOP_CONTENT = {
+                title: 'Butik',
+                intro: 'Find tøj og tilbehør til din figur. Køb bliver åbnet, når chatten har en valuta.',
+                welcome: 'Velkommen! Vælg en kategori for at se varerne.',
+                categories: {
+                    level_1_8: { title: 'Level 1-8', description: 'Kom godt i gang med chatten og find styles, der passer til de første levels.' },
+                    level_9_16: { title: 'Level 9-16', description: 'Se udvalget til dig, der har været med et stykke tid og vil prøve noget nyt.' },
+                    level_17_20: { title: 'Level 17-20', description: 'Gå på opdagelse blandt styles til de højeste levels.' },
+                    accessories: { title: 'Tilbehør', description: 'Sæt dit eget præg på figuren med hår, hatte, skæg, briller og andre detaljer.' }
+                }
+            };
+            let activeShopContent = DEFAULT_SHOP_CONTENT;
             const wardrobeLeftCategories = document.getElementById('wardrobe-left-categories');
             const wardrobeRightCategories = document.getElementById('wardrobe-right-categories');
             const wardrobeAvatarPreview = document.getElementById('wardrobe-avatar-preview');
@@ -2457,6 +2509,8 @@
             const adminClothingUsername = document.getElementById('admin-clothing-username');
             const adminClothingName = document.getElementById('admin-clothing-name');
             const adminClothingDescription = document.getElementById('admin-clothing-description');
+            const adminClothingVariantGroup = document.getElementById('admin-clothing-variant-group');
+            const adminClothingVariantLabel = document.getElementById('admin-clothing-variant-label');
             const adminClothingCategory = document.getElementById('admin-clothing-category');
             const adminClothingLayerField = document.getElementById('admin-clothing-layer-field');
             const adminClothingLayerPosition = document.getElementById('admin-clothing-layer-position');
@@ -4265,6 +4319,8 @@
                 adminClothingAssignmentField.hidden = true;
                 adminClothingName.value = item.name || '';
                 adminClothingDescription.value = item.description || '';
+                adminClothingVariantGroup.value = item.variantGroup || '';
+                adminClothingVariantLabel.value = item.variantLabel || '';
                 adminClothingCategory.value = item.category || 'clothing';
                 adminClothingLayerPosition.value = item.transform?.layerPosition
                     || (['left_hand', 'right_hand'].includes(item.category) ? 'front' : 'normal');
@@ -4312,6 +4368,8 @@
                     const payload = {
                         name: adminClothingName.value,
                         description: adminClothingDescription.value,
+                        variantGroup: adminClothingVariantGroup.value,
+                        variantLabel: adminClothingVariantLabel.value,
                         category: adminClothingCategory.value,
                         layerPosition: adminClothingLayerPosition.value,
                         targetAvatarType: adminClothingAvatarType.value,
@@ -4980,6 +5038,11 @@
                     const avatarLabel = item.avatarType === 'girl' ? 'Kvindeavatar' : 'Mandeavatar';
                     meta.textContent = `${avatarLabel} · ${categoryNames[item.category] || item.category} · Level ${item.requiredLevel} · ${Number(item.price).toLocaleString('da-DK')} mønter · ${item.assignmentCount} tildelt`;
                     details.append(name, meta);
+                    if (item.variantGroup) {
+                        const variantInfo = document.createElement('span');
+                        variantInfo.textContent = `Variantgruppe: ${item.variantGroup} · ${item.variantLabel || 'Variant ikke angivet'}`;
+                        details.append(variantInfo);
+                    }
                     if (item.description) {
                         const description = document.createElement('span');
                         description.textContent = item.description;
@@ -5128,6 +5191,11 @@
                     const avatarLabel = item.avatarType === 'girl' ? 'Kvindeavatar' : 'Mandeavatar';
                     meta.textContent = `${avatarLabel} · ${shopCategoryNames[item.category] || item.category} · Level ${item.requiredLevel} · ${Number(item.price).toLocaleString('da-DK')} mønter`;
                     details.append(name, meta);
+                    if (item.variantGroup) {
+                        const variantInfo = document.createElement('span');
+                        variantInfo.textContent = `Variantgruppe: ${item.variantGroup} · ${item.variantLabel || 'Variant ikke angivet'}`;
+                        details.append(variantInfo);
+                    }
                     if (item.description) {
                         const description = document.createElement('span');
                         description.textContent = item.description;
@@ -5151,6 +5219,54 @@
                 adminShopCatalog.append(wrapper);
             }
 
+            function normalizeShopContent(content = {}) {
+                const source = content && typeof content === 'object' ? content : {};
+                const categories = {};
+                for (const [key, fallback] of Object.entries(DEFAULT_SHOP_CONTENT.categories)) {
+                    const value = source.categories?.[key] || {};
+                    categories[key] = {
+                        title: String(value.title || '').trim() || fallback.title,
+                        description: String(value.description || '').trim() || fallback.description
+                    };
+                }
+                return {
+                    title: String(source.title || '').trim() || DEFAULT_SHOP_CONTENT.title,
+                    intro: String(source.intro || '').trim() || DEFAULT_SHOP_CONTENT.intro,
+                    welcome: String(source.welcome || '').trim() || DEFAULT_SHOP_CONTENT.welcome,
+                    categories
+                };
+            }
+
+            function applyShopContent(content = {}) {
+                activeShopContent = normalizeShopContent(content);
+                shopTitle.textContent = activeShopContent.title;
+                shopIntro.textContent = activeShopContent.intro;
+                adminShopCopyTitle.value = content.title || '';
+                adminShopCopyIntro.value = content.intro || '';
+                adminShopCopyWelcome.value = content.welcome || '';
+                document.querySelectorAll('[data-shop-copy-category]').forEach((field) => {
+                    const category = field.dataset.shopCopyCategory;
+                    const property = field.dataset.shopCopyField;
+                    field.value = content.categories?.[category]?.[property] || '';
+                });
+            }
+
+            function collectAdminShopContent() {
+                const categories = {};
+                document.querySelectorAll('[data-shop-copy-category]').forEach((field) => {
+                    const category = field.dataset.shopCopyCategory;
+                    const property = field.dataset.shopCopyField;
+                    categories[category] ||= {};
+                    categories[category][property] = field.value;
+                });
+                return {
+                    title: adminShopCopyTitle.value,
+                    intro: adminShopCopyIntro.value,
+                    welcome: adminShopCopyWelcome.value,
+                    categories
+                };
+            }
+
             function renderShopItems(items = [], error = '', closed = false) {
                 shopItemsCache = Array.isArray(items) ? items : [];
                 shopList.replaceChildren();
@@ -5161,12 +5277,10 @@
                     return;
                 }
 
-                const sections = [
-                    { key: 'level_1_8', title: 'Level 1-8', description: 'Kom godt i gang med chatten og find styles, der passer til de første levels.' },
-                    { key: 'level_9_16', title: 'Level 9-16', description: 'Se udvalget til dig, der har været med et stykke tid og vil prøve noget nyt.' },
-                    { key: 'level_17_20', title: 'Level 17-20', description: 'Gå på opdagelse blandt styles til de højeste levels.' },
-                    { key: 'accessories', title: 'Tilbehør', description: 'Sæt dit eget præg på figuren med hår, hatte, skæg, briller og andre detaljer.' }
-                ];
+                const sections = Object.keys(DEFAULT_SHOP_CONTENT.categories).map((key) => ({
+                    key,
+                    ...activeShopContent.categories[key]
+                }));
                 const getSectionForItem = (item) => {
                     if (item.category !== 'clothing') return 'accessories';
                     const level = Math.max(1, Number(item.requiredLevel) || 1);
@@ -5177,7 +5291,7 @@
 
                 if (!activeShopCategory) {
                     shopBackButton.hidden = true;
-                    shopStatus.textContent = 'Velkommen! Vælg en kategori for at se varerne.';
+                    shopStatus.textContent = activeShopContent.welcome;
                     for (const section of sections) {
                         const card = document.createElement('article');
                         card.className = 'shop-category-card';
@@ -5214,29 +5328,68 @@
                 heading.className = 'shop-category-title';
                 heading.textContent = section.title;
                 shopList.append(heading);
+                const itemGroups = new Map();
                 for (const item of categoryItems) {
+                    const variantGroup = String(item.variantGroup || '').trim();
+                    const key = variantGroup
+                        ? `group:${item.category}:${item.avatarType}:${variantGroup.toLocaleLowerCase('da-DK')}`
+                        : `item:${item.id}`;
+                    if (!itemGroups.has(key)) itemGroups.set(key, []);
+                    itemGroups.get(key).push(item);
+                }
+                for (const variants of itemGroups.values()) {
+                    variants.sort((a, b) => String(a.variantLabel || a.name).localeCompare(String(b.variantLabel || b.name), 'da'));
+                    let selected = variants[0];
                     const card = document.createElement('article');
                     card.className = 'shop-item';
                     card.setAttribute('role', 'listitem');
                     const image = document.createElement('img');
-                    image.src = item.imageUrl;
-                    image.alt = '';
+                    image.src = selected.imageUrl;
+                    image.alt = selected.name || '';
                     const details = document.createElement('div');
                     details.className = 'shop-item-details';
                     const name = document.createElement('strong');
-                    name.textContent = item.name;
+                    name.textContent = variants.length > 1 ? selected.variantGroup : selected.name;
                     const meta = document.createElement('span');
-                    meta.textContent = `Level ${item.requiredLevel} · ${Number(item.price).toLocaleString('da-DK')} mønter`;
-                    details.append(name, meta);
-                    if (item.description) {
-                        const description = document.createElement('span');
-                        description.textContent = item.description;
-                        details.append(description);
+                    const description = document.createElement('span');
+                    description.className = 'shop-variant-description';
+                    const updateVariantDetails = () => {
+                        meta.textContent = `Level ${selected.requiredLevel} · ${Number(selected.price).toLocaleString('da-DK')} mønter${selected.variantLabel ? ` · ${selected.variantLabel}` : ''}`;
+                        image.src = selected.imageUrl;
+                        image.alt = selected.name || '';
+                        name.textContent = variants.length > 1 ? selected.variantGroup : selected.name;
+                        description.textContent = selected.description || '';
+                        description.hidden = !selected.description;
+                        card.querySelectorAll('.shop-variant-button').forEach((button) => {
+                            button.setAttribute('aria-pressed', String(button.dataset.variantId === selected.id));
+                        });
+                    };
+                    details.append(name, meta, description);
+                    if (variants.length > 1) {
+                        const options = document.createElement('div');
+                        options.className = 'shop-variant-options';
+                        options.setAttribute('role', 'group');
+                        options.setAttribute('aria-label', 'Vælg farve eller variant');
+                        for (const variant of variants) {
+                            const option = document.createElement('button');
+                            option.type = 'button';
+                            option.className = 'shop-variant-button';
+                            option.dataset.variantId = variant.id;
+                            option.textContent = variant.variantLabel || variant.name;
+                            option.setAttribute('aria-pressed', String(variant.id === selected.id));
+                            option.addEventListener('click', () => {
+                                selected = variant;
+                                updateVariantDetails();
+                            });
+                            options.append(option);
+                        }
+                        details.append(options);
                     }
                     const future = document.createElement('span');
                     future.className = 'shop-coming-soon';
                     future.textContent = 'Køb senere';
                     card.append(image, details, future);
+                    updateVariantDetails();
                     shopList.append(card);
                 }
             }
@@ -6105,6 +6258,14 @@
             adminShopRoomSelect.addEventListener('change', () => {
                 adminSelectedShopRoomId = adminShopRoomSelect.value;
                 if (adminSelectedShopRoomId) socket.emit('admin-shop-room-data-request', { roomId: adminSelectedShopRoomId });
+            });
+            adminShopCopySave.addEventListener('click', () => {
+                if (!adminShopRoomSelect.value) return;
+                adminShopCopySave.disabled = true;
+                socket.emit('admin-shop-content-set', {
+                    roomId: adminShopRoomSelect.value,
+                    content: collectAdminShopContent()
+                });
             });
             adminShopOpenToggle.addEventListener('click', () => {
                 if (!adminShopRoomSelect.value) return;
@@ -7174,13 +7335,14 @@
                 adminShopRoomSelect.value = adminSelectedShopRoomId;
                 socket.emit('admin-shop-room-data-request', { roomId: adminSelectedShopRoomId });
             });
-            socket.on('admin-shop-room-data', ({ roomId, isOpen = false, items = [], error = '' } = {}) => {
+            socket.on('admin-shop-room-data', ({ roomId, isOpen = false, items = [], shopContent = {}, error = '' } = {}) => {
                 if (!canManageClothing || roomId !== adminShopRoomSelect.value) return;
                 adminSelectedShopRoomId = roomId;
                 adminShopOpenToggle.disabled = false;
                 adminShopOpenToggle.textContent = isOpen ? 'Luk butik for gæster' : 'Åbn butik for gæster';
                 adminShopOpenToggle.setAttribute('aria-pressed', String(isOpen));
                 adminShopStatus.textContent = error || '';
+                applyShopContent(shopContent);
                 if (error) {
                     adminShopCatalog.replaceChildren();
                     return;
@@ -7200,6 +7362,15 @@
                 adminShopOpenToggle.disabled = false;
                 if (success && adminShopRoomSelect.value) socket.emit('admin-shop-room-data-request', { roomId: adminShopRoomSelect.value });
             });
+            socket.on('admin-shop-content-result', ({ success, message } = {}) => {
+                adminShopStatus.textContent = message || (success ? 'Butikkens tekster er gemt.' : 'Butikkens tekster kunne ikke gemmes.');
+                adminShopCopySave.disabled = false;
+            });
+            socket.on('shop-content', ({ roomId, content = {} } = {}) => {
+                if (roomId !== activeRoom) return;
+                applyShopContent(content);
+                if (shopIsOpen && activeSidePanel === 'shop') renderShopItems(shopItemsCache);
+            });
             socket.on('shop-status', ({ roomId, isOpen = false } = {}) => {
                 if (roomId !== activeRoom) return;
                 shopIsOpen = isOpen === true;
@@ -7210,7 +7381,8 @@
                     socket.emit('shop-request');
                 }
             });
-            socket.on('shop-items', ({ items = [], error = '', closed = false } = {}) => {
+            socket.on('shop-items', ({ items = [], error = '', closed = false, content = {} } = {}) => {
+                applyShopContent(content);
                 renderShopItems(Array.isArray(items) ? items : [], error, closed);
             });
             socket.on('admin-clothing-owners', (payload = {}) => {

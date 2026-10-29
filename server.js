@@ -839,6 +839,7 @@ async function startServer() {
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS is_hidden BOOLEAN NOT NULL DEFAULT FALSE');
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS is_shop BOOLEAN NOT NULL DEFAULT FALSE');
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS shop_is_open BOOLEAN NOT NULL DEFAULT FALSE');
+    await pool.query("ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS shop_content JSONB NOT NULL DEFAULT '{}'::jsonb");
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS welcome_title VARCHAR(100)');
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS welcome_text VARCHAR(500)');
     await pool.query("ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS layout_json JSONB NOT NULL DEFAULT '{}'::jsonb");
@@ -885,6 +886,8 @@ async function startServer() {
     await pool.query("ALTER TABLE chat_clothing_catalog ADD CONSTRAINT chat_clothing_catalog_category_check CHECK (category IN ('headwear', 'hair', 'beard', 'glasses', 'clothing', 'left_hand', 'right_hand', 'accessory'))");
     await pool.query('ALTER TABLE chat_clothing_catalog ADD COLUMN IF NOT EXISTS image_version BIGINT NOT NULL DEFAULT 1');
     await pool.query('ALTER TABLE chat_clothing_catalog ADD COLUMN IF NOT EXISTS is_shop_listed BOOLEAN NOT NULL DEFAULT FALSE');
+    await pool.query("ALTER TABLE chat_clothing_catalog ADD COLUMN IF NOT EXISTS variant_group VARCHAR(60) NOT NULL DEFAULT ''");
+    await pool.query("ALTER TABLE chat_clothing_catalog ADD COLUMN IF NOT EXISTS variant_label VARCHAR(30) NOT NULL DEFAULT ''");
     await pool.query("ALTER TABLE chat_clothing_catalog ADD COLUMN IF NOT EXISTS target_avatar_type VARCHAR(8) NOT NULL DEFAULT 'boy'");
     await pool.query('ALTER TABLE chat_clothing_catalog DROP CONSTRAINT IF EXISTS chat_clothing_catalog_target_avatar_type_check');
     await pool.query("ALTER TABLE chat_clothing_catalog ADD CONSTRAINT chat_clothing_catalog_target_avatar_type_check CHECK (target_avatar_type IN ('boy', 'girl'))");
@@ -2410,6 +2413,7 @@ async function startServer() {
         async function sendAdminClothingItems() {
             const { rows } = await pool.query(`
                 SELECT item.id, item.name, item.description, item.category, item.target_avatar_type, item.required_level, item.price,
+                       item.variant_group, item.variant_label,
                        item.is_shop_listed,
                        item.transform_json, item.image_version, item.created_at,
                        COUNT(assignment.id)::integer AS assignment_count
@@ -2420,6 +2424,7 @@ async function startServer() {
             const mapItem = (item) => ({
                 id: String(item.id), name: item.name, description: item.description, category: item.category,
                 avatarType: item.target_avatar_type,
+                variantGroup: item.variant_group || '', variantLabel: item.variant_label || '',
                 requiredLevel: Number(item.required_level), price: Number(item.price),
                 shopListed: Boolean(item.is_shop_listed),
                 imageVersion: Number(item.image_version || 1),
@@ -2525,7 +2530,7 @@ async function startServer() {
             if (typeof roomId !== 'string' || !/^(common|disco|public:[1-9]\d{0,18})$/.test(roomId)) return;
             try {
                 const { rows: [room] } = await pool.query(
-                    'SELECT id, shop_is_open FROM chat_public_rooms WHERE id = $1 AND is_shop = TRUE', [roomId]
+                    'SELECT id, shop_is_open, shop_content FROM chat_public_rooms WHERE id = $1 AND is_shop = TRUE', [roomId]
                 );
                 if (!room) {
                     socket.emit('admin-shop-room-data', { roomId, error: 'Vælg et rum, der er markeret som butik.' });
@@ -2533,6 +2538,7 @@ async function startServer() {
                 }
                 const { rows } = await pool.query(`
                     SELECT item.id, item.name, item.description, item.category, item.target_avatar_type,
+                           item.variant_group, item.variant_label,
                            item.required_level, item.price, item.transform_json, item.image_version,
                            EXISTS (SELECT 1 FROM chat_shop_room_items listed
                                    WHERE listed.room_id = $1 AND listed.clothing_item_id = item.id) AS is_shop_listed,
@@ -2541,8 +2547,9 @@ async function startServer() {
                     LEFT JOIN chat_clothing_assignments assignment ON assignment.clothing_item_id = item.id
                     GROUP BY item.id ORDER BY item.created_at DESC, item.id DESC LIMIT 200
                 `, [roomId]);
-                socket.emit('admin-shop-room-data', { roomId, isOpen: room.shop_is_open === true, items: rows.map((item) => ({
+                socket.emit('admin-shop-room-data', { roomId, isOpen: room.shop_is_open === true, shopContent: room.shop_content || {}, items: rows.map((item) => ({
                     id: String(item.id), name: item.name, description: item.description, category: item.category,
+                    variantGroup: item.variant_group || '', variantLabel: item.variant_label || '',
                     avatarType: item.target_avatar_type, requiredLevel: Number(item.required_level), price: Number(item.price),
                     imageVersion: Number(item.image_version || 1), imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.image_version || 1}`,
                     shopListed: item.is_shop_listed === true
@@ -2601,25 +2608,66 @@ async function startServer() {
             }
         });
 
+        socket.on('admin-shop-content-set', async ({ roomId, content = {} } = {}) => {
+            if (!socket.data.canManageClothing || !activeSocketIds.has(socket.id)
+                || typeof roomId !== 'string' || !/^(common|disco|public:[1-9]\d{0,18})$/.test(roomId)
+                || !content || typeof content !== 'object' || Array.isArray(content)) return;
+            const categoryKeys = ['level_1_8', 'level_9_16', 'level_17_20', 'accessories'];
+            const cleanText = (value, max) => typeof value === 'string'
+                ? value.normalize('NFKC').trim().replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').slice(0, max)
+                : '';
+            const normalized = {
+                title: cleanText(content.title, 60),
+                intro: cleanText(content.intro, 240),
+                welcome: cleanText(content.welcome, 240),
+                categories: {}
+            };
+            for (const key of categoryKeys) {
+                const category = content.categories?.[key];
+                normalized.categories[key] = {
+                    title: cleanText(category?.title, 40),
+                    description: cleanText(category?.description, 180)
+                };
+            }
+            try {
+                const { rowCount } = await pool.query(
+                    'UPDATE chat_public_rooms SET shop_content = $2::jsonb WHERE id = $1 AND is_shop = TRUE',
+                    [roomId, JSON.stringify(normalized)]
+                );
+                if (!rowCount) {
+                    socket.emit('admin-shop-content-result', { success: false, message: 'Rummet er ikke markeret som butik.' });
+                    return;
+                }
+                io.to(roomChannel(roomId)).emit('shop-content', { roomId, content: normalized });
+                socket.emit('admin-shop-content-result', { success: true, roomId, message: 'Butikkens tekster er gemt.' });
+                socket.emit('admin-shop-room-data-refresh', { roomId });
+            } catch (error) {
+                console.error('Could not update shop content:', getSafeErrorCode(error));
+                socket.emit('admin-shop-content-result', { success: false, message: 'Butikkens tekster kunne ikke gemmes.' });
+            }
+        });
+
         socket.on('shop-request', async () => {
             if (!activeSocketIds.has(socket.id)) return;
             try {
                 const roomId = socket.data.roomId;
-                const { rows: [status] } = await pool.query('SELECT is_shop, shop_is_open FROM chat_public_rooms WHERE id = $1', [roomId]);
+                const { rows: [status] } = await pool.query('SELECT is_shop, shop_is_open, shop_content FROM chat_public_rooms WHERE id = $1', [roomId]);
                 if (status?.is_shop !== true || status.shop_is_open !== true) {
-                    socket.emit('shop-items', { items: [], closed: true });
+                    socket.emit('shop-items', { items: [], closed: true, content: status?.shop_content || {} });
                     return;
                 }
                 const { rows } = await pool.query(`
-                    SELECT item.id, item.name, item.description, item.category, item.target_avatar_type, item.required_level, item.price, item.image_version
+                    SELECT item.id, item.name, item.description, item.category, item.target_avatar_type,
+                           item.required_level, item.price, item.image_version, item.variant_group, item.variant_label
                     FROM chat_clothing_catalog item
                     JOIN chat_shop_room_items listed ON listed.clothing_item_id = item.id AND listed.room_id = $2
                     WHERE item.target_avatar_type = (SELECT avatar_type FROM chat_users WHERE id = $1)
                     ORDER BY category, required_level, name, id
                     LIMIT 300
                 `, [socket.data.user.id, roomId]);
-                socket.emit('shop-items', { items: rows.map((item) => ({
+                socket.emit('shop-items', { content: status.shop_content || {}, items: rows.map((item) => ({
                     id: String(item.id), name: item.name, description: item.description,
+                    variantGroup: item.variant_group || '', variantLabel: item.variant_label || '',
                     category: item.category, avatarType: item.target_avatar_type, requiredLevel: Number(item.required_level),
                     price: Number(item.price), imageVersion: Number(item.image_version || 1),
                     imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.image_version || 1}`
@@ -2663,6 +2711,8 @@ async function startServer() {
             const username = typeof payload.username === 'string' && payload.username.trim() ? normalizeUsername(payload.username) : null;
             const name = typeof payload.name === 'string' ? payload.name.normalize('NFKC').trim() : '';
             const description = typeof payload.description === 'string' ? payload.description.normalize('NFKC').trim() : '';
+            const variantGroup = typeof payload.variantGroup === 'string' ? payload.variantGroup.normalize('NFKC').trim() : '';
+            const variantLabel = typeof payload.variantLabel === 'string' ? payload.variantLabel.normalize('NFKC').trim() : '';
             const category = payload.category, targetAvatarType = payload.targetAvatarType;
             const layerPosition = ['front', 'normal', 'back'].includes(payload.layerPosition)
                 ? payload.layerPosition
@@ -2675,7 +2725,7 @@ async function startServer() {
             const isPng=image&&image.length>=8&&image.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
             const isWebp=image&&image.length>=12&&image.toString('ascii',0,4)==='RIFF'&&image.toString('ascii',8,12)==='WEBP';
             const validTransform=Number.isFinite(x)&&x>=-270&&x<=270&&Number.isFinite(y)&&y>=-180&&y<=180&&Number.isFinite(rotation)&&rotation>=-180&&rotation<=180&&Number.isFinite(scale)&&scale>=0.25&&scale<=3&&Number.isFinite(scaleX)&&scaleX>=0.25&&scaleX<=3&&Number.isFinite(scaleY)&&scaleY>=0.25&&scaleY<=3&&Number.isFinite(skewX)&&skewX>=-45&&skewX<=45&&Number.isFinite(skewY)&&skewY>=-45&&skewY<=45;
-            if((payload.username!=null&&typeof payload.username!=='string')||(payload.username?.trim()&&!username)||!name||name.length>60||/[\u0000-\u001f\u007f]/.test(name)||description.length>300||/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(description)||!['boy','girl'].includes(targetAvatarType)||!['headwear','hair','beard','glasses','clothing','left_hand','right_hand','accessory'].includes(category)||!Number.isInteger(requiredLevel)||requiredLevel<1||requiredLevel>20||!Number.isInteger(price)||price<0||price>100000000||!validTransform||!image||image.length>950000||(!isPng&&!isWebp)){
+            if((payload.username!=null&&typeof payload.username!=='string')||(payload.username?.trim()&&!username)||!name||name.length>60||/[\u0000-\u001f\u007f]/.test(name)||description.length>300||/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(description)||variantGroup.length>60||/[\u0000-\u001f\u007f]/.test(variantGroup)||variantLabel.length>30||/[\u0000-\u001f\u007f]/.test(variantLabel)||Boolean(variantGroup)!==Boolean(variantLabel)||!['boy','girl'].includes(targetAvatarType)||!['headwear','hair','beard','glasses','clothing','left_hand','right_hand','accessory'].includes(category)||!Number.isInteger(requiredLevel)||requiredLevel<1||requiredLevel>20||!Number.isInteger(price)||price<0||price>100000000||!validTransform||!image||image.length>950000||(!isPng&&!isWebp)){
                 socket.emit('admin-clothing-action-result',{success:false,message:'Kontroll?r brugernavn (valgfrit), navn, kategori, level, pris og placering. Billedet skal v?re PNG/WebP p? h?jst 950 KB.'});return;
             }
             try{
@@ -2687,9 +2737,9 @@ async function startServer() {
                 try{
                     await client.query('BEGIN');
                     const {rows:[item]}=await client.query(`
-                        INSERT INTO chat_clothing_catalog (name,description,category,target_avatar_type,image,mime_type,required_level,price,transform_json)
-                        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) RETURNING id
-                    `,[name,description,category,targetAvatarType,image,isPng?'image/png':'image/webp',requiredLevel,price,JSON.stringify({x,y,rotation,scale,scaleX,scaleY,skewX,skewY,layerPosition})]);
+                        INSERT INTO chat_clothing_catalog (name,description,category,target_avatar_type,image,mime_type,required_level,price,transform_json,variant_group,variant_label)
+                        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11) RETURNING id
+                    `,[name,description,category,targetAvatarType,image,isPng?'image/png':'image/webp',requiredLevel,price,JSON.stringify({x,y,rotation,scale,scaleX,scaleY,skewX,skewY,layerPosition}),variantGroup,variantLabel]);
                     if(target)await client.query('INSERT INTO chat_clothing_assignments (target_user_id,clothing_item_id) VALUES ($1,$2)',[target.id,item.id]);
                     await client.query('COMMIT');
                 }catch(error){try{await client.query('ROLLBACK')}catch{}throw error;}finally{client.release();}
@@ -2705,6 +2755,8 @@ async function startServer() {
             const id = typeof payload.id === 'string' && /^[1-9]\d{0,18}$/.test(payload.id) ? payload.id : '';
             const name = typeof payload.name === 'string' ? payload.name.normalize('NFKC').trim() : '';
             const description = typeof payload.description === 'string' ? payload.description.normalize('NFKC').trim() : '';
+            const variantGroup = typeof payload.variantGroup === 'string' ? payload.variantGroup.normalize('NFKC').trim() : '';
+            const variantLabel = typeof payload.variantLabel === 'string' ? payload.variantLabel.normalize('NFKC').trim() : '';
             const category = payload.category;
             const targetAvatarType = payload.targetAvatarType;
             const layerPosition = ['front', 'normal', 'back'].includes(payload.layerPosition)
@@ -2729,6 +2781,9 @@ async function startServer() {
                 && Number.isFinite(skewY) && skewY >= -45 && skewY <= 45;
             if (!id || !name || name.length > 60 || /[\u0000-\u001f\u007f]/.test(name)
                 || description.length > 300 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(description)
+                || variantGroup.length > 60 || /[\u0000-\u001f\u007f]/.test(variantGroup)
+                || variantLabel.length > 30 || /[\u0000-\u001f\u007f]/.test(variantLabel)
+                || Boolean(variantGroup) !== Boolean(variantLabel)
                 || !['boy', 'girl'].includes(targetAvatarType)
                 || !['headwear', 'hair', 'beard', 'glasses', 'clothing', 'left_hand', 'right_hand', 'accessory'].includes(category)
                 || !Number.isInteger(requiredLevel) || requiredLevel < 1 || requiredLevel > 20
@@ -2756,13 +2811,14 @@ async function startServer() {
                     UPDATE chat_clothing_catalog
                     SET name = $2, description = $3, category = $4, target_avatar_type = $5,
                         required_level = $6, price = $7, transform_json = $8::jsonb,
-                        image = COALESCE($9, image), mime_type = COALESCE($10, mime_type),
-                        image_version = image_version + CASE WHEN $9::bytea IS NULL THEN 0 ELSE 1 END
+                        variant_group = $9, variant_label = $10,
+                        image = COALESCE($11, image), mime_type = COALESCE($12, mime_type),
+                        image_version = image_version + CASE WHEN $11::bytea IS NULL THEN 0 ELSE 1 END
                     WHERE id = $1
                     RETURNING id
                 `, [id, name, description, category, targetAvatarType, requiredLevel, price,
                     JSON.stringify({ x, y, rotation, scale, scaleX, scaleY, skewX, skewY, layerPosition }),
-                    image, isPng ? 'image/png' : isWebp ? 'image/webp' : null]);
+                    variantGroup, variantLabel, image, isPng ? 'image/png' : isWebp ? 'image/webp' : null]);
                 if (!item) {
                     socket.emit('admin-clothing-action-result', { success: false, message: 'Tøjdelen findes ikke længere.' });
                     return;
