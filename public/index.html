@@ -444,7 +444,13 @@
         .wardrobe-empty { color: var(--muted); font-size: 11px; }
         .shop-intro { margin: 0 0 14px; color: var(--muted); font-size: 11px; line-height: 1.5; }
         .shop-list { display: grid; gap: 9px; }
-        .shop-category-title { margin: 14px 0 6px; color: #dce6cc; font-size: 12px; }
+        .shop-category-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 14px; border: 1px solid #383d32; border-radius: 8px; background: #191b18; }
+        .shop-category-card h3 { margin: 0 0 5px; color: #f2f0e9; font-size: 15px; }
+        .shop-category-card p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+        .shop-category-count { display: block; margin-top: 6px; color: #a8c879 !important; }
+        .shop-category-card button { min-width: 82px; }
+        .shop-back { margin: 0 0 12px; }
+        .shop-category-title { margin: 0 0 8px; color: #dce6cc; font-size: 14px; }
         .shop-item { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 9px; border: 1px solid #383d32; border-radius: 8px; background: #191b18; }
         .shop-item img { width: 58px; height: 64px; object-fit: contain; border-radius: 5px; background: #10110f; }
         .shop-item-details { display: grid; min-width: 0; gap: 4px; }
@@ -1584,7 +1590,8 @@
                         </section>
                         <section class="side-panel" id="shop-panel" aria-labelledby="shop-title" hidden>
                             <h2 class="side-title" id="shop-title">Butik</h2>
-                            <p class="shop-intro">Se tøj, hår og tilbehør, der er sat til salg. Køb bliver åbnet, når chatten har en valuta.</p>
+                            <p class="shop-intro">Find tøj og tilbehør til din figur. Køb bliver åbnet, når chatten har en valuta.</p>
+                            <button class="admin-row-button shop-back" id="shop-back-button" type="button" hidden>← Kategorier</button>
                             <p class="admin-status" id="shop-status" aria-live="polite">Henter butikkens varer…</p>
                             <div class="shop-list" id="shop-list" role="list"></div>
                         </section>
@@ -2214,8 +2221,11 @@
             const shopPanel = document.getElementById('shop-panel');
             const shopStatus = document.getElementById('shop-status');
             const shopList = document.getElementById('shop-list');
+            const shopBackButton = document.getElementById('shop-back-button');
             const adminShopOpenToggle = document.getElementById('admin-shop-open-toggle');
             let shopIsOpen = false;
+            let shopItemsCache = [];
+            let activeShopCategory = '';
             const wardrobeLeftCategories = document.getElementById('wardrobe-left-categories');
             const wardrobeRightCategories = document.getElementById('wardrobe-right-categories');
             const wardrobeAvatarPreview = document.getElementById('wardrobe-avatar-preview');
@@ -2832,9 +2842,36 @@
                 bottomToolbar.classList.toggle('hidden', !isAuthenticated);
                 pageWrapper.classList.toggle('has-session', isAuthenticated);
                 roomStripUser.textContent = isAuthenticated ? currentUser.username : '';
-                shopNavButton.hidden = !isAuthenticated || !shopIsOpen;
+                updateShopNavigationVisibility();
                 adminNavButton.hidden = !isAuthenticated || !isAdminUser;
                 if (!isAuthenticated) setFriendMenuOpen(false);
+            }
+
+            function isClothingShopRoom(roomId = activeRoom, roomName = roomStripName.textContent) {
+                const normalizedName = String(roomName || '').toLocaleLowerCase('da-DK');
+                return roomId === 'public:4' || /tøjbutik|toejbutik|tojbutik/.test(normalizedName);
+            }
+
+            function updateShopNavigationVisibility() {
+                shopNavButton.hidden = !currentUser || !shopIsOpen || !isClothingShopRoom();
+            }
+
+            function showCurrentRoomLandingPanel() {
+                if (isClothingShopRoom()) {
+                    activeShopCategory = '';
+                    shopBackButton.hidden = true;
+                    selectSidePanel('shop', { remember: false });
+                    updateShopNavigationVisibility();
+                    if (shopIsOpen) {
+                        shopStatus.textContent = 'Henter butikkens varer…';
+                        socket.emit('shop-request');
+                    } else {
+                        renderShopItems([], '', true);
+                    }
+                    return;
+                }
+                updateShopNavigationVisibility();
+                selectSidePanel('welcome', { remember: false });
             }
 
             function updateToolbarState() {
@@ -4708,47 +4745,92 @@
             }
 
             function renderShopItems(items = [], error = '', closed = false) {
+                shopItemsCache = Array.isArray(items) ? items : [];
                 shopList.replaceChildren();
-                if (error) shopStatus.textContent = error;
-                else if (closed) shopStatus.textContent = 'Butikken er lukket lige nu.';
-                else shopStatus.textContent = items.length ? `${items.length} varer i butikken.` : 'Butikken er tom lige nu.';
-                if (!items.length) return;
-                const groups = new Map();
-                for (const item of items) {
-                    const category = shopCategoryNames[item.category] || item.category;
-                    if (!groups.has(category)) groups.set(category, []);
-                    groups.get(category).push(item);
+                if (error || closed) {
+                    activeShopCategory = '';
+                    shopBackButton.hidden = true;
+                    shopStatus.textContent = error || 'Butikken er lukket lige nu.';
+                    return;
                 }
-                for (const [category, categoryItems] of groups) {
-                    const heading = document.createElement('h3');
-                    heading.className = 'shop-category-title';
-                    heading.textContent = category;
-                    shopList.append(heading);
-                    for (const item of categoryItems) {
+
+                const sections = [
+                    { key: 'level_1_8', title: 'Level 1-8', description: 'Alt tøj er sorteret efter størrelserne i level 1-8. Kan du finde noget, der passer dig?' },
+                    { key: 'level_9_16', title: 'Level 9-16', description: 'Alt tøj er sorteret efter størrelserne i level 9-16. Kan du finde noget, der passer dig?' },
+                    { key: 'level_17_20', title: 'Level 17-20', description: 'Alt tøj er sorteret efter størrelserne i level 17-20. Kan du finde noget, der passer dig?' },
+                    { key: 'accessories', title: 'Accessories', description: 'Mangler dit outfit lige det sidste? Her finder du hår, hatte, skæg, briller og tilbehør.' }
+                ];
+                const getSectionForItem = (item) => {
+                    if (item.category !== 'clothing') return 'accessories';
+                    const level = Math.max(1, Number(item.requiredLevel) || 1);
+                    return level <= 8 ? 'level_1_8' : level <= 16 ? 'level_9_16' : 'level_17_20';
+                };
+                const groupedItems = new Map(sections.map((section) => [section.key, []]));
+                for (const item of shopItemsCache) groupedItems.get(getSectionForItem(item)).push(item);
+
+                if (!activeShopCategory) {
+                    shopBackButton.hidden = true;
+                    shopStatus.textContent = 'Velkommen! Vælg en kategori for at se varerne.';
+                    for (const section of sections) {
                         const card = document.createElement('article');
-                        card.className = 'shop-item';
+                        card.className = 'shop-category-card';
                         card.setAttribute('role', 'listitem');
-                        const image = document.createElement('img');
-                        image.src = item.imageUrl;
-                        image.alt = '';
                         const details = document.createElement('div');
-                        details.className = 'shop-item-details';
-                        const name = document.createElement('strong');
-                        name.textContent = item.name;
-                        const meta = document.createElement('span');
-                        meta.textContent = `Level ${item.requiredLevel} · ${Number(item.price).toLocaleString('da-DK')} mønter`;
-                        details.append(name, meta);
-                        if (item.description) {
-                            const description = document.createElement('span');
-                            description.textContent = item.description;
-                            details.append(description);
-                        }
-                        const future = document.createElement('span');
-                        future.className = 'shop-coming-soon';
-                        future.textContent = 'Køb senere';
-                        card.append(image, details, future);
+                        const title = document.createElement('h3');
+                        title.textContent = section.title;
+                        const description = document.createElement('p');
+                        description.textContent = section.description;
+                        const count = document.createElement('p');
+                        count.className = 'shop-category-count';
+                        const itemCount = groupedItems.get(section.key).length;
+                        count.textContent = `${itemCount} ${itemCount === 1 ? 'vare' : 'varer'}`;
+                        details.append(title, description, count);
+                        const open = document.createElement('button');
+                        open.className = 'primary-button';
+                        open.type = 'button';
+                        open.textContent = 'Åbn shop';
+                        open.addEventListener('click', () => {
+                            activeShopCategory = section.key;
+                            renderShopItems(shopItemsCache);
+                        });
+                        card.append(details, open);
                         shopList.append(card);
                     }
+                    return;
+                }
+
+                const section = sections.find((entry) => entry.key === activeShopCategory);
+                const categoryItems = groupedItems.get(activeShopCategory) || [];
+                shopBackButton.hidden = false;
+                shopStatus.textContent = categoryItems.length ? `${categoryItems.length} varer i ${section.title}.` : 'Der er ingen varer i denne kategori endnu.';
+                const heading = document.createElement('h3');
+                heading.className = 'shop-category-title';
+                heading.textContent = section.title;
+                shopList.append(heading);
+                for (const item of categoryItems) {
+                    const card = document.createElement('article');
+                    card.className = 'shop-item';
+                    card.setAttribute('role', 'listitem');
+                    const image = document.createElement('img');
+                    image.src = item.imageUrl;
+                    image.alt = '';
+                    const details = document.createElement('div');
+                    details.className = 'shop-item-details';
+                    const name = document.createElement('strong');
+                    name.textContent = item.name;
+                    const meta = document.createElement('span');
+                    meta.textContent = `Level ${item.requiredLevel} · ${Number(item.price).toLocaleString('da-DK')} mønter`;
+                    details.append(name, meta);
+                    if (item.description) {
+                        const description = document.createElement('span');
+                        description.textContent = item.description;
+                        details.append(description);
+                    }
+                    const future = document.createElement('span');
+                    future.className = 'shop-coming-soon';
+                    future.textContent = 'Køb senere';
+                    card.append(image, details, future);
+                    shopList.append(card);
                 }
             }
 
@@ -5538,9 +5620,16 @@
                 socket.emit('wardrobe-request');
             });
             shopNavButton.addEventListener('click', () => {
+                if (!isClothingShopRoom() || !shopIsOpen) return;
                 selectSidePanel('shop');
                 shopStatus.textContent = 'Henter butikkens varer…';
+                activeShopCategory = '';
+                shopBackButton.hidden = true;
                 socket.emit('shop-request');
+            });
+            shopBackButton.addEventListener('click', () => {
+                activeShopCategory = '';
+                renderShopItems(shopItemsCache);
             });
             adminShopOpenToggle.addEventListener('click', () => {
                 adminShopOpenToggle.disabled = true;
@@ -5628,7 +5717,7 @@
             chatNavButton.addEventListener('click', () => {
                 selectSidePanel('chat');
             });
-            roomStripName.addEventListener('click', () => selectSidePanel('welcome'));
+            roomStripName.addEventListener('click', showCurrentRoomLandingPanel);
             profileNavButton.addEventListener('click', openProfileEditor);
             searchNavButton.addEventListener('click', openUserSearch);
             privateMailNavButton.addEventListener('click', () => openPrivateMail());
@@ -6353,7 +6442,7 @@
                 requestProfileManagement();
                 socket.emit('private-mail-unread-request');
                 sidePanelHistory.length = 0;
-                selectSidePanel('welcome', { remember: false });
+                showCurrentRoomLandingPanel();
                 updateToolbarState();
                 loginSection.classList.add('hidden');
                 gameSection.classList.remove('hidden');
@@ -6372,7 +6461,7 @@
                 const wasMembersOpen = !membersPanel.hidden;
                 applyRoomState(roomId, roomName, serverPlayers, { welcomeTitle, welcomeText, roomBackgroundUrl, roomOverlayUrl, roomOverlayTransform }, { apartmentTiles, canEditApartment, canEditPublicRoom });
                 sidePanelHistory.length = 0;
-                selectSidePanel('welcome', { remember: false });
+                showCurrentRoomLandingPanel();
                 if (wasNavigatorOpen) socket.emit('navigator-request');
                 if (wasMembersOpen) socket.emit('online-users-request');
             });
@@ -6533,7 +6622,7 @@
             });
             socket.on('shop-status', ({ isOpen = false } = {}) => {
                 shopIsOpen = isOpen === true;
-                shopNavButton.hidden = !currentUser || !shopIsOpen;
+                updateShopNavigationVisibility();
                 if (canManageClothing) {
                     adminShopOpenToggle.textContent = shopIsOpen ? 'Luk butik for brugere' : 'Åbn butik for brugere';
                     adminShopOpenToggle.setAttribute('aria-pressed', String(shopIsOpen));
@@ -6542,7 +6631,7 @@
                 if (!shopIsOpen) {
                     shopList.replaceChildren();
                     if (activeSidePanel === 'shop') shopStatus.textContent = 'Butikken er lukket lige nu.';
-                } else if (activeSidePanel === 'shop') {
+                } else if (activeSidePanel === 'shop' && isClothingShopRoom()) {
                     socket.emit('shop-request');
                 }
             });
