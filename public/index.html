@@ -479,6 +479,15 @@
         .admin-shop-copy-grid input, .admin-shop-copy-grid textarea { width: 100%; min-width: 0; padding: 8px; border: 1px solid #383d32; border-radius: 6px; background: #141613; color: #f2f0e9; font: inherit; font-size: 11px; }
         .admin-shop-copy-categories fieldset { display: grid; gap: 7px; min-width: 0; padding: 9px; border: 1px solid #383d32; border-radius: 6px; }
         .admin-shop-copy-categories legend { padding: 0 4px; color: #c9ee8b; font-size: 10px; }
+        .admin-shop-variant-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 5px; }
+        .admin-shop-variant-controls input { flex: 1 1 120px; min-width: 0; padding: 6px 8px; border: 1px solid #383d32; border-radius: 6px; background: #141613; color: #f2f0e9; font: inherit; font-size: 10px; }
+        .admin-shop-variant-hint { color: var(--muted); font-size: 9px; }
+        .admin-shop-variant-bulk { display: grid; grid-template-columns: minmax(160px, 1fr) auto; align-items: center; gap: 8px; margin: 10px 0; padding: 10px; border: 1px solid #383d32; border-radius: 8px; background: #191b18; }
+        .admin-shop-variant-bulk input { min-width: 0; padding: 8px; border: 1px solid #383d32; border-radius: 6px; background: #141613; color: #f2f0e9; font: inherit; }
+        .admin-shop-variant-bulk p { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 10px; }
+        .admin-shop-item-select { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 10px; }
+        .admin-shop-item-select input { flex: 0 0 auto; min-width: auto; padding: 0; border: 0; background: transparent; accent-color: #b5d982; }
+        @media (max-width: 600px) { .admin-shop-variant-bulk { grid-template-columns: 1fr; } .admin-shop-variant-bulk p { grid-column: auto; } }
         @media (max-width: 600px) { .admin-shop-copy-grid { grid-template-columns: 1fr; } }
         .admin-shop-groups { display: grid; gap: 9px; }
         .admin-shop-group { overflow: hidden; border: 1px solid #383d32; border-radius: 8px; background: #191b18; }
@@ -1924,13 +1933,6 @@
                                     <label class="wide">Beskrivelse (valgfri)
                                         <textarea id="admin-clothing-description" maxlength="300" placeholder="Kort beskrivelse"></textarea>
                                     </label>
-                                    <label>Variantgruppe (valgfri)
-                                        <input id="admin-clothing-variant-group" type="text" maxlength="60" placeholder="Fx Trøje med mønster">
-                                    </label>
-                                    <label>Farve / variant (valgfri)
-                                        <input id="admin-clothing-variant-label" type="text" maxlength="30" placeholder="Fx Gul">
-                                    </label>
-                                    <p class="admin-status wide">Brug samme variantgruppe på flere farver, og giv hver vare sin egen farvebetegnelse. De vises samlet i shoppen.</p>
                                     <label>Kategori
                                         <select id="admin-clothing-category" required>
                                             <option value="headwear">Hovedbeklædning</option>
@@ -2043,6 +2045,14 @@
                                     <select id="admin-shop-catalog-avatar" aria-label="Filtrér butikkens tøjudvalg efter avatartype">
                                         <option value="">Alle avatarer</option><option value="boy">Mand</option><option value="girl">Kvinde</option>
                                     </select>
+                                </div>
+                                <div class="admin-shop-variant-bulk">
+                                    <label>Navn på farvegruppen
+                                        <input id="admin-shop-variant-group-name" type="text" maxlength="60" placeholder="Fx Klassisk hoodie">
+                                    </label>
+                                    <button class="admin-row-button" id="admin-shop-variant-group-save" type="button" disabled>Opret gruppe og læg i butik</button>
+                                    <p>Markér mindst to varer, og angiv en farve på hver. Gruppen gemmes samlet i den valgte butik og bliver først synlig for gæster, når du gemmer den.</p>
+                                    <p id="admin-shop-variant-group-status" aria-live="polite"></p>
                                 </div>
                                 <p class="admin-clothing-catalog-count" id="admin-shop-catalog-count" aria-live="polite"></p>
                                 <div class="admin-list" id="admin-shop-catalog" role="list"></div>
@@ -2505,12 +2515,13 @@
             const adminShopCatalogCategory = document.getElementById('admin-shop-catalog-category');
             const adminShopCatalogAvatar = document.getElementById('admin-shop-catalog-avatar');
             const adminShopCatalogCount = document.getElementById('admin-shop-catalog-count');
+            const adminShopVariantGroupName = document.getElementById('admin-shop-variant-group-name');
+            const adminShopVariantGroupSave = document.getElementById('admin-shop-variant-group-save');
+            const adminShopVariantGroupStatus = document.getElementById('admin-shop-variant-group-status');
             const adminClothingForm = document.getElementById('admin-clothing-form');
             const adminClothingUsername = document.getElementById('admin-clothing-username');
             const adminClothingName = document.getElementById('admin-clothing-name');
             const adminClothingDescription = document.getElementById('admin-clothing-description');
-            const adminClothingVariantGroup = document.getElementById('admin-clothing-variant-group');
-            const adminClothingVariantLabel = document.getElementById('admin-clothing-variant-label');
             const adminClothingCategory = document.getElementById('admin-clothing-category');
             const adminClothingLayerField = document.getElementById('admin-clothing-layer-field');
             const adminClothingLayerPosition = document.getElementById('admin-clothing-layer-position');
@@ -4319,8 +4330,6 @@
                 adminClothingAssignmentField.hidden = true;
                 adminClothingName.value = item.name || '';
                 adminClothingDescription.value = item.description || '';
-                adminClothingVariantGroup.value = item.variantGroup || '';
-                adminClothingVariantLabel.value = item.variantLabel || '';
                 adminClothingCategory.value = item.category || 'clothing';
                 adminClothingLayerPosition.value = item.transform?.layerPosition
                     || (['left_hand', 'right_hand'].includes(item.category) ? 'front' : 'normal');
@@ -4368,8 +4377,6 @@
                     const payload = {
                         name: adminClothingName.value,
                         description: adminClothingDescription.value,
-                        variantGroup: adminClothingVariantGroup.value,
-                        variantLabel: adminClothingVariantLabel.value,
                         category: adminClothingCategory.value,
                         layerPosition: adminClothingLayerPosition.value,
                         targetAvatarType: adminClothingAvatarType.value,
@@ -5038,11 +5045,6 @@
                     const avatarLabel = item.avatarType === 'girl' ? 'Kvindeavatar' : 'Mandeavatar';
                     meta.textContent = `${avatarLabel} · ${categoryNames[item.category] || item.category} · Level ${item.requiredLevel} · ${Number(item.price).toLocaleString('da-DK')} mønter · ${item.assignmentCount} tildelt`;
                     details.append(name, meta);
-                    if (item.variantGroup) {
-                        const variantInfo = document.createElement('span');
-                        variantInfo.textContent = `Variantgruppe: ${item.variantGroup} · ${item.variantLabel || 'Variant ikke angivet'}`;
-                        details.append(variantInfo);
-                    }
                     if (item.description) {
                         const description = document.createElement('span');
                         description.textContent = item.description;
@@ -5107,6 +5109,12 @@
             };
 
             let adminShopCatalogItems = [];
+            const adminShopVariantSelections = new Map();
+            function updateAdminShopVariantSelectionStatus() {
+                const groupName = adminShopVariantGroupName.value.normalize('NFKC').trim();
+                adminShopVariantGroupSave.disabled = !adminShopRoomSelect.value || !groupName || adminShopVariantSelections.size < 2;
+                adminShopVariantGroupStatus.textContent = `${adminShopVariantSelections.size} varer valgt. Vælg mindst to varer for at oprette en farvegruppe.`;
+            }
             function renderAdminShopCatalog(items = adminShopCatalogItems) {
                 if (Array.isArray(items)) adminShopCatalogItems = items;
                 adminShopCatalog.replaceChildren();
@@ -5191,16 +5199,36 @@
                     const avatarLabel = item.avatarType === 'girl' ? 'Kvindeavatar' : 'Mandeavatar';
                     meta.textContent = `${avatarLabel} · ${shopCategoryNames[item.category] || item.category} · Level ${item.requiredLevel} · ${Number(item.price).toLocaleString('da-DK')} mønter`;
                     details.append(name, meta);
-                    if (item.variantGroup) {
-                        const variantInfo = document.createElement('span');
-                        variantInfo.textContent = `Variantgruppe: ${item.variantGroup} · ${item.variantLabel || 'Variant ikke angivet'}`;
-                        details.append(variantInfo);
-                    }
                     if (item.description) {
                         const description = document.createElement('span');
                         description.textContent = item.description;
                         details.append(description);
                     }
+                    const variantControls = document.createElement('div');
+                    variantControls.className = 'admin-shop-variant-controls';
+                    const selectLabel = document.createElement('label');
+                    selectLabel.className = 'admin-shop-item-select';
+                    const selectItem = document.createElement('input');
+                    selectItem.type = 'checkbox';
+                    selectItem.checked = adminShopVariantSelections.has(item.id);
+                    selectItem.setAttribute('aria-label', `Markér ${item.name} til farvegruppe`);
+                    const variantLabel = document.createElement('input');
+                    variantLabel.type = 'text';
+                    variantLabel.maxLength = 30;
+                    variantLabel.placeholder = 'Farve, fx Gul';
+                    variantLabel.value = adminShopVariantSelections.get(item.id) ?? item.variantLabel ?? '';
+                    variantLabel.setAttribute('aria-label', `Farvevariant for ${item.name} i denne butik`);
+                    selectLabel.append(selectItem, document.createTextNode('Med i gruppe'));
+                    selectItem.addEventListener('change', () => {
+                        if (selectItem.checked) adminShopVariantSelections.set(item.id, variantLabel.value);
+                        else adminShopVariantSelections.delete(item.id);
+                        updateAdminShopVariantSelectionStatus();
+                    });
+                    variantLabel.addEventListener('input', () => {
+                        if (selectItem.checked) adminShopVariantSelections.set(item.id, variantLabel.value);
+                    });
+                    variantControls.append(selectLabel, variantLabel);
+                    details.append(variantControls);
                     const toggle = document.createElement('button');
                     toggle.className = item.shopListed ? 'admin-row-button ban' : 'admin-row-button';
                     toggle.type = 'button';
@@ -5217,6 +5245,7 @@
                     wrapper.append(group);
                 });
                 adminShopCatalog.append(wrapper);
+                updateAdminShopVariantSelectionStatus();
             }
 
             function normalizeShopContent(content = {}) {
@@ -6255,8 +6284,23 @@
             adminShopCatalogSearch.addEventListener('input', () => renderAdminShopCatalog());
             adminShopCatalogCategory.addEventListener('change', () => renderAdminShopCatalog());
             adminShopCatalogAvatar.addEventListener('change', () => renderAdminShopCatalog());
+            adminShopVariantGroupName.addEventListener('input', updateAdminShopVariantSelectionStatus);
+            adminShopVariantGroupSave.addEventListener('click', () => {
+                const groupName = adminShopVariantGroupName.value.normalize('NFKC').trim();
+                const items = [...adminShopVariantSelections.entries()].map(([id, label]) => ({ id, label: String(label || '').normalize('NFKC').trim() }));
+                if (!adminShopRoomSelect.value || !groupName || items.length < 2) return;
+                if (items.some((item) => !item.label)) {
+                    adminShopVariantGroupStatus.textContent = 'Skriv en farve på hver markeret vare.';
+                    return;
+                }
+                adminShopVariantGroupSave.disabled = true;
+                adminShopVariantGroupStatus.textContent = 'Gemmer gruppen og lægger varerne i butikken…';
+                socket.emit('admin-shop-variant-group-save', { roomId: adminShopRoomSelect.value, groupName, items });
+            });
             adminShopRoomSelect.addEventListener('change', () => {
                 adminSelectedShopRoomId = adminShopRoomSelect.value;
+                adminShopVariantSelections.clear();
+                updateAdminShopVariantSelectionStatus();
                 if (adminSelectedShopRoomId) socket.emit('admin-shop-room-data-request', { roomId: adminSelectedShopRoomId });
             });
             adminShopCopySave.addEventListener('click', () => {
@@ -7352,9 +7396,16 @@
             socket.on('admin-shop-room-data-refresh', ({ roomId } = {}) => {
                 if (roomId && roomId === adminShopRoomSelect.value) socket.emit('admin-shop-room-data-request', { roomId });
             });
-            socket.on('admin-shop-action-result', ({ success, message } = {}) => {
+            socket.on('admin-shop-action-result', ({ success, message, action } = {}) => {
                 if (!canManageClothing) return;
                 adminShopStatus.textContent = message || (success ? 'Butikken er opdateret.' : 'Butikken kunne ikke opdateres.');
+                if (action === 'variant-group') {
+                    if (success) {
+                        adminShopVariantSelections.clear();
+                        adminShopVariantGroupName.value = '';
+                    }
+                    renderAdminShopCatalog();
+                }
                 if (success && !shopPanel.hidden) socket.emit('shop-request');
             });
             socket.on('admin-shop-status-result', ({ success, message } = {}) => {
@@ -7384,6 +7435,11 @@
             socket.on('shop-items', ({ items = [], error = '', closed = false, content = {} } = {}) => {
                 applyShopContent(content);
                 renderShopItems(Array.isArray(items) ? items : [], error, closed);
+            });
+            socket.on('shop-items-refresh', ({ roomId } = {}) => {
+                if (roomId === activeRoom && activeSidePanel === 'shop' && isClothingShopRoom()) {
+                    socket.emit('shop-request');
+                }
             });
             socket.on('admin-clothing-owners', (payload = {}) => {
                 if (!canManageClothing) return;

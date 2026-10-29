@@ -903,10 +903,14 @@ async function startServer() {
         CREATE TABLE IF NOT EXISTS chat_shop_room_items (
             room_id TEXT NOT NULL REFERENCES chat_public_rooms(id) ON DELETE CASCADE,
             clothing_item_id BIGINT NOT NULL REFERENCES chat_clothing_catalog(id) ON DELETE CASCADE,
+            variant_group VARCHAR(60) NOT NULL DEFAULT '',
+            variant_label VARCHAR(30) NOT NULL DEFAULT '',
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             PRIMARY KEY (room_id, clothing_item_id)
         )
     `);
+    await pool.query("ALTER TABLE chat_shop_room_items ADD COLUMN IF NOT EXISTS variant_group VARCHAR(60) NOT NULL DEFAULT ''");
+    await pool.query("ALTER TABLE chat_shop_room_items ADD COLUMN IF NOT EXISTS variant_label VARCHAR(30) NOT NULL DEFAULT ''");
     await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_app_migrations (
             migration_key TEXT PRIMARY KEY,
@@ -916,6 +920,18 @@ async function startServer() {
     const { rows: [shopMigration] } = await pool.query(
         "SELECT migration_key FROM chat_app_migrations WHERE migration_key = 'room-based-shops-v1'"
     );
+    const { rows: [shopVariantMigration] } = await pool.query(
+        "SELECT migration_key FROM chat_app_migrations WHERE migration_key = 'shop-variants-per-room-v1'"
+    );
+    if (!shopVariantMigration) {
+        await pool.query(`
+            UPDATE chat_shop_room_items listed
+            SET variant_group = item.variant_group, variant_label = item.variant_label
+            FROM chat_clothing_catalog item
+            WHERE listed.clothing_item_id = item.id AND item.variant_group <> ''
+        `);
+        await pool.query("INSERT INTO chat_app_migrations (migration_key) VALUES ('shop-variants-per-room-v1') ON CONFLICT DO NOTHING");
+    }
     if (!shopMigration) {
         // Carry the old single-shop setup into its first matching public room once.
         await pool.query(`
@@ -2538,7 +2554,8 @@ async function startServer() {
                 }
                 const { rows } = await pool.query(`
                     SELECT item.id, item.name, item.description, item.category, item.target_avatar_type,
-                           item.variant_group, item.variant_label,
+                           COALESCE((SELECT listed.variant_group FROM chat_shop_room_items listed WHERE listed.room_id = $1 AND listed.clothing_item_id = item.id), '') AS variant_group,
+                           COALESCE((SELECT listed.variant_label FROM chat_shop_room_items listed WHERE listed.room_id = $1 AND listed.clothing_item_id = item.id), '') AS variant_label,
                            item.required_level, item.price, item.transform_json, item.image_version,
                            EXISTS (SELECT 1 FROM chat_shop_room_items listed
                                    WHERE listed.room_id = $1 AND listed.clothing_item_id = item.id) AS is_shop_listed,
@@ -2582,9 +2599,108 @@ async function startServer() {
                 }
                 socket.emit('admin-shop-action-result', { success: true, message: listed ? 'Tøjdelen er lagt i denne butik.' : 'Tøjdelen er fjernet fra denne butik.' });
                 socket.emit('admin-shop-room-data-refresh', { roomId });
+                io.to(roomChannel(roomId)).emit('shop-items-refresh', { roomId });
             } catch (error) {
                 console.error('Could not update room shop item:', getSafeErrorCode(error));
                 socket.emit('admin-shop-action-result', { success: false, message: 'Butikken kunne ikke opdateres.' });
+            }
+        });
+
+        socket.on('admin-shop-room-variant-set', async ({ roomId, id, variantGroup = '', variantLabel = '' } = {}) => {
+            if (!socket.data.canManageClothing || !activeSocketIds.has(socket.id)
+                || typeof roomId !== 'string' || !/^(common|disco|public:[1-9]\d{0,18})$/.test(roomId)
+                || typeof id !== 'string' || !/^[1-9]\d{0,18}$/.test(id)) return;
+            const group = typeof variantGroup === 'string' ? variantGroup.normalize('NFKC').trim() : '';
+            const label = typeof variantLabel === 'string' ? variantLabel.normalize('NFKC').trim() : '';
+            if (group.length > 60 || /[\u0000-\u001f\u007f]/.test(group)
+                || label.length > 30 || /[\u0000-\u001f\u007f]/.test(label)
+                || Boolean(group) !== Boolean(label)) {
+                socket.emit('admin-shop-action-result', { success: false, message: 'Udfyld både variantgruppe og farve, eller tøm begge felter.' });
+                return;
+            }
+            try {
+                const { rowCount } = await pool.query(`
+                    UPDATE chat_shop_room_items listed
+                    SET variant_group = $3, variant_label = $4
+                    FROM chat_public_rooms room
+                    WHERE listed.room_id = $1 AND listed.clothing_item_id = $2
+                      AND room.id = listed.room_id AND room.is_shop = TRUE
+                `, [roomId, id, group, label]);
+                if (!rowCount) {
+                    socket.emit('admin-shop-action-result', { success: false, message: 'Læg tøjdelen i butikken, før du redigerer dens farvegruppe.' });
+                    return;
+                }
+                socket.emit('admin-shop-action-result', { success: true, message: group ? 'Varevarianten er gemt i butikken.' : 'Varen er fjernet fra en variantgruppe.' });
+                socket.emit('admin-shop-room-data-refresh', { roomId });
+                io.to(roomChannel(roomId)).emit('shop-items-refresh', { roomId });
+            } catch (error) {
+                console.error('Could not update shop item variant:', getSafeErrorCode(error));
+                socket.emit('admin-shop-action-result', { success: false, message: 'Varevarianten kunne ikke gemmes.' });
+            }
+        });
+
+        socket.on('admin-shop-variant-group-save', async ({ roomId, groupName = '', items = [] } = {}) => {
+            if (!socket.data.canManageClothing || !activeSocketIds.has(socket.id)
+                || typeof roomId !== 'string' || !/^(common|disco|public:[1-9]\d{0,18})$/.test(roomId)
+                || !Array.isArray(items) || items.length < 2 || items.length > 30) return;
+            const group = typeof groupName === 'string' ? groupName.normalize('NFKC').trim() : '';
+            const normalizedItems = items.map((item) => ({
+                id: typeof item?.id === 'string' ? item.id : '',
+                label: typeof item?.label === 'string' ? item.label.normalize('NFKC').trim() : ''
+            }));
+            const ids = normalizedItems.map((item) => item.id);
+            if (!group || group.length > 60 || /[\u0000-\u001f\u007f]/.test(group)
+                || normalizedItems.some((item) => !/^[1-9]\d{0,18}$/.test(item.id)
+                    || !item.label || item.label.length > 30 || /[\u0000-\u001f\u007f]/.test(item.label))
+                || new Set(ids).size !== ids.length) {
+                socket.emit('admin-shop-action-result', { success: false, action: 'variant-group', message: 'Tjek gruppenavn og farver. Vælg mindst to forskellige varer, og angiv en farve på hver.' });
+                return;
+            }
+
+            const client = await pool.connect();
+            let transactionStarted = false;
+            try {
+                await client.query('BEGIN');
+                transactionStarted = true;
+                const { rowCount: shopExists } = await client.query(
+                    'SELECT 1 FROM chat_public_rooms WHERE id = $1 AND is_shop = TRUE FOR UPDATE', [roomId]
+                );
+                if (!shopExists) throw new Error('NOT_A_SHOP');
+                const { rows: catalogItems } = await client.query(
+                    'SELECT id, category, target_avatar_type FROM chat_clothing_catalog WHERE id = ANY($1::bigint[])', [ids]
+                );
+                if (catalogItems.length !== ids.length) throw new Error('ITEM_MISSING');
+                const firstItem = catalogItems[0];
+                if (catalogItems.some((item) => item.category !== firstItem.category || item.target_avatar_type !== firstItem.target_avatar_type)) {
+                    throw new Error('INCOMPATIBLE_ITEMS');
+                }
+                for (const item of normalizedItems) {
+                    const { rowCount } = await client.query(`
+                        INSERT INTO chat_shop_room_items (room_id, clothing_item_id, variant_group, variant_label)
+                        VALUES ($1, $2, $3, $4)
+                        ON CONFLICT (room_id, clothing_item_id) DO UPDATE
+                        SET variant_group = EXCLUDED.variant_group, variant_label = EXCLUDED.variant_label
+                    `, [roomId, item.id, group, item.label]);
+                    if (!rowCount) throw new Error('SAVE_FAILED');
+                }
+                await client.query('COMMIT');
+                transactionStarted = false;
+                socket.emit('admin-shop-action-result', { success: true, action: 'variant-group', message: `Farvegruppen “${group}” er gemt, og ${normalizedItems.length} varer er lagt i butikken.` });
+                socket.emit('admin-shop-room-data-refresh', { roomId });
+                io.to(roomChannel(roomId)).emit('shop-items-refresh', { roomId });
+            } catch (error) {
+                if (transactionStarted) await client.query('ROLLBACK').catch(() => {});
+                const messages = {
+                    NOT_A_SHOP: 'Vælg et rum, der er markeret som butik.',
+                    ITEM_MISSING: 'En eller flere varer findes ikke længere i kataloget.',
+                    INCOMPATIBLE_ITEMS: 'Varerne i en farvegruppe skal være samme kategori og avatar-type.',
+                    SAVE_FAILED: 'Farvegruppen kunne ikke gemmes.'
+                };
+                const message = messages[error.message] || 'Farvegruppen kunne ikke gemmes.';
+                if (!messages[error.message]) console.error('Could not save shop variant group:', getSafeErrorCode(error));
+                socket.emit('admin-shop-action-result', { success: false, action: 'variant-group', message });
+            } finally {
+                client.release();
             }
         });
 
@@ -2658,7 +2774,8 @@ async function startServer() {
                 }
                 const { rows } = await pool.query(`
                     SELECT item.id, item.name, item.description, item.category, item.target_avatar_type,
-                           item.required_level, item.price, item.image_version, item.variant_group, item.variant_label
+                           item.required_level, item.price, item.image_version,
+                           listed.variant_group, listed.variant_label
                     FROM chat_clothing_catalog item
                     JOIN chat_shop_room_items listed ON listed.clothing_item_id = item.id AND listed.room_id = $2
                     WHERE item.target_avatar_type = (SELECT avatar_type FROM chat_users WHERE id = $1)
