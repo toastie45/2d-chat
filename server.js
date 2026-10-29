@@ -2277,10 +2277,15 @@ async function startServer() {
                     WHERE assignment.target_user_id = $1 ORDER BY item.category, item.id
                 `, [socket.data.user.id]),
                 getTotalOnlineMs(socket.data.user.id),
-                pool.query('SELECT accepted_chat_messages FROM chat_users WHERE id = $1', [socket.data.user.id])
+                pool.query(`
+                    SELECT accepted_chat_messages,
+                           (SELECT COUNT(*)::integer FROM chat_clothing_catalog) AS total_clothing_count
+                    FROM chat_users WHERE id = $1
+                `, [socket.data.user.id])
             ]);
             socket.emit('wardrobe-items', {
                 level: getUserLevel(totalOnlineMs, Number(progress?.accepted_chat_messages || 0)),
+                totalClothingCount: Number(progress?.total_clothing_count || 0),
                 items: rows.map((item) => ({
                     id: String(item.id),
                     name: item.name,
