@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "styleReference": "room-background-style.json",
+  "furnitureScaleReference": "public/images/barber-shop-background.png",
+  "catalogId": "disco-dj-seating-v2",
+  "background": "public/images/disco-dj-seating-background.png",
+  "spritesheet": "public/images/disco-dj-seating-spritesheet.png",
+  "overlay": "public/images/disco-dj-seating-overlay-spritesheet.png",
+  "animation": { "columns": 4, "rows": 2, "frames": 8, "fps": 6 },
+  "openCells": ["-1:1"],
+  "closedCells": ["-1:2"],
+  "notes": [
+    "Larger stool seats and a deeper sofa use the barber room as their furniture scale reference.",
+    "Four larger bar stools replace five small stools to keep sufficient spacing.",
+    "The DJ booth, complete dance floor and bar counter retain their original pixels and placement.",
+    "Activation includes the animated foreground, vinyl markings, dance-floor phases and DJ standing cell."
+  ]
+}

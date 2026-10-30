@@ -1,10 +1,29 @@
-param([Parameter(Mandatory = $true)][string]$EditedRoom)
+param([string]$EditedRoom, [string]$SeatingEdit)
 $ErrorActionPreference = 'Stop'
+if ((!$EditedRoom -and !$SeatingEdit) -or ($EditedRoom -and $SeatingEdit)) {
+    throw 'Supply either EditedRoom or SeatingEdit.'
+}
 Add-Type -AssemblyName System.Drawing
 Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @'
 using System;
 using System.Drawing;
 public static class DjRoomComposite {
+    public static void ApplySeating(Bitmap room, Bitmap edit) {
+        for (int y = 0; y < room.Height; y++) for (int x = 0; x < room.Width; x++) {
+            double alpha = 0;
+            if (x < 465 && y > 308)
+                alpha = Math.Min(1, Math.Min((465.0-x)/20, (y-308.0)/12));
+            else if (x > 1090 && x < 1295 && y > 170 && y < 760)
+                alpha = Math.Min(1, Math.Min(Math.Min((x-1090.0)/20, (1295.0-x)/8),
+                    Math.Min((y-170.0)/15, (760.0-y)/15)));
+            if (alpha <= 0) continue;
+            Color original = room.GetPixel(x,y), changed = edit.GetPixel(x,y);
+            room.SetPixel(x,y,Color.FromArgb(255,
+                (int)Math.Round(original.R*(1-alpha)+changed.R*alpha),
+                (int)Math.Round(original.G*(1-alpha)+changed.G*alpha),
+                (int)Math.Round(original.B*(1-alpha)+changed.B*alpha)));
+        }
+    }
     public static void Apply(Bitmap room, Bitmap edit) {
         for (int y = 0; y < 335; y++) for (int x = 0; x < 660; x++) {
             // Preserve the original dance floor, including its surrounding frame.
@@ -20,8 +39,11 @@ public static class DjRoomComposite {
 }
 '@
 $assets = Join-Path $PSScriptRoot '..\public\images'
-$original = [System.Drawing.Bitmap]::new((Join-Path $assets 'disco-background.png'))
-$edit = [System.Drawing.Bitmap]::new($EditedRoom)
+$sourceName = if ($SeatingEdit) { 'disco-dj-background.png' } else { 'disco-background.png' }
+$prefix = if ($SeatingEdit) { 'disco-dj-seating' } else { 'disco-dj' }
+$original = [System.Drawing.Bitmap]::new((Join-Path $assets $sourceName))
+$edit = [System.Drawing.Bitmap]::new($(if ($SeatingEdit) { $SeatingEdit } else { $EditedRoom }))
+if ($edit.Width -ne 1536 -or $edit.Height -ne 1024) { throw 'The edited room must be exactly 1536 x 1024 pixels.' }
 $room = [System.Drawing.Bitmap]::new($original)
 $backgrounds = [System.Drawing.Bitmap]::new(3072, 1024)
 $overlays = [System.Drawing.Bitmap]::new(3072, 1024)
@@ -29,8 +51,9 @@ $backgroundGraphics = [System.Drawing.Graphics]::FromImage($backgrounds)
 $overlayGraphics = [System.Drawing.Graphics]::FromImage($overlays)
 try {
     # Import only the AI-edited DJ area. All other source pixels, including bar and dance floor, stay exact.
-    [DjRoomComposite]::Apply($room, $edit)
-    $room.Save((Join-Path $assets 'disco-dj-background.png'), [System.Drawing.Imaging.ImageFormat]::Png)
+    if ($SeatingEdit) { [DjRoomComposite]::ApplySeating($room, $edit) }
+    else { [DjRoomComposite]::Apply($room, $edit) }
+    $room.Save((Join-Path $assets ($prefix + '-background.png')), [System.Drawing.Imaging.ImageFormat]::Png)
 
     $booth = [System.Drawing.Drawing2D.GraphicsPath]::new()
     $points = @(@(148,132),@(458,132),@(460,189),@(487,193),@(497,216),@(497,242),
@@ -83,8 +106,8 @@ try {
         }
     }
     $booth.Dispose()
-    $backgrounds.Save((Join-Path $assets 'disco-dj-spritesheet.png'), [System.Drawing.Imaging.ImageFormat]::Png)
-    $overlays.Save((Join-Path $assets 'disco-dj-overlay-spritesheet.png'), [System.Drawing.Imaging.ImageFormat]::Png)
+    $backgrounds.Save((Join-Path $assets ($prefix + '-spritesheet.png')), [System.Drawing.Imaging.ImageFormat]::Png)
+    $overlays.Save((Join-Path $assets ($prefix + '-overlay-spritesheet.png')), [System.Drawing.Imaging.ImageFormat]::Png)
 } finally {
     $backgroundGraphics.Dispose(); $overlayGraphics.Dispose()
     $original.Dispose(); $edit.Dispose(); $room.Dispose(); $backgrounds.Dispose(); $overlays.Dispose()
