@@ -2051,7 +2051,7 @@
                                             <label>Rækker (beregnes)<input id="admin-clothing-animation-rows" type="number" min="1" max="256" value="1" readonly></label>
                                             <label>FPS<input id="admin-clothing-animation-fps" type="number" min="1" max="24" value="8"></label>
                                         </div>
-                                        <p>Upload et spritesheet, angiv antal frames og kolonner. Rækker og størrelse pr. frame beregnes automatisk. Frames læses fra venstre mod højre og derefter næste række.</p>
+                                        <p>Systemet gætter ikke automatisk på opdelingen: angiv Frames og Kolonner. Rækker beregnes ud fra dem. 1 frame og 1 kolonne betyder et almindeligt, statisk billede.</p>
                                         <p id="admin-clothing-animation-summary" aria-live="polite">Et almindeligt billede bruger 1 frame.</p>
                                     </fieldset>
                                     <label>Levelkrav (1–20)
@@ -2567,7 +2567,9 @@
                 } else if (adminClothingPreviewImage?.naturalWidth) {
                     adminClothingAnimationSummary.textContent = 'Billedets mål passer ikke til denne opdeling. Justér antal frames eller kolonner.';
                 } else {
-                    adminClothingAnimationSummary.textContent = `Rækker beregnes til ${rows}. Upload billedet for at kontrollere frame-størrelsen.`;
+                    adminClothingAnimationSummary.textContent = frames === 1 && columns === 1
+                        ? 'Ingen fil valgt. 1 frame er et almindeligt statisk billede; indstil selv frames og kolonner til et spritesheet.'
+                        : `Ingen fil valgt. Rækker beregnes til ${rows}; frames læses fra venstre mod højre.`;
                 }
             }
             function drawClothingLayer(context, image, item, centerX, centerY, avatarWidth, avatarHeight, now = Date.now()) {
@@ -4710,20 +4712,26 @@
             async function uploadAdminRoomBackground(roomId, file, statusElement, animationInput) {
                 if (!file || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
                     statusElement.textContent = 'Vælg en PNG-, JPG- eller WebP-fil.';
-                    return;
+                    return false;
                 }
                 if (file.size > 20 * 1024 * 1024) {
                     statusElement.textContent = 'Billedfilen må højst være 20 MB før tilpasning.';
-                    return;
+                    return false;
                 }
-                statusElement.textContent = 'Tilpasser billedet til rummets 3:2-format…';
-                const animation = normalizeClothingAnimation(animationInput);
-                statusElement.textContent = `Tilpasser 3:2-billeder · gitter ${animation.columns} × ${animation.rows} · ${animation.frames} frames…`;
-                if (![animationInput.columns, animationInput.rows, animationInput.frames, animationInput.fps].every(Number.isFinite)
-                    || animationInput.columns !== animation.columns || animationInput.rows !== animation.rows
-                    || animationInput.frames !== animation.frames || animationInput.fps !== animation.fps) {
-                    statusElement.textContent = 'Kontrollér kolonner, rækker, antal frames og FPS.';
-                    return;
+                const animation = {
+                    columns: Number(animationInput.columns),
+                    rows: Number(animationInput.rows),
+                    frames: Number(animationInput.frames),
+                    fps: Number(animationInput.fps)
+                };
+                if (!Object.values(animation).every(Number.isInteger)
+                    || animation.columns < 1 || animation.columns > 16
+                    || animation.rows < 1 || animation.rows > 256
+                    || animation.frames < 1 || animation.frames > 256
+                    || animation.frames > animation.columns * animation.rows
+                    || animation.fps < 1 || animation.fps > 24) {
+                    statusElement.textContent = 'Ugyldigt gitter: frames skal passe i kolonnerne og rækkerne. FPS skal være 1–24.';
+                    return false;
                 }
                 const objectUrl = URL.createObjectURL(file);
                 try {
@@ -4732,8 +4740,13 @@
                     await source.decode();
                     if (!source.naturalWidth || !source.naturalHeight || source.naturalWidth > 8000 || source.naturalHeight > 8000) {
                         statusElement.textContent = 'Billedet skal være mindre end 8000 × 8000 px.';
-                        return;
+                        return false;
                     }
+                    if (source.naturalWidth < animation.columns || source.naturalHeight < animation.rows) {
+                        statusElement.textContent = 'Gitteret er større end billedet. Kontrollér kolonner og rækker.';
+                        return false;
+                    }
+                    statusElement.textContent = `Klargør ${animation.frames} frames · gitter ${animation.columns} × ${animation.rows} · ${Math.round(source.naturalWidth / animation.columns)} × ${Math.round(source.naturalHeight / animation.rows)} px pr. frame…`;
                     const isSpriteSheet = animation.columns > 1 || animation.rows > 1 || animation.frames > 1;
                     const frameWidth = source.naturalWidth / animation.columns;
                     const frameHeight = source.naturalHeight / animation.rows;
@@ -4745,6 +4758,12 @@
                     output.width = cellWidth * animation.columns;
                     output.height = cellHeight * animation.rows;
                     const context = output.getContext('2d');
+                    if (!context) {
+                        statusElement.textContent = 'Browseren kunne ikke klargøre billedet. Prøv en mindre fil.';
+                        return false;
+                    }
+                    context.imageSmoothingEnabled = true;
+                    context.imageSmoothingQuality = 'high';
                     context.fillStyle = '#080a08';
                     context.fillRect(0, 0, output.width, output.height);
                     for (let frame = 0; frame < animation.frames; frame += 1) {
@@ -4765,11 +4784,11 @@
                     }
                     if (!blob || blob.size > 950_000) {
                         statusElement.textContent = 'Billedet kunne ikke komprimeres til under 950 KB.';
-                        return;
+                        return false;
                     }
                     if (!socket.connected) {
                         statusElement.textContent = 'Forbindelsen er væk. Prøv igen.';
-                        return;
+                        return false;
                     }
                     statusElement.textContent = 'Uploader baggrund…';
                     socket.emit('admin-public-room-background-upload', {
@@ -4777,31 +4796,13 @@
                         image: new Uint8Array(await blob.arrayBuffer()),
                         animation
                     });
+                    return true;
                 } catch (error) {
                     statusElement.textContent = 'Billedet kunne ikke læses. Prøv en anden fil.';
+                    return false;
                 } finally {
                     URL.revokeObjectURL(objectUrl);
                 }
-            }
-
-            function suggestRoomSpriteGrid(imageWidth, imageHeight, frames) {
-                // Room canvases use a 3:2 aspect ratio. Pick the grid whose individual
-                // cells most closely match that ratio while still fitting all frames.
-                const sourceRatio = imageWidth / imageHeight;
-                const targetRatio = 3 / 2;
-                let best = null;
-                for (let rows = 1; rows <= 32; rows += 1) {
-                    for (let columns = 1; columns <= 16; columns += 1) {
-                        const cells = columns * rows;
-                        if (cells < frames) continue;
-                        const frameRatio = sourceRatio * rows / columns;
-                        const ratioError = Math.abs(Math.log(frameRatio / targetRatio));
-                        const wastedCells = cells - frames;
-                        const score = ratioError * 100 + wastedCells * 0.01;
-                        if (!best || score < best.score) best = { columns, rows, score, frameRatio };
-                    }
-                }
-                return best;
             }
 
             async function uploadAdminRoomOverlay(roomId, file, statusElement) {
@@ -4939,7 +4940,7 @@
                     const animationTitle = document.createElement('strong');
                     animationTitle.textContent = 'Spritesheet til rummets baggrund';
                     const animationHint = document.createElement('small');
-                    animationHint.textContent = 'Vælg billedet, kontrollér gitteret, og tryk Gem baggrund. Rummets Gem-knap gemmer navn og adgang.';
+                    animationHint.textContent = 'Angiv selv kolonner, rækker, frames og hastighed. Vælg billedet, kontrollér pixelmålene pr. frame, og tryk Gem baggrund.';
                     const animationFields = {};
                     for (const [key, labelText, value, max] of [
                         ['frames', 'Frames', roomAnimation.frames, 256],
@@ -4960,13 +4961,28 @@
                     const animationSummary = document.createElement('small');
                     animationSummary.className = 'admin-room-animation-hint';
                     animationSummary.setAttribute('aria-live', 'polite');
+                    let selectedRoomBackgroundFile = null;
+                    let selectedRoomBackgroundDimensions = null;
+                    let backgroundFileSelectionVersion = 0;
                     const syncRoomAnimationGrid = () => {
                         const frames = Math.floor(Number(animationFields.frames.value));
                         const columns = Math.floor(Number(animationFields.columns.value));
-                        if (!Number.isFinite(frames) || frames < 1 || !Number.isFinite(columns) || columns < 1) return;
                         const rows = Math.floor(Number(animationFields.rows.value));
-                        if (!Number.isFinite(rows) || rows < 1) return;
-                        animationSummary.textContent = `${columns} x ${rows} felter - ${frames} frames afspilles.`;
+                        const fps = Number(animationFields.fps.value);
+                        if (![frames, columns, rows, fps].every(Number.isInteger)
+                            || frames < 1 || frames > 256 || columns < 1 || columns > 16
+                            || rows < 1 || rows > 256 || fps < 1 || fps > 24) {
+                            animationSummary.textContent = 'Brug hele tal: frames 1–256, kolonner 1–16, rækker 1–256 og FPS 1–24.';
+                            return;
+                        }
+                        if (frames > columns * rows) {
+                            animationSummary.textContent = `Gitteret ${columns} × ${rows} har kun plads til ${columns * rows} frames.`;
+                            return;
+                        }
+                        const cellSize = selectedRoomBackgroundDimensions
+                            ? ` · ${Math.round(selectedRoomBackgroundDimensions.width / columns)} × ${Math.round(selectedRoomBackgroundDimensions.height / rows)} px pr. frame`
+                            : '';
+                        animationSummary.textContent = `${columns} × ${rows} gitter · ${frames} frames · ${fps} FPS${cellSize}`;
                     };
                     animationControls.append(animationSummary);
                     Object.values(animationFields).forEach((input) =>
@@ -4987,57 +5003,52 @@
                     saveBackground.type = 'button';
                     saveBackground.textContent = 'Gem baggrund';
                     saveBackground.disabled = true;
-                    let selectedRoomBackgroundFile = null;
+                    saveBackground.dataset.roomBackgroundSave = room.id;
                     const backgroundStatus = document.createElement('span');
                     backgroundStatus.className = 'admin-room-bg-status';
                     backgroundStatus.dataset.roomBackgroundStatus = room.id;
                     chooseBackground.addEventListener('click', () => fileInput.click());
-                    saveBackground.addEventListener('click', () => {
+                    saveBackground.addEventListener('click', async () => {
                         if (!selectedRoomBackgroundFile) {
                             backgroundStatus.textContent = 'Vælg en baggrundsfil først.';
                             return;
                         }
-                        uploadAdminRoomBackground(room.id, selectedRoomBackgroundFile, backgroundStatus, {
+                        saveBackground.disabled = true;
+                        const started = await uploadAdminRoomBackground(room.id, selectedRoomBackgroundFile, backgroundStatus, {
                             columns: Number(animationFields.columns.value),
                             rows: Number(animationFields.rows.value),
                             frames: Number(animationFields.frames.value),
                             fps: Number(animationFields.fps.value)
                         });
-                        selectedRoomBackgroundFile = null;
-                        saveBackground.disabled = true;
+                        if (!started) saveBackground.disabled = false;
                     });
                     fileInput.addEventListener('change', async () => {
                         const file = fileInput.files?.[0];
                         if (!file) return;
+                        const selectionVersion = ++backgroundFileSelectionVersion;
                         selectedRoomBackgroundFile = null;
+                        selectedRoomBackgroundDimensions = null;
                         saveBackground.disabled = true;
-                        const frames = Math.floor(Number(animationFields.frames.value));
-                        if (!Number.isFinite(frames) || frames < 1) {
-                            backgroundStatus.textContent = 'Angiv et gyldigt antal frames først.';
-                            fileInput.value = '';
-                            return;
-                        }
                         const objectUrl = URL.createObjectURL(file);
                         try {
                             const source = new Image();
                             source.src = objectUrl;
                             await source.decode();
-                            const suggestion = suggestRoomSpriteGrid(source.naturalWidth, source.naturalHeight, frames);
-                            if (!suggestion) {
-                                backgroundStatus.textContent = 'Kunne ikke finde et gitter til dette antal frames.';
+                            if (selectionVersion !== backgroundFileSelectionVersion) return;
+                            if (!source.naturalWidth || !source.naturalHeight || source.naturalWidth > 8000 || source.naturalHeight > 8000) {
+                                backgroundStatus.textContent = 'Billedet skal være mindre end 8000 × 8000 px.';
                                 return;
                             }
-                            animationFields.columns.value = String(suggestion.columns);
-                            animationFields.rows.value = String(suggestion.rows);
-                            syncRoomAnimationGrid();
+                            selectedRoomBackgroundDimensions = { width: source.naturalWidth, height: source.naturalHeight };
                             selectedRoomBackgroundFile = file;
                             saveBackground.disabled = false;
-                            backgroundStatus.textContent = `Gitter foreslaet: ${suggestion.columns} x ${suggestion.rows} med ${frames} frames. Ret indstillingerne, og tryk derefter Gem baggrund.`;
+                            syncRoomAnimationGrid();
+                            backgroundStatus.textContent = `Billedet er indlæst (${source.naturalWidth} × ${source.naturalHeight} px). Kontrollér gitteret ovenfor, og tryk Gem baggrund.`;
                         } catch {
                             backgroundStatus.textContent = 'Billedet kunne ikke læses. Prøv en anden fil.';
                         } finally {
                             URL.revokeObjectURL(objectUrl);
-                            fileInput.value = '';
+                            if (selectionVersion === backgroundFileSelectionVersion) fileInput.value = '';
                         }
                     });
                     backgroundTools.append(fileInput, animationControls, chooseBackground, saveBackground);
@@ -8126,6 +8137,11 @@
                 adminRoomsStatus.textContent = message || (success ? 'Baggrunden er gemt.' : 'Baggrunden kunne ikke gemmes.');
                 for (const status of adminPublicRooms.querySelectorAll('[data-room-background-status]')) {
                     status.textContent = message || (success ? 'Baggrunden er gemt.' : 'Baggrunden kunne ikke gemmes.');
+                }
+                if (!success) {
+                    for (const button of adminPublicRooms.querySelectorAll('[data-room-background-save]')) {
+                        button.disabled = false;
+                    }
                 }
                 if (success && adminSectionSelect.value === 'rooms') socket.emit('admin-public-rooms-request');
             });
