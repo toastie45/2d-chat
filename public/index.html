@@ -797,7 +797,8 @@
             background: #171815;
         }
         .guestbook-entry-header { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
-        .guestbook-author { min-width: 0; color: #f2f0e9; font-size: 10px; font-weight: 650; overflow-wrap: anywhere; }
+        .guestbook-author { min-width: 0; padding: 0; border: 0; background: transparent; color: #b8db7d; font: inherit; font-size: 10px; font-weight: 700; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+        .guestbook-author:hover, .guestbook-author:focus-visible { color: #d0f09a; text-decoration: underline; }
         .guestbook-date { margin-left: auto; color: #96988f; font-size: 9px; white-space: nowrap; }
         .guestbook-message { margin: 0; color: #d9d8d1; font-size: 11px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
         .guestbook-delete {
@@ -1439,7 +1440,7 @@
         .member { font-size: 13px; }
         .member-room { border-radius: 5px; }
         .avatar-context-menu { border-radius: 8px; box-shadow: 0 10px 28px #0008; }
-        .chat-entry strong, .guestbook-author { color: #f0f0eb; }
+        .chat-entry strong { color: #f0f0eb; }
         button { transition: background-color .2s ease, border-color .2s ease, color .2s ease; }
 
         @media (max-width: 700px) {
@@ -3919,9 +3920,15 @@
                 item.setAttribute('role', 'listitem');
                 const header = document.createElement('div');
                 header.className = 'guestbook-entry-header';
-                const author = document.createElement('span');
+                const author = document.createElement('button');
                 author.className = 'guestbook-author';
+                author.type = 'button';
                 author.textContent = entry.authorName;
+                author.setAttribute('aria-label', `Vis profilen for ${entry.authorName}`);
+                author.addEventListener('click', () => {
+                    if (!entry.authorUserId) return;
+                    showPublicProfile(`user:${entry.authorUserId}`);
+                });
                 header.append(author);
                 const date = new Date(entry.createdAt);
                 if (!Number.isNaN(date.getTime())) {
@@ -3929,9 +3936,12 @@
                     time.className = 'guestbook-date';
                     time.dateTime = date.toISOString();
                     time.textContent = new Intl.DateTimeFormat('da-DK', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric'
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
                     }).format(date);
                     header.append(time);
                 }
@@ -8475,6 +8485,7 @@
                 entries.forEach((entry) => renderGuestbookEntry({
                     id: entry.id,
                     authorName: entry.author_name,
+                    authorUserId: entry.author_user_id,
                     message: entry.message,
                     createdAt: entry.created_at
                 }));

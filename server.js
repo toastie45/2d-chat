@@ -2463,7 +2463,7 @@ async function startServer() {
         return publicPlayer(JSON.parse(joined));
     }
 
-    async function moveSocketNearTarget(socket, roomId, targetSocketId) {
+    async function moveSocketNearTarget(socket, roomId, targetSocketId, { allowClosed = false } = {}) {
         const keys = roomKeys(roomId);
         const targetJson = await redis.hGet(keys.players, targetSocketId);
         if (!targetJson) return false;
@@ -2482,7 +2482,7 @@ async function startServer() {
         for (const cell of nearbyCells) {
             const movedJson = await redis.eval(PLAYER_MOVE_SCRIPT, {
                 keys: [keys.players, keys.cells, keys.tiles],
-                arguments: [socket.id, String(cell.col), String(cell.row), String(Date.now())]
+                arguments: [socket.id, String(cell.col), String(cell.row), String(Date.now()), allowClosed ? '1' : '0']
             });
             if (!movedJson) continue;
             const player = publicPlayer(JSON.parse(movedJson));
@@ -4220,8 +4220,8 @@ async function startServer() {
                         return;
                     }
                 }
-                const arrivedNearAdmin = await moveSocketNearTarget(targetSocket, roomId, socket.id);
-                if (!arrivedNearAdmin && activeSocketRooms.get(targetSocketId) !== roomId) {
+                const arrivedNearAdmin = await moveSocketNearTarget(targetSocket, roomId, socket.id, { allowClosed: true });
+                if (!arrivedNearAdmin) {
                     socket.emit('admin-action-result', { success: false, message: 'Brugeren kunne ikke flyttes. Rummet kan være fuldt.' });
                     return;
                 }
@@ -5659,7 +5659,7 @@ async function startServer() {
                     return;
                 }
                 const { rows: entries } = await pool.query(`
-                    SELECT entry.id, author.username AS author_name, entry.message, entry.created_at
+                    SELECT entry.id, author.id AS author_user_id, author.username AS author_name, entry.message, entry.created_at
                     FROM chat_guestbook_entries entry
                     JOIN chat_users author ON author.id = entry.author_user_id
                     WHERE entry.profile_user_id = $1
@@ -6128,7 +6128,7 @@ async function startServer() {
         });
 
         socket.on('player-mood-set', async ({ mood } = {}) => {
-            if (!activeSocketIds.has(socket.id) || !['glad', 'mobset', 'ked', 'blappet', 'boevet'].includes(mood)) return;
+            if (!activeSocketIds.has(socket.id) || socket.data.switchingRoom || !['glad', 'mobset', 'ked', 'blappet', 'boevet'].includes(mood)) return;
             const roomId = activeSocketRooms.get(socket.id);
             if (!roomId) return;
             socket.data.mood = mood;
@@ -6150,7 +6150,7 @@ async function startServer() {
         });
 
         socket.on('move', async (position) => {
-            if (!activeSocketIds.has(socket.id)) return;
+            if (!activeSocketIds.has(socket.id) || socket.data.switchingRoom) return;
             if (!position || typeof position !== 'object') return;
             if (!isGridCoordinate(position.col, position.row)) return;
 
@@ -6181,6 +6181,7 @@ async function startServer() {
             const message = sanitizeChatMessage(payload && payload.message);
             if (
                 !activeSocketIds.has(socket.id) ||
+                socket.data.switchingRoom ||
                 typeof targetPlayerId !== 'string' || targetPlayerId.length > 128 ||
                 targetPlayerId === socket.id || !message
             ) {
@@ -6242,7 +6243,7 @@ async function startServer() {
         });
 
         socket.on('chat-message', async (text) => {
-            if (!activeSocketIds.has(socket.id) || typeof text !== 'string') return;
+            if (!activeSocketIds.has(socket.id) || socket.data.switchingRoom || typeof text !== 'string') return;
             const cleanText = sanitizeChatMessage(text);
             if (!cleanText) return;
 
@@ -6254,7 +6255,8 @@ async function startServer() {
             }
 
             try {
-                const keys = roomKeys(socket.data.roomId || 'common');
+                const roomId = socket.data.roomId || 'common';
+                const keys = roomKeys(roomId);
                 const currentPlayerJson = await redis.hGet(keys.players, socket.id);
                 if (!currentPlayerJson) return;
                 const currentPlayer = JSON.parse(currentPlayerJson);
@@ -6321,7 +6323,7 @@ async function startServer() {
                 });
                 if (!updatedPlayerJson) return;
 
-                await emitRoomEventForVisibleSender(socket.data.roomId || 'common', 'playerChatMessage', {
+                await emitRoomEventForVisibleSender(roomId, 'playerChatMessage', {
                     id: socket.id,
                     text: cleanText,
                     messageTime,
@@ -6339,7 +6341,7 @@ async function startServer() {
                             keys: [keys.players],
                             arguments: [socket.id, String(messageTime)]
                         });
-                        if (expired) await emitRoomEventForVisibleSender(socket.data.roomId || 'common', 'playerChatExpired', { id: socket.id, messageTime }, socket.id);
+                        if (expired) await emitRoomEventForVisibleSender(roomId, 'playerChatExpired', { id: socket.id, messageTime }, socket.id);
                     } catch (error) {
                         console.error('Could not expire chat bubble:', getSafeErrorCode(error));
                     }
