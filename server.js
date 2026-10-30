@@ -676,7 +676,12 @@ async function startServer() {
     async function getPublicRooms() {
         const { rows } = await pool.query(`
             SELECT id, room_number, floor_number, name, is_system, welcome_title, welcome_text,
-                   background_image IS NOT NULL AS has_background, background_version, background_animation_json,
+                   ((background_type = 'static' AND background_image IS NOT NULL)
+                       OR (background_type = 'spritesheet' AND background_spritesheet_image IS NOT NULL)) AS has_background,
+                   background_image IS NOT NULL AS has_static_background,
+                   background_spritesheet_image IS NOT NULL AS has_spritesheet_background,
+                   background_type, background_version, background_spritesheet_version, background_animation_json,
+                   background_spritesheet_animation_json,
                    overlay_image IS NOT NULL AS has_overlay, overlay_version, overlay_transform,
                    is_locked, is_hidden, is_shop, shop_is_open
             FROM chat_public_rooms ORDER BY floor_number, room_number
@@ -688,8 +693,17 @@ async function startServer() {
     }
     function getPublicRoomBackgroundUrl(room) {
         if (!room?.has_background) return null;
-        const version = room.background_version || 0;
-        return `/api/public-room-background/${encodeURIComponent(room.id)}?v=${version}`;
+        const type = room.background_type === 'spritesheet' ? 'spritesheet' : 'static';
+        const version = type === 'spritesheet'
+            ? room.background_spritesheet_version || 0
+            : room.background_version || 0;
+        return `/api/public-room-background/${encodeURIComponent(room.id)}?type=${type}&v=${version}`;
+    }
+    function getPublicRoomBackgroundAnimation(room) {
+        if (room?.background_type !== 'spritesheet') {
+            return { columns: 1, rows: 1, frames: 1, fps: 8 };
+        }
+        return normalizeClothingAnimation(room.background_spritesheet_animation_json || room.background_animation_json);
     }
     function getPublicRoomOverlayUrl(room) {
         if (!room?.has_overlay) return null;
@@ -877,6 +891,26 @@ async function startServer() {
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS background_updated_at TIMESTAMPTZ');
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS background_version BIGINT NOT NULL DEFAULT 0');
     await pool.query("ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS background_animation_json JSONB NOT NULL DEFAULT '{\"columns\":1,\"rows\":1,\"frames\":1,\"fps\":8}'::jsonb");
+    await pool.query("ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS background_type VARCHAR(16) NOT NULL DEFAULT 'static'");
+    await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS background_spritesheet_image BYTEA');
+    await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS background_spritesheet_mime_type VARCHAR(24)');
+    await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS background_spritesheet_updated_at TIMESTAMPTZ');
+    await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS background_spritesheet_version BIGINT NOT NULL DEFAULT 0');
+    await pool.query("ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS background_spritesheet_animation_json JSONB NOT NULL DEFAULT '{\"columns\":1,\"rows\":1,\"frames\":1,\"fps\":8}'::jsonb");
+    await pool.query(`
+        UPDATE chat_public_rooms
+        SET background_spritesheet_image = background_image,
+            background_spritesheet_mime_type = background_mime_type,
+            background_spritesheet_updated_at = background_updated_at,
+            background_spritesheet_version = background_version,
+            background_spritesheet_animation_json = background_animation_json,
+            background_type = 'spritesheet'
+        WHERE background_image IS NOT NULL
+          AND background_spritesheet_image IS NULL
+          AND (COALESCE((background_animation_json->>'frames')::INTEGER, 1) > 1
+               OR COALESCE((background_animation_json->>'columns')::INTEGER, 1) > 1
+               OR COALESCE((background_animation_json->>'rows')::INTEGER, 1) > 1)
+    `);
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS overlay_image BYTEA');
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS overlay_mime_type VARCHAR(24)');
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS overlay_updated_at TIMESTAMPTZ');
@@ -1192,9 +1226,16 @@ async function startServer() {
         }
         try {
             const { rows: [room] } = await pool.query(
-                'SELECT background_image, background_mime_type FROM chat_public_rooms WHERE id = $1', [roomId]
+                `SELECT background_type, background_image, background_mime_type,
+                        background_spritesheet_image, background_spritesheet_mime_type
+                 FROM chat_public_rooms WHERE id = $1`, [roomId]
             );
-            if (!room?.background_image) {
+            const requestedType = request.query.type === 'static' || request.query.type === 'spritesheet'
+                ? request.query.type
+                : room?.background_type;
+            const image = requestedType === 'spritesheet' ? room?.background_spritesheet_image : room?.background_image;
+            const mimeType = requestedType === 'spritesheet' ? room?.background_spritesheet_mime_type : room?.background_mime_type;
+            if (!image) {
                 response.sendStatus(404);
                 return;
             }
@@ -1202,7 +1243,7 @@ async function startServer() {
                 'Cache-Control': 'public, max-age=31536000, immutable',
                 'X-Content-Type-Options': 'nosniff'
             });
-            response.type(room.background_mime_type || 'image/jpeg').send(room.background_image);
+            response.type(mimeType || 'image/jpeg').send(image);
         } catch (error) {
             console.error('Could not load public room background:', getSafeErrorCode(error));
             response.sendStatus(500);
@@ -2334,7 +2375,7 @@ async function startServer() {
             layout = apartment.layout_json;
         } else if (isPublicChatRoomId(roomId)) {
             const { rows: [room] } = await pool.query(
-                'SELECT layout_json, background_image IS NOT NULL AS has_background FROM chat_public_rooms WHERE id = $1', [roomId]
+                "SELECT layout_json, ((background_type = 'static' AND background_image IS NOT NULL) OR (background_type = 'spritesheet' AND background_spritesheet_image IS NOT NULL)) AS has_background FROM chat_public_rooms WHERE id = $1", [roomId]
             );
             if (!room) return {};
             layout = room.layout_json;
@@ -2380,7 +2421,12 @@ async function startServer() {
         }
         const { rows: [publicRoom] = [] } = await pool.query(`
             SELECT id, room_number, name, welcome_title, welcome_text,
-                   background_image IS NOT NULL AS has_background, background_version, background_animation_json,
+                   ((background_type = 'static' AND background_image IS NOT NULL)
+                               OR (background_type = 'spritesheet' AND background_spritesheet_image IS NOT NULL)) AS has_background,
+                           background_image IS NOT NULL AS has_static_background,
+                           background_spritesheet_image IS NOT NULL AS has_spritesheet_background,
+                           background_type, background_version, background_spritesheet_version, background_animation_json,
+                           background_spritesheet_animation_json,
                    overlay_image IS NOT NULL AS has_overlay, overlay_version, overlay_transform,
                    is_shop, shop_is_open
             FROM chat_public_rooms WHERE id = $1
@@ -2390,7 +2436,7 @@ async function startServer() {
             welcomeTitle: publicRoom?.welcome_title || `Velkommen i ${roomName}`,
             welcomeText: publicRoom?.welcome_text || 'Her kan du møde andre og chatte sammen. God fornøjelse!',
             roomBackgroundUrl: getPublicRoomBackgroundUrl(publicRoom),
-            roomBackgroundAnimation: normalizeClothingAnimation(publicRoom?.background_animation_json),
+            roomBackgroundAnimation: getPublicRoomBackgroundAnimation(publicRoom),
             roomOverlayUrl: getPublicRoomOverlayUrl(publicRoom),
             roomOverlayTransform: normalizePublicRoomOverlayTransform(publicRoom?.overlay_transform),
             isShop: publicRoom?.is_shop === true,
@@ -2578,8 +2624,11 @@ async function startServer() {
                 isShop: room.is_shop === true,
                 shopIsOpen: room.shop_is_open === true,
                 hasBackground: room.has_background,
+                hasStaticBackground: room.has_static_background,
+                hasSpritesheetBackground: room.has_spritesheet_background,
+                backgroundType: room.background_type,
                 backgroundUrl: getPublicRoomBackgroundUrl(room),
-                backgroundAnimation: normalizeClothingAnimation(room.background_animation_json),
+                backgroundAnimation: getPublicRoomBackgroundAnimation(room),
                 hasOverlay: room.has_overlay,
                 overlayUrl: getPublicRoomOverlayUrl(room),
                 overlayTransform: normalizePublicRoomOverlayTransform(room.overlay_transform),
@@ -3572,18 +3621,22 @@ async function startServer() {
             }
         });
 
-        socket.on('admin-public-room-background-upload', async ({ id, image, animation } = {}) => {
+        socket.on('admin-public-room-background-upload', async ({ id, image, animation, type } = {}) => {
             if (!socket.data.canManagePublicRooms || !activeSocketIds.has(socket.id)) return;
+            const backgroundType = type === 'static' || type === 'spritesheet' ? type : null;
             const bytes = Buffer.isBuffer(image) ? image : image instanceof Uint8Array ? Buffer.from(image) : null;
             const isJpeg = bytes && bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
             const isPng = bytes && bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
             const isWebp = bytes && bytes.length >= 12 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
-            const normalizedAnimation = normalizeClothingAnimation(animation);
+            const normalizedAnimation = backgroundType === 'static'
+                ? { columns: 1, rows: 1, frames: 1, fps: 8 }
+                : normalizeClothingAnimation(animation);
             if (typeof id !== 'string' || !/^(common|disco|public:[1-9]\d{0,18})$/.test(id)
+                || !backgroundType
                 || !bytes || (!isJpeg && !isPng && !isWebp) || bytes.length > 950_000
-                || !animation || Number(animation.columns) !== normalizedAnimation.columns
+                || (backgroundType === 'spritesheet' && (!animation || Number(animation.columns) !== normalizedAnimation.columns
                 || Number(animation.rows) !== normalizedAnimation.rows || Number(animation.frames) !== normalizedAnimation.frames
-                || Number(animation.fps) !== normalizedAnimation.fps) {
+                || Number(animation.fps) !== normalizedAnimation.fps))) {
                 socket.emit('admin-room-background-result', {
                     success: false,
                     message: 'Vælg et gyldigt PNG-, JPG- eller WebP-billede under 950 KB, og kontrollér frame-indstillingerne.'
@@ -3591,18 +3644,32 @@ async function startServer() {
                 return;
             }
             try {
-                const { rowCount } = await pool.query(`
-                    UPDATE chat_public_rooms
-                    SET background_image = $2, background_mime_type = $3, background_animation_json = $4::jsonb,
-                        background_updated_at = NOW(), background_version = background_version + 1
-                    WHERE id = $1
-                `, [id, bytes, isJpeg ? 'image/jpeg' : isPng ? 'image/png' : 'image/webp', JSON.stringify(normalizedAnimation)]);
+                const mimeType = isJpeg ? 'image/jpeg' : isPng ? 'image/png' : 'image/webp';
+                const { rowCount } = backgroundType === 'static'
+                    ? await pool.query(`
+                        UPDATE chat_public_rooms
+                        SET background_image = $2, background_mime_type = $3,
+                            background_updated_at = NOW(), background_version = background_version + 1,
+                            background_type = 'static'
+                        WHERE id = $1
+                    `, [id, bytes, mimeType])
+                    : await pool.query(`
+                        UPDATE chat_public_rooms
+                        SET background_spritesheet_image = $2, background_spritesheet_mime_type = $3,
+                            background_spritesheet_updated_at = NOW(), background_spritesheet_version = background_spritesheet_version + 1,
+                            background_spritesheet_animation_json = $4::jsonb, background_type = 'spritesheet'
+                        WHERE id = $1
+                    `, [id, bytes, mimeType, JSON.stringify(normalizedAnimation)]);
                 if (!rowCount) {
                     socket.emit('admin-room-background-result', { success: false, message: 'Rummet findes ikke længere.' });
                     return;
                 }
                 const { rows: [room] } = await pool.query(`
-                    SELECT id, room_number, name, welcome_title, welcome_text, TRUE AS has_background, background_version, background_animation_json,
+                    SELECT id, room_number, name, welcome_title, welcome_text,
+                           ((background_type = 'static' AND background_image IS NOT NULL)
+                               OR (background_type = 'spritesheet' AND background_spritesheet_image IS NOT NULL)) AS has_background,
+                           background_type, background_version, background_spritesheet_version,
+                           background_animation_json, background_spritesheet_animation_json,
                            overlay_image IS NOT NULL AS has_overlay, overlay_version, overlay_transform
                     FROM chat_public_rooms WHERE id = $1
                 `, [id]);
@@ -3613,7 +3680,7 @@ async function startServer() {
                     welcomeTitle: room.welcome_title || `Velkommen i ${roomName}`,
                     welcomeText: room.welcome_text || 'Her kan du møde andre og chatte sammen. God fornøjelse!',
                     roomBackgroundUrl: getPublicRoomBackgroundUrl(room),
-                    roomBackgroundAnimation: normalizeClothingAnimation(room.background_animation_json),
+                    roomBackgroundAnimation: getPublicRoomBackgroundAnimation(room),
                     roomOverlayUrl: getPublicRoomOverlayUrl(room),
                     roomOverlayTransform: normalizePublicRoomOverlayTransform(room.overlay_transform)
                 });
@@ -3626,22 +3693,69 @@ async function startServer() {
             }
         });
 
+        socket.on('admin-public-room-background-activate', async ({ id, type } = {}) => {
+            if (!socket.data.canManagePublicRooms || !activeSocketIds.has(socket.id)
+                || typeof id !== 'string' || !/^(common|disco|public:[1-9]\d{0,18})$/.test(id)
+                || !['static', 'spritesheet'].includes(type)) return;
+            try {
+                const imageColumn = type === 'static' ? 'background_image' : 'background_spritesheet_image';
+                const { rowCount } = await pool.query(
+                    `UPDATE chat_public_rooms SET background_type = $2 WHERE id = $1 AND ${imageColumn} IS NOT NULL`,
+                    [id, type]
+                );
+                if (!rowCount) {
+                    socket.emit('admin-room-background-result', { success: false, message: 'Der er ingen gemt baggrund af den type p\u00e5 rummet.' });
+                    return;
+                }
+                const { rows: [room] } = await pool.query(`
+                    SELECT id, room_number, name, welcome_title, welcome_text,
+                           ((background_type = 'static' AND background_image IS NOT NULL)
+                               OR (background_type = 'spritesheet' AND background_spritesheet_image IS NOT NULL)) AS has_background,
+                           background_type, background_version, background_spritesheet_version,
+                           background_animation_json, background_spritesheet_animation_json,
+                           overlay_image IS NOT NULL AS has_overlay, overlay_version, overlay_transform
+                    FROM chat_public_rooms WHERE id = $1
+                `, [id]);
+                const roomName = formatPublicRoomName(room);
+                io.to(roomChannel(id)).emit('public-room-metadata', {
+                    roomId: id,
+                    roomName,
+                    welcomeTitle: room.welcome_title || `Velkommen i ${roomName}`,
+                    welcomeText: room.welcome_text || 'Her kan du m\u00f8de andre og chatte sammen. God forn\u00f8jelse!',
+                    roomBackgroundUrl: getPublicRoomBackgroundUrl(room),
+                    roomBackgroundAnimation: getPublicRoomBackgroundAnimation(room),
+                    roomOverlayUrl: getPublicRoomOverlayUrl(room),
+                    roomOverlayTransform: normalizePublicRoomOverlayTransform(room.overlay_transform)
+                });
+                socket.emit('admin-room-background-result', { success: true, message: `${roomName} bruger nu den valgte baggrund.` });
+                await sendAdminPublicRooms();
+                io.emit('navigator-refresh');
+            } catch (error) {
+                console.error('Could not activate public room background:', getSafeErrorCode(error));
+                socket.emit('admin-room-background-result', { success: false, message: 'Baggrunden kunne ikke v\u00e6lges.' });
+            }
+        });
+
         socket.on('admin-public-room-background-reset', async ({ id } = {}) => {
             if (!socket.data.canManagePublicRooms || !activeSocketIds.has(socket.id)
                 || typeof id !== 'string' || !/^(common|disco|public:[1-9]\d{0,18})$/.test(id)) return;
             try {
                 const { rowCount } = await pool.query(`
                     UPDATE chat_public_rooms
-                    SET background_image = NULL, background_mime_type = NULL,
-                        background_updated_at = NULL, background_animation_json = '{"columns":1,"rows":1,"frames":1,"fps":8}'::jsonb,
-                        background_version = background_version + 1
+                    SET background_type = 'default'
                     WHERE id = $1
                 `, [id]);
                 if (!rowCount) {
                     socket.emit('admin-room-background-result', { success: false, message: 'Rummet findes ikke længere.' });
                     return;
                 }
-                const { rows: [room] } = await pool.query('SELECT id, room_number, name, welcome_title, welcome_text, background_animation_json, overlay_image IS NOT NULL AS has_overlay, overlay_version, overlay_transform FROM chat_public_rooms WHERE id = $1', [id]);
+                const { rows: [room] } = await pool.query(`
+                    SELECT id, room_number, name, welcome_title, welcome_text, FALSE AS has_background,
+                           background_type, background_version, background_spritesheet_version,
+                           background_animation_json, background_spritesheet_animation_json,
+                           overlay_image IS NOT NULL AS has_overlay, overlay_version, overlay_transform
+                    FROM chat_public_rooms WHERE id = $1
+                `, [id]);
                 const roomName = formatPublicRoomName({ ...room, id });
                 io.to(roomChannel(id)).emit('public-room-metadata', {
                     roomId: id,
@@ -3649,11 +3763,11 @@ async function startServer() {
                     welcomeTitle: room.welcome_title || `Velkommen i ${roomName}`,
                     welcomeText: room.welcome_text || 'Her kan du møde andre og chatte sammen. God fornøjelse!',
                     roomBackgroundUrl: null,
-                    roomBackgroundAnimation: normalizeClothingAnimation(room.background_animation_json),
+                    roomBackgroundAnimation: getPublicRoomBackgroundAnimation(room),
                     roomOverlayUrl: getPublicRoomOverlayUrl(room),
                     roomOverlayTransform: normalizePublicRoomOverlayTransform(room.overlay_transform)
                 });
-                socket.emit('admin-room-background-result', { success: true, message: `${roomName} bruger nu testbaggrunden igen.` });
+                socket.emit('admin-room-background-result', { success: true, message: `${roomName} bruger nu standardbaggrunden. Dine uploads er gemt.` });
                 await sendAdminPublicRooms();
                 io.emit('navigator-refresh');
             } catch (error) {
@@ -3688,7 +3802,12 @@ async function startServer() {
                 }
                 const { rows: [room] } = await pool.query(`
                     SELECT id, room_number, name, welcome_title, welcome_text, is_shop, shop_is_open,
-                           background_image IS NOT NULL AS has_background, background_version, background_animation_json,
+                           ((background_type = 'static' AND background_image IS NOT NULL)
+                               OR (background_type = 'spritesheet' AND background_spritesheet_image IS NOT NULL)) AS has_background,
+                           background_image IS NOT NULL AS has_static_background,
+                           background_spritesheet_image IS NOT NULL AS has_spritesheet_background,
+                           background_type, background_version, background_spritesheet_version, background_animation_json,
+                           background_spritesheet_animation_json,
                            TRUE AS has_overlay, overlay_version, overlay_transform
                     FROM chat_public_rooms WHERE id = $1
                 `, [id]);
@@ -3699,7 +3818,7 @@ async function startServer() {
                     welcomeTitle: room.welcome_title || `Velkommen i ${roomName}`,
                     welcomeText: room.welcome_text || 'Her kan du moede andre og chatte sammen. God fornoejelse!',
                     roomBackgroundUrl: getPublicRoomBackgroundUrl(room),
-                    roomBackgroundAnimation: normalizeClothingAnimation(room.background_animation_json),
+                    roomBackgroundAnimation: getPublicRoomBackgroundAnimation(room),
                     roomOverlayUrl: getPublicRoomOverlayUrl(room),
                     roomOverlayTransform: normalizePublicRoomOverlayTransform(room.overlay_transform)
                 });
@@ -3728,7 +3847,12 @@ async function startServer() {
                 }
                 const { rows: [room] } = await pool.query(`
                     SELECT id, room_number, name, welcome_title, welcome_text,
-                           background_image IS NOT NULL AS has_background, background_version, background_animation_json,
+                           ((background_type = 'static' AND background_image IS NOT NULL)
+                               OR (background_type = 'spritesheet' AND background_spritesheet_image IS NOT NULL)) AS has_background,
+                           background_image IS NOT NULL AS has_static_background,
+                           background_spritesheet_image IS NOT NULL AS has_spritesheet_background,
+                           background_type, background_version, background_spritesheet_version, background_animation_json,
+                           background_spritesheet_animation_json,
                            overlay_image IS NOT NULL AS has_overlay, overlay_version, overlay_transform
                     FROM chat_public_rooms WHERE id = $1
                 `, [id]);
@@ -3739,7 +3863,7 @@ async function startServer() {
                     welcomeTitle: room.welcome_title || `Velkommen i ${roomName}`,
                     welcomeText: room.welcome_text || 'Her kan du moede andre og chatte sammen. God fornoejelse!',
                     roomBackgroundUrl: getPublicRoomBackgroundUrl(room),
-                    roomBackgroundAnimation: normalizeClothingAnimation(room.background_animation_json),
+                    roomBackgroundAnimation: getPublicRoomBackgroundAnimation(room),
                     roomOverlayUrl: null,
                     roomOverlayTransform: normalizePublicRoomOverlayTransform(room.overlay_transform)
                 });
@@ -3776,7 +3900,12 @@ async function startServer() {
                 }
                 const { rows: [room] } = await pool.query(`
                     SELECT id, room_number, name, welcome_title, welcome_text,
-                           background_image IS NOT NULL AS has_background, background_version, background_animation_json,
+                           ((background_type = 'static' AND background_image IS NOT NULL)
+                               OR (background_type = 'spritesheet' AND background_spritesheet_image IS NOT NULL)) AS has_background,
+                           background_image IS NOT NULL AS has_static_background,
+                           background_spritesheet_image IS NOT NULL AS has_spritesheet_background,
+                           background_type, background_version, background_spritesheet_version, background_animation_json,
+                           background_spritesheet_animation_json,
                            overlay_image IS NOT NULL AS has_overlay, overlay_version, overlay_transform
                     FROM chat_public_rooms WHERE id = $1
                 `, [id]);
@@ -3787,7 +3916,7 @@ async function startServer() {
                     welcomeTitle: room.welcome_title || `Velkommen i ${roomName}`,
                     welcomeText: room.welcome_text || 'Her kan du møde andre og chatte sammen. God fornøjelse!',
                     roomBackgroundUrl: getPublicRoomBackgroundUrl(room),
-                    roomBackgroundAnimation: normalizeClothingAnimation(room.background_animation_json),
+                    roomBackgroundAnimation: getPublicRoomBackgroundAnimation(room),
                     roomOverlayUrl: getPublicRoomOverlayUrl(room),
                     roomOverlayTransform: normalizePublicRoomOverlayTransform(room.overlay_transform)
                 });
@@ -3879,7 +4008,12 @@ async function startServer() {
                 }
                 const { rows: [updatedRoom] } = await pool.query(`
                     SELECT id, room_number, name, welcome_title, welcome_text, is_shop, shop_is_open,
-                           background_image IS NOT NULL AS has_background, background_version, background_animation_json,
+                           ((background_type = 'static' AND background_image IS NOT NULL)
+                               OR (background_type = 'spritesheet' AND background_spritesheet_image IS NOT NULL)) AS has_background,
+                           background_image IS NOT NULL AS has_static_background,
+                           background_spritesheet_image IS NOT NULL AS has_spritesheet_background,
+                           background_type, background_version, background_spritesheet_version, background_animation_json,
+                           background_spritesheet_animation_json,
                            overlay_image IS NOT NULL AS has_overlay, overlay_version, overlay_transform
                     FROM chat_public_rooms WHERE id = $1
                 `, [id]);
@@ -3890,7 +4024,7 @@ async function startServer() {
                     welcomeTitle: updatedRoom.welcome_title || `Velkommen i ${roomName}`,
                     welcomeText: updatedRoom.welcome_text || 'Her kan du møde andre og chatte sammen. God fornøjelse!',
                     roomBackgroundUrl: getPublicRoomBackgroundUrl(updatedRoom),
-                    roomBackgroundAnimation: normalizeClothingAnimation(updatedRoom.background_animation_json),
+                    roomBackgroundAnimation: getPublicRoomBackgroundAnimation(updatedRoom),
                     roomOverlayUrl: getPublicRoomOverlayUrl(updatedRoom),
                     roomOverlayTransform: normalizePublicRoomOverlayTransform(updatedRoom.overlay_transform),
                     isShop: updatedRoom.is_shop === true,
@@ -3928,7 +4062,11 @@ async function startServer() {
                     return;
                 }
                 const [roomResponse, welcome] = await Promise.all([
-                    pool.query('SELECT id, room_number, name, background_image IS NOT NULL AS has_background, background_version FROM chat_public_rooms WHERE id = $1', [id]),
+                    pool.query(`SELECT id, room_number, name,
+                                       ((background_type = 'static' AND background_image IS NOT NULL)
+                                           OR (background_type = 'spritesheet' AND background_spritesheet_image IS NOT NULL)) AS has_background,
+                                       background_type, background_version, background_spritesheet_version
+                                FROM chat_public_rooms WHERE id = $1`, [id]),
                     getRoomWelcome(id)
                 ]);
                 const room = roomResponse.rows[0];

@@ -959,7 +959,11 @@
         .admin-room-config-state { margin-left: auto; color: var(--muted); font-size: 9px; font-weight: 500; }
         .admin-room-config-content { display: grid; gap: 8px; padding: 0 9px 9px; }
         .admin-room-bg-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
-        .admin-room-animation { display: grid; grid-template-columns: repeat(4, minmax(56px, 84px)); align-items: end; gap: 7px; flex: 1 0 100%; padding: 9px; border: 1px solid #353732; border-radius: 7px; background: #151613; }
+        .admin-room-background-card { display: grid; gap: 8px; flex: 1 0 100%; padding: 9px; border: 1px solid #353732; border-radius: 7px; background: #151613; }
+        .admin-room-background-card > strong { font-size: 10px; }
+        .admin-room-background-card > small { color: var(--muted); font-size: 9px; line-height: 1.45; }
+        .admin-room-animation { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: 7px; flex: 1 0 100%; padding: 9px; border: 1px solid #353732; border-radius: 7px; background: #151613; }
+        .admin-room-animation > strong, .admin-room-animation > small { grid-column: 1 / -1; }
         .admin-room-animation-hint { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
         .admin-room-animation label { display: grid; gap: 4px; color: var(--muted); font-size: 9px; }
         .admin-room-animation input { width: 100%; min-width: 0; min-height: 30px; padding: 5px 7px; border: 1px solid #3b3e36; border-radius: 5px; background: #151613; color: #f2f0e9; font: inherit; font-size: 10px; }
@@ -4709,7 +4713,7 @@
                 resetAdminClothingForm(wasEditing ? 'Redigeringen blev annulleret.' : 'Formularen er ryddet.');
             });
 
-            async function uploadAdminRoomBackground(roomId, file, statusElement, animationInput) {
+            async function uploadAdminRoomBackground(roomId, file, statusElement, animationInput, type) {
                 if (!file || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
                     statusElement.textContent = 'Vælg en PNG-, JPG- eller WebP-fil.';
                     return false;
@@ -4794,7 +4798,8 @@
                     socket.emit('admin-public-room-background-upload', {
                         id: roomId,
                         image: new Uint8Array(await blob.arrayBuffer()),
-                        animation
+                        animation,
+                        type
                     });
                     return true;
                 } catch (error) {
@@ -4938,9 +4943,9 @@
                     const animationControls = document.createElement('div');
                     animationControls.className = 'admin-room-animation';
                     const animationTitle = document.createElement('strong');
-                    animationTitle.textContent = 'Spritesheet til rummets baggrund';
+                    animationTitle.textContent = 'Spritesheet-indstillinger';
                     const animationHint = document.createElement('small');
-                    animationHint.textContent = 'Angiv selv kolonner, rækker, frames og hastighed. Vælg billedet, kontrollér pixelmålene pr. frame, og tryk Gem baggrund.';
+                    animationHint.textContent = 'Angiv gitter og hastighed for spritesheetet.';
                     const animationFields = {};
                     for (const [key, labelText, value, max] of [
                         ['frames', 'Frames', roomAnimation.frames, 256],
@@ -4952,7 +4957,7 @@
                         label.textContent = labelText;
                         const input = document.createElement('input');
                         input.type = 'number'; input.min = '1'; input.max = String(max); input.step = '1'; input.value = String(value);
-                        input.setAttribute('aria-label', `${labelText} i baggrundens spritesheet`);
+                        input.setAttribute('aria-label', labelText + ' i baggrundens spritesheet');
                         animationFields[key] = input;
                         label.append(input);
                         animationControls.append(label);
@@ -4961,9 +4966,7 @@
                     const animationSummary = document.createElement('small');
                     animationSummary.className = 'admin-room-animation-hint';
                     animationSummary.setAttribute('aria-live', 'polite');
-                    let selectedRoomBackgroundFile = null;
-                    let selectedRoomBackgroundDimensions = null;
-                    let backgroundFileSelectionVersion = 0;
+                    let selectedRoomSpriteDimensions = null;
                     const syncRoomAnimationGrid = () => {
                         const frames = Math.floor(Number(animationFields.frames.value));
                         const columns = Math.floor(Number(animationFields.columns.value));
@@ -4976,94 +4979,136 @@
                             return;
                         }
                         if (frames > columns * rows) {
-                            animationSummary.textContent = `Gitteret ${columns} × ${rows} har kun plads til ${columns * rows} frames.`;
+                            animationSummary.textContent = 'Gitteret ' + columns + ' × ' + rows + ' har kun plads til ' + (columns * rows) + ' frames.';
                             return;
                         }
-                        const cellSize = selectedRoomBackgroundDimensions
-                            ? ` · ${Math.round(selectedRoomBackgroundDimensions.width / columns)} × ${Math.round(selectedRoomBackgroundDimensions.height / rows)} px pr. frame`
+                        const cellSize = selectedRoomSpriteDimensions
+                            ? ' \u00b7 ' + Math.round(selectedRoomSpriteDimensions.width / columns) + ' \u00d7 ' + Math.round(selectedRoomSpriteDimensions.height / rows) + ' px pr. frame'
                             : '';
-                        animationSummary.textContent = `${columns} × ${rows} gitter · ${frames} frames · ${fps} FPS${cellSize}`;
+                        animationSummary.textContent = columns + ' \u00d7 ' + rows + ' gitter \u00b7 ' + frames + ' frames \u00b7 ' + fps + ' FPS' + cellSize;
                     };
                     animationControls.append(animationSummary);
-                    Object.values(animationFields).forEach((input) =>
-                        input.addEventListener('input', syncRoomAnimationGrid)
-                    );
+                    Object.values(animationFields).forEach((input) => input.addEventListener('input', syncRoomAnimationGrid));
                     syncRoomAnimationGrid();
-                    const fileInput = document.createElement('input');
-                    fileInput.className = 'admin-room-file';
-                    fileInput.type = 'file';
-                    fileInput.accept = 'image/png,image/jpeg,image/webp';
-                    fileInput.setAttribute('aria-label', `Vælg baggrund for ${room.name}`);
-                    const chooseBackground = document.createElement('button');
-                    chooseBackground.className = 'admin-row-button';
-                    chooseBackground.type = 'button';
-                    chooseBackground.textContent = 'Vælg baggrund';
-                    const saveBackground = document.createElement('button');
-                    saveBackground.className = 'admin-row-button';
-                    saveBackground.type = 'button';
-                    saveBackground.textContent = 'Gem baggrund';
-                    saveBackground.disabled = true;
-                    saveBackground.dataset.roomBackgroundSave = room.id;
-                    const backgroundStatus = document.createElement('span');
-                    backgroundStatus.className = 'admin-room-bg-status';
-                    backgroundStatus.dataset.roomBackgroundStatus = room.id;
-                    chooseBackground.addEventListener('click', () => fileInput.click());
-                    saveBackground.addEventListener('click', async () => {
-                        if (!selectedRoomBackgroundFile) {
-                            backgroundStatus.textContent = 'Vælg en baggrundsfil først.';
-                            return;
+                    const createBackgroundUploader = ({ type, title, hint, animation }) => {
+                        const card = document.createElement('div');
+                        card.className = 'admin-room-background-card';
+                        const heading = document.createElement('strong');
+                        heading.textContent = title;
+                        const description = document.createElement('small');
+                        description.textContent = hint;
+                        const input = document.createElement('input');
+                        input.className = 'admin-room-file';
+                        input.type = 'file';
+                        input.accept = 'image/png,image/jpeg,image/webp';
+                        input.setAttribute('aria-label', title + ' til ' + room.name);
+                        const actions = document.createElement('div');
+                        actions.className = 'admin-room-upload-actions';
+                        const choose = document.createElement('button');
+                        choose.className = 'admin-row-button';
+                        choose.type = 'button';
+                        choose.textContent = type === 'static' ? 'V\u00e6lg almindeligt billede' : 'V\u00e6lg spritesheet';
+                        const save = document.createElement('button');
+                        save.className = 'admin-row-button';
+                        save.type = 'button';
+                        save.textContent = type === 'static' ? 'Gem almindelig baggrund' : 'Gem spritesheet-baggrund';
+                        save.disabled = true;
+                        save.dataset.roomBackgroundSave = room.id;
+                        const status = document.createElement('span');
+                        status.className = 'admin-room-bg-status';
+                        status.dataset.roomBackgroundStatus = room.id;
+                        let selectedFile = null;
+                        let selectionVersion = 0;
+                        choose.addEventListener('click', () => input.click());
+                        save.addEventListener('click', async () => {
+                            if (!selectedFile) {
+                                status.textContent = 'Vælg en billedfil først.';
+                                return;
+                            }
+                            save.disabled = true;
+                            const started = await uploadAdminRoomBackground(room.id, selectedFile, status, animation(), type);
+                            if (!started) save.disabled = false;
+                        });
+                        input.addEventListener('change', async () => {
+                            const file = input.files?.[0];
+                            if (!file) return;
+                            const currentVersion = ++selectionVersion;
+                            selectedFile = null;
+                            save.disabled = true;
+                            const objectUrl = URL.createObjectURL(file);
+                            try {
+                                const source = new Image();
+                                source.src = objectUrl;
+                                await source.decode();
+                                if (currentVersion !== selectionVersion) return;
+                                if (!source.naturalWidth || !source.naturalHeight || source.naturalWidth > 8000 || source.naturalHeight > 8000) {
+                                    status.textContent = 'Billedet skal være mindre end 8000 × 8000 px.';
+                                    return;
+                                }
+                                if (type === 'spritesheet') {
+                                    selectedRoomSpriteDimensions = { width: source.naturalWidth, height: source.naturalHeight };
+                                    syncRoomAnimationGrid();
+                                }
+                                selectedFile = file;
+                                save.disabled = false;
+                                status.textContent = file.name + ' er klar (' + source.naturalWidth + ' × ' + source.naturalHeight + ' px). Gem for at bruge den i rummet.';
+                            } catch {
+                                status.textContent = 'Billedet kunne ikke læses. Prøv en anden fil.';
+                            } finally {
+                                URL.revokeObjectURL(objectUrl);
+                                if (currentVersion === selectionVersion) input.value = '';
+                            }
+                        });
+                        actions.append(choose, save, status);
+                        const hasSavedBackground = type === 'static'
+                            ? room.hasStaticBackground
+                            : room.hasSpritesheetBackground;
+                        if (hasSavedBackground) {
+                            const activate = document.createElement('button');
+                            activate.className = 'admin-row-button';
+                            activate.type = 'button';
+                            activate.textContent = room.backgroundType === type ? 'Aktiv nu' : 'Brug gemt';
+                            activate.disabled = room.backgroundType === type;
+                            activate.addEventListener('click', () => {
+                                status.textContent = 'Skifter baggrund…';
+                                socket.emit('admin-public-room-background-activate', { id: room.id, type });
+                            });
+                            actions.append(activate);
                         }
-                        saveBackground.disabled = true;
-                        const started = await uploadAdminRoomBackground(room.id, selectedRoomBackgroundFile, backgroundStatus, {
+                        card.append(heading, description, input);
+                        if (type === 'spritesheet') card.append(animationControls);
+                        card.append(actions);
+                        return card;
+                    };
+                    const staticBackgroundCard = createBackgroundUploader({
+                        type: 'static',
+                        title: 'Almindelig baggrund',
+                        hint: '\u00c9t stillest\u00e5ende billede. Ingen spritesheet-indstillinger er n\u00f8dvendige.',
+                        animation: () => ({ columns: 1, rows: 1, frames: 1, fps: 8 })
+                    });
+                    const spriteBackgroundCard = createBackgroundUploader({
+                        type: 'spritesheet',
+                        title: 'Spritesheet-baggrund',
+                        hint: 'Et spritesheet med flere billeder. Angiv frames, kolonner, r\u00e6kker og FPS.',
+                        animation: () => ({
                             columns: Number(animationFields.columns.value),
                             rows: Number(animationFields.rows.value),
                             frames: Number(animationFields.frames.value),
                             fps: Number(animationFields.fps.value)
-                        });
-                        if (!started) saveBackground.disabled = false;
+                        })
                     });
-                    fileInput.addEventListener('change', async () => {
-                        const file = fileInput.files?.[0];
-                        if (!file) return;
-                        const selectionVersion = ++backgroundFileSelectionVersion;
-                        selectedRoomBackgroundFile = null;
-                        selectedRoomBackgroundDimensions = null;
-                        saveBackground.disabled = true;
-                        const objectUrl = URL.createObjectURL(file);
-                        try {
-                            const source = new Image();
-                            source.src = objectUrl;
-                            await source.decode();
-                            if (selectionVersion !== backgroundFileSelectionVersion) return;
-                            if (!source.naturalWidth || !source.naturalHeight || source.naturalWidth > 8000 || source.naturalHeight > 8000) {
-                                backgroundStatus.textContent = 'Billedet skal være mindre end 8000 × 8000 px.';
-                                return;
-                            }
-                            selectedRoomBackgroundDimensions = { width: source.naturalWidth, height: source.naturalHeight };
-                            selectedRoomBackgroundFile = file;
-                            saveBackground.disabled = false;
-                            syncRoomAnimationGrid();
-                            backgroundStatus.textContent = `Billedet er indlæst (${source.naturalWidth} × ${source.naturalHeight} px). Kontrollér gitteret ovenfor, og tryk Gem baggrund.`;
-                        } catch {
-                            backgroundStatus.textContent = 'Billedet kunne ikke læses. Prøv en anden fil.';
-                        } finally {
-                            URL.revokeObjectURL(objectUrl);
-                            if (selectionVersion === backgroundFileSelectionVersion) fileInput.value = '';
-                        }
-                    });
-                    backgroundTools.append(fileInput, animationControls, chooseBackground, saveBackground);
+                    backgroundTools.append(staticBackgroundCard, spriteBackgroundCard);
                     if (room.hasBackground) {
                         const resetBackground = document.createElement('button');
                         resetBackground.className = 'admin-row-button';
                         resetBackground.type = 'button';
-                        resetBackground.textContent = 'Brug testbaggrund';
+                        resetBackground.textContent = 'Brug standardbaggrund';
                         resetBackground.addEventListener('click', () => {
-                            backgroundStatus.textContent = 'Nulstiller baggrunden…';
+                            staticBackgroundCard.querySelector('[data-room-background-status]').textContent = 'Nulstiller baggrunden…';
                             socket.emit('admin-public-room-background-reset', { id: room.id });
                         });
                         backgroundTools.append(resetBackground);
                     }
-                    backgroundTools.append(backgroundStatus);
                     const backgroundSection = document.createElement('details');
                     backgroundSection.className = 'admin-room-config';
                     const backgroundSummary = document.createElement('summary');
@@ -5071,7 +5116,9 @@
                     const backgroundState = document.createElement('span');
                     backgroundState.className = 'admin-room-config-state';
                     backgroundState.textContent = room.hasBackground
-                        ? `Spritesheet · ${roomAnimation.columns} × ${roomAnimation.rows} · ${roomAnimation.frames} frames · ${roomAnimation.fps} FPS`
+                        ? (room.backgroundType === 'spritesheet'
+                            ? 'Spritesheet \u00b7 ' + roomAnimation.columns + ' \u00d7 ' + roomAnimation.rows + ' \u00b7 ' + roomAnimation.frames + ' frames \u00b7 ' + roomAnimation.fps + ' FPS'
+                            : 'Almindelig baggrund')
                         : 'Standardbaggrund';
                     backgroundSummary.append(backgroundState);
                     const backgroundContent = document.createElement('div');
