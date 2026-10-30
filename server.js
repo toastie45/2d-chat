@@ -2629,6 +2629,7 @@ async function startServer() {
                 backgroundType: room.background_type,
                 backgroundUrl: getPublicRoomBackgroundUrl(room),
                 backgroundAnimation: getPublicRoomBackgroundAnimation(room),
+                spritesheetBackgroundAnimation: getPublicRoomBackgroundAnimation({ ...room, background_type: 'spritesheet' }),
                 hasOverlay: room.has_overlay,
                 overlayUrl: getPublicRoomOverlayUrl(room),
                 overlayTransform: normalizePublicRoomOverlayTransform(room.overlay_transform),

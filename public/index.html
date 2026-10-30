@@ -962,6 +962,8 @@
         .admin-room-background-card { display: grid; gap: 8px; flex: 1 0 100%; padding: 9px; border: 1px solid #353732; border-radius: 7px; background: #151613; }
         .admin-room-background-card > strong { font-size: 10px; }
         .admin-room-background-card > small { color: var(--muted); font-size: 9px; line-height: 1.45; }
+        .admin-room-sprite-preview { position: relative; width: 100%; max-width: 360px; aspect-ratio: 3 / 2; overflow: hidden; border-radius: 6px; background: #080a08; }
+        .admin-room-sprite-preview img { position: absolute; max-width: none; object-fit: fill; }
         .admin-room-animation { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: 7px; flex: 1 0 100%; padding: 9px; border: 1px solid #353732; border-radius: 7px; background: #151613; }
         .admin-room-animation > strong, .admin-room-animation > small { grid-column: 1 / -1; }
         .admin-room-animation-hint { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
@@ -2251,6 +2253,7 @@
     </div>
     <script src="/grid-layout.js"></script>
     <script src="/level-progression.js"></script>
+    <script src="/room-spritesheet.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <script>
         (() => {
@@ -4728,6 +4731,13 @@
                     frames: Number(animationInput.frames),
                     fps: Number(animationInput.fps)
                 };
+                if (type === 'spritesheet') {
+                    const error = RoomSpritesheet.validate(animation);
+                    if (error) {
+                        statusElement.textContent = error;
+                        return false;
+                    }
+                }
                 if (!Object.values(animation).every(Number.isInteger)
                     || animation.columns < 1 || animation.columns > 16
                     || animation.rows < 1 || animation.rows > 256
@@ -4749,6 +4759,17 @@
                     if (source.naturalWidth < animation.columns || source.naturalHeight < animation.rows) {
                         statusElement.textContent = 'Gitteret er større end billedet. Kontrollér kolonner og rækker.';
                         return false;
+                    }
+                    if (type === 'spritesheet') {
+                        const error = RoomSpritesheet.validate(animation, source.naturalWidth, source.naturalHeight);
+                        if (error) {
+                            statusElement.textContent = error;
+                            return false;
+                        }
+                        if (!RoomSpritesheet.hasDistinctFrames(source, animation)) {
+                            statusElement.textContent = 'Alle valgte frames er ens. Billedet indeholder ingen synlig animation. Vælg et spritesheet med forskellige frames.';
+                            return false;
+                        }
                     }
                     statusElement.textContent = `Klargør ${animation.frames} frames · gitter ${animation.columns} × ${animation.rows} · ${Math.round(source.naturalWidth / animation.columns)} × ${Math.round(source.naturalHeight / animation.rows)} px pr. frame…`;
                     const isSpriteSheet = animation.columns > 1 || animation.rows > 1 || animation.frames > 1;
@@ -4863,6 +4884,7 @@
             }
 
             function renderAdminPublicRooms(rooms = []) {
+                for (const animation of adminPublicRooms.getAnimations({ subtree: true })) animation.cancel();
                 adminPublicRooms.replaceChildren();
                 if (!rooms.length) {
                     adminRoomsStatus.textContent = 'Der er ingen rum.';
@@ -4927,6 +4949,7 @@
                     previewBackground.src = room.backgroundUrl || '/images/test-room-background.png';
                     previewBackground.alt = '';
                     const roomAnimation = normalizeClothingAnimation(room.backgroundAnimation || {});
+                    const savedSpriteAnimation = normalizeClothingAnimation(room.spritesheetBackgroundAnimation || room.backgroundAnimation || {});
                     previewBackground.style.width = `${roomAnimation.columns * 100}%`;
                     previewBackground.style.height = `${roomAnimation.rows * 100}%`;
                     const previewOverlay = document.createElement('img');
@@ -4948,15 +4971,15 @@
                     animationHint.textContent = 'Angiv gitter og hastighed for spritesheetet.';
                     const animationFields = {};
                     for (const [key, labelText, value, max] of [
-                        ['frames', 'Frames', roomAnimation.frames, 256],
-                        ['columns', 'Kolonner', roomAnimation.columns, 16],
-                        ['rows', 'Rækker', roomAnimation.rows, 256],
-                        ['fps', 'FPS', roomAnimation.fps, 24]
+                        ['frames', 'Frames', savedSpriteAnimation.frames, 256],
+                        ['columns', 'Kolonner', savedSpriteAnimation.columns, 16],
+                        ['rows', 'Rækker', savedSpriteAnimation.rows, 256],
+                        ['fps', 'FPS', savedSpriteAnimation.fps, 24]
                     ]) {
                         const label = document.createElement('label');
                         label.textContent = labelText;
                         const input = document.createElement('input');
-                        input.type = 'number'; input.min = '1'; input.max = String(max); input.step = '1'; input.value = String(value);
+                        input.type = 'number'; input.min = key === 'frames' ? '2' : '1'; input.max = String(max); input.step = '1'; input.value = String(value);
                         input.setAttribute('aria-label', labelText + ' i baggrundens spritesheet');
                         animationFields[key] = input;
                         label.append(input);
@@ -4966,22 +4989,53 @@
                     const animationSummary = document.createElement('small');
                     animationSummary.className = 'admin-room-animation-hint';
                     animationSummary.setAttribute('aria-live', 'polite');
+                    const spritePreview = document.createElement('div');
+                    spritePreview.className = 'admin-room-sprite-preview';
+                    spritePreview.hidden = true;
+                    spritePreview.setAttribute('aria-label', 'Animation med de valgte indstillinger');
+                    let spritePreviewImage = null;
+                    let spritePreviewAnimation = null;
                     let selectedRoomSpriteDimensions = null;
+                    const readRoomSpriteAnimation = () => ({
+                        columns: Number(animationFields.columns.value),
+                        rows: Number(animationFields.rows.value),
+                        frames: Number(animationFields.frames.value),
+                        fps: Number(animationFields.fps.value)
+                    });
+                    const updateSpritePreview = () => {
+                        if (spritePreviewAnimation) spritePreviewAnimation.cancel();
+                        spritePreviewAnimation = null;
+                        if (!spritePreviewImage) return;
+                        const settings = readRoomSpriteAnimation();
+                        const width = spritePreviewImage.naturalWidth;
+                        const height = spritePreviewImage.naturalHeight;
+                        if (RoomSpritesheet.validate(settings, width, height)) {
+                            spritePreview.hidden = true;
+                            return;
+                        }
+                        spritePreview.hidden = false;
+                        // Use the same centered 3:2 crop as uploadAdminRoomBackground.
+                        const aspect = width / settings.columns / (height / settings.rows);
+                        const cellWidth = Math.max(1, aspect / (3 / 2));
+                        const cellHeight = Math.max(1, (3 / 2) / aspect);
+                        spritePreviewImage.style.width = `${settings.columns * cellWidth * 100}%`;
+                        spritePreviewImage.style.height = `${settings.rows * cellHeight * 100}%`;
+                        spritePreviewImage.style.left = `${(1 - cellWidth) * 50}%`;
+                        spritePreviewImage.style.top = `${(1 - cellHeight) * 50}%`;
+                        spritePreviewAnimation = spritePreviewImage.animate(RoomSpritesheet.previewFrames(settings), {
+                            duration: settings.frames / settings.fps * 1000,
+                            iterations: Infinity
+                        });
+                    };
                     const syncRoomAnimationGrid = () => {
-                        const frames = Math.floor(Number(animationFields.frames.value));
-                        const columns = Math.floor(Number(animationFields.columns.value));
-                        const rows = Math.floor(Number(animationFields.rows.value));
-                        const fps = Number(animationFields.fps.value);
-                        if (![frames, columns, rows, fps].every(Number.isInteger)
-                            || frames < 1 || frames > 256 || columns < 1 || columns > 16
-                            || rows < 1 || rows > 256 || fps < 1 || fps > 24) {
-                            animationSummary.textContent = 'Brug hele tal: frames 1–256, kolonner 1–16, rækker 1–256 og FPS 1–24.';
+                        updateSpritePreview();
+                        const settings = readRoomSpriteAnimation();
+                        const error = RoomSpritesheet.validate(settings, selectedRoomSpriteDimensions?.width, selectedRoomSpriteDimensions?.height);
+                        if (error) {
+                            animationSummary.textContent = error;
                             return;
                         }
-                        if (frames > columns * rows) {
-                            animationSummary.textContent = 'Gitteret ' + columns + ' × ' + rows + ' har kun plads til ' + (columns * rows) + ' frames.';
-                            return;
-                        }
+                        const { frames, columns, rows, fps } = settings;
                         const cellSize = selectedRoomSpriteDimensions
                             ? ' \u00b7 ' + Math.round(selectedRoomSpriteDimensions.width / columns) + ' \u00d7 ' + Math.round(selectedRoomSpriteDimensions.height / rows) + ' px pr. frame'
                             : '';
@@ -5019,19 +5073,7 @@
                         status.dataset.roomBackgroundStatus = room.id;
                         let selectedFile = null;
                         let selectionVersion = 0;
-                        choose.addEventListener('click', () => input.click());
-                        save.addEventListener('click', async () => {
-                            if (!selectedFile) {
-                                status.textContent = 'Vælg en billedfil først.';
-                                return;
-                            }
-                            save.disabled = true;
-                            const started = await uploadAdminRoomBackground(room.id, selectedFile, status, animation(), type);
-                            if (!started) save.disabled = false;
-                        });
-                        input.addEventListener('change', async () => {
-                            const file = input.files?.[0];
-                            if (!file) return;
+                        const selectFile = async (file) => {
                             const currentVersion = ++selectionVersion;
                             selectedFile = null;
                             save.disabled = true;
@@ -5047,6 +5089,9 @@
                                 }
                                 if (type === 'spritesheet') {
                                     selectedRoomSpriteDimensions = { width: source.naturalWidth, height: source.naturalHeight };
+                                    spritePreviewImage = source;
+                                    source.alt = 'Forhåndsvisning af spritesheet';
+                                    spritePreview.replaceChildren(source);
                                     syncRoomAnimationGrid();
                                 }
                                 selectedFile = file;
@@ -5058,8 +5103,47 @@
                                 URL.revokeObjectURL(objectUrl);
                                 if (currentVersion === selectionVersion) input.value = '';
                             }
+                        };
+                        choose.addEventListener('click', () => input.click());
+                        save.addEventListener('click', async () => {
+                            if (!selectedFile) {
+                                status.textContent = 'Vælg en billedfil først.';
+                                return;
+                            }
+                            save.disabled = true;
+                            const started = await uploadAdminRoomBackground(room.id, selectedFile, status, animation(), type);
+                            if (!started) save.disabled = false;
+                        });
+                        input.addEventListener('change', async () => {
+                            const file = input.files?.[0];
+                            if (!file) return;
+                            await selectFile(file);
                         });
                         actions.append(choose, save, status);
+                        if (type === 'spritesheet') {
+                            const example = document.createElement('button');
+                            example.type = 'button';
+                            example.className = 'admin-row-button';
+                            example.textContent = 'Vælg diskotekets animation';
+                            example.addEventListener('click', async () => {
+                                example.disabled = true;
+                                status.textContent = 'Henter diskotekets animation…';
+                                try {
+                                    const response = await fetch('/images/disco-background-spritesheet.png?v=2');
+                                    if (!response.ok) throw new Error('download');
+                                    const blob = await response.blob();
+                                    for (const [key, value] of Object.entries({ columns: 2, rows: 2, frames: 4, fps: 3 })) {
+                                        animationFields[key].value = String(value);
+                                    }
+                                    await selectFile(new File([blob], 'disco-background-spritesheet.png', { type: 'image/png' }));
+                                } catch {
+                                    status.textContent = 'Animationen kunne ikke hentes. Prøv igen.';
+                                } finally {
+                                    example.disabled = false;
+                                }
+                            });
+                            actions.prepend(example);
+                        }
                         const hasSavedBackground = type === 'static'
                             ? room.hasStaticBackground
                             : room.hasSpritesheetBackground;
@@ -5076,7 +5160,7 @@
                             actions.append(activate);
                         }
                         card.append(heading, description, input);
-                        if (type === 'spritesheet') card.append(animationControls);
+                        if (type === 'spritesheet') card.append(animationControls, spritePreview);
                         card.append(actions);
                         return card;
                     };
@@ -5090,12 +5174,7 @@
                         type: 'spritesheet',
                         title: 'Spritesheet-baggrund',
                         hint: 'Et spritesheet med flere billeder. Angiv frames, kolonner, r\u00e6kker og FPS.',
-                        animation: () => ({
-                            columns: Number(animationFields.columns.value),
-                            rows: Number(animationFields.rows.value),
-                            frames: Number(animationFields.frames.value),
-                            fps: Number(animationFields.fps.value)
-                        })
+                        animation: readRoomSpriteAnimation
                     });
                     backgroundTools.append(staticBackgroundCard, spriteBackgroundCard);
                     if (room.hasBackground) {
