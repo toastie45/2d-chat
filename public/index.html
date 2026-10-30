@@ -4922,19 +4922,18 @@
                     const animationTitle = document.createElement('strong');
                     animationTitle.textContent = 'Spritesheet til rummets baggrund';
                     const animationHint = document.createElement('small');
-                    animationHint.textContent = 'Angiv antal frames og kolonner. Rækker beregnes automatisk; sæt kolonner til 1 for et lodret spritesheet.';
+                    animationHint.textContent = 'Frames er antal billeder, der afspilles. Kolonner og rækker beskriver hele spritesheetets gitter.';
                     const animationFields = {};
                     for (const [key, labelText, value, max] of [
                         ['frames', 'Frames', roomAnimation.frames, 256],
                         ['columns', 'Kolonner', roomAnimation.columns, 16],
-                        ['rows', 'Rækker (beregnes)', roomAnimation.rows, 256],
+                        ['rows', 'Rækker', roomAnimation.rows, 256],
                         ['fps', 'FPS', roomAnimation.fps, 24]
                     ]) {
                         const label = document.createElement('label');
                         label.textContent = labelText;
                         const input = document.createElement('input');
                         input.type = 'number'; input.min = '1'; input.max = String(max); input.step = '1'; input.value = String(value);
-                        if (key === 'rows') input.readOnly = true;
                         input.setAttribute('aria-label', `${labelText} i baggrundens spritesheet`);
                         animationFields[key] = input;
                         label.append(input);
@@ -4948,12 +4947,12 @@
                         const frames = Math.floor(Number(animationFields.frames.value));
                         const columns = Math.floor(Number(animationFields.columns.value));
                         if (!Number.isFinite(frames) || frames < 1 || !Number.isFinite(columns) || columns < 1) return;
-                        const rows = Math.ceil(frames / columns);
-                        animationFields.rows.value = String(rows);
-                        animationSummary.textContent = `${columns} x ${rows} felter - ${frames} frames.`;
+                        const rows = Math.floor(Number(animationFields.rows.value));
+                        if (!Number.isFinite(rows) || rows < 1) return;
+                        animationSummary.textContent = `${columns} x ${rows} felter - ${frames} frames afspilles.`;
                     };
                     animationControls.append(animationSummary);
-                    [animationFields.frames, animationFields.columns].forEach((input) =>
+                    Object.values(animationFields).forEach((input) =>
                         input.addEventListener('input', syncRoomAnimationGrid)
                     );
                     syncRoomAnimationGrid();
@@ -4972,10 +4971,18 @@
                     chooseBackground.addEventListener('click', () => fileInput.click());
                     fileInput.addEventListener('change', () => {
                         if (fileInput.files?.[0]) {
+                            const frames = Math.floor(Number(animationFields.frames.value));
+                            const columns = Math.floor(Number(animationFields.columns.value));
+                            const rows = Math.floor(Number(animationFields.rows.value));
+                            if (frames > columns * rows) {
+                                backgroundStatus.textContent = 'Antal frames kan ikke være større end antal felter i spritesheetet.';
+                                fileInput.value = '';
+                                return;
+                            }
                             uploadAdminRoomBackground(room.id, fileInput.files[0], backgroundStatus, {
-                                columns: Number(animationFields.columns.value),
-                                rows: Number(animationFields.rows.value),
-                                frames: Number(animationFields.frames.value),
+                                columns,
+                                rows,
+                                frames,
                                 fps: Number(animationFields.fps.value)
                             });
                         }
