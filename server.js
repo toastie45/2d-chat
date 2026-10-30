@@ -958,6 +958,17 @@ async function startServer() {
     `);
     await pool.query("ALTER TABLE chat_shop_room_items ADD COLUMN IF NOT EXISTS variant_group VARCHAR(60) NOT NULL DEFAULT ''");
     await pool.query("ALTER TABLE chat_shop_room_items ADD COLUMN IF NOT EXISTS variant_label VARCHAR(30) NOT NULL DEFAULT ''");
+    await pool.query("ALTER TABLE chat_shop_room_items ADD COLUMN IF NOT EXISTS shop_section_key VARCHAR(20) NOT NULL DEFAULT ''");
+    await pool.query(`
+        UPDATE chat_shop_room_items listed
+        SET shop_section_key = CASE
+            WHEN item.required_level <= 8 THEN 'level_1_8'
+            WHEN item.required_level <= 16 THEN 'level_9_16'
+            ELSE 'level_17_20'
+        END
+        FROM chat_clothing_catalog item
+        WHERE listed.clothing_item_id = item.id AND listed.shop_section_key = ''
+    `);
     await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_app_migrations (
             migration_key TEXT PRIMARY KEY,
@@ -2673,6 +2684,7 @@ async function startServer() {
                     SELECT item.id, item.name, item.description, item.category, item.target_avatar_type,
                            COALESCE((SELECT listed.variant_group FROM chat_shop_room_items listed WHERE listed.room_id = $1 AND listed.clothing_item_id = item.id), '') AS variant_group,
                            COALESCE((SELECT listed.variant_label FROM chat_shop_room_items listed WHERE listed.room_id = $1 AND listed.clothing_item_id = item.id), '') AS variant_label,
+                           COALESCE((SELECT listed.shop_section_key FROM chat_shop_room_items listed WHERE listed.room_id = $1 AND listed.clothing_item_id = item.id), '') AS shop_section_key,
                            item.required_level, item.price, item.transform_json, item.animation_json, item.image_version,
                            EXISTS (SELECT 1 FROM chat_shop_room_items listed
                                    WHERE listed.room_id = $1 AND listed.clothing_item_id = item.id) AS is_shop_listed,
@@ -2684,6 +2696,9 @@ async function startServer() {
                 socket.emit('admin-shop-room-data', { roomId, isOpen: room.shop_is_open === true, shopContent: room.shop_content || {}, items: rows.map((item) => ({
                     id: String(item.id), name: item.name, description: item.description, category: item.category,
                     variantGroup: item.variant_group || '', variantLabel: item.variant_label || '',
+                    shopSectionKey: ['level_1_8', 'level_9_16', 'level_17_20', 'custom'].includes(item.shop_section_key)
+                        ? item.shop_section_key
+                        : Number(item.required_level) <= 8 ? 'level_1_8' : Number(item.required_level) <= 16 ? 'level_9_16' : 'level_17_20',
                     avatarType: item.target_avatar_type, requiredLevel: Number(item.required_level), price: Number(item.price),
                     imageVersion: Number(item.image_version || 1), imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.image_version || 1}`,
                     animation: normalizeClothingAnimation(item.animation_json),
@@ -2695,7 +2710,7 @@ async function startServer() {
             }
         });
 
-        socket.on('admin-shop-room-item-set', async ({ roomId, id, listed } = {}) => {
+        socket.on('admin-shop-room-item-set', async ({ roomId, id, listed, sectionKey = '' } = {}) => {
             if (!socket.data.canManageClothing || !activeSocketIds.has(socket.id)) return;
             if (typeof roomId !== 'string' || !/^(common|disco|public:[1-9]\d{0,18})$/.test(roomId)
                 || typeof id !== 'string' || !/^[1-9]\d{0,18}$/.test(id) || typeof listed !== 'boolean') return;
@@ -2705,8 +2720,23 @@ async function startServer() {
                     socket.emit('admin-shop-action-result', { success: false, message: 'Rummet er ikke markeret som butik.' });
                     return;
                 }
+                if (listed && sectionKey && !['level_1_8', 'level_9_16', 'level_17_20', 'custom'].includes(sectionKey)) {
+                    socket.emit('admin-shop-action-result', { success: false, message: 'Vælg en af butikkens fire varegrupper.' });
+                    return;
+                }
                 const result = listed
-                    ? await pool.query(`INSERT INTO chat_shop_room_items (room_id, clothing_item_id) SELECT $1, id FROM chat_clothing_catalog WHERE id = $2 ON CONFLICT DO NOTHING RETURNING clothing_item_id`, [roomId, id])
+                    ? await pool.query(`
+                        INSERT INTO chat_shop_room_items (room_id, clothing_item_id, shop_section_key)
+                        SELECT $1, item.id, COALESCE(NULLIF($3, ''), CASE
+                            WHEN item.required_level <= 8 THEN 'level_1_8'
+                            WHEN item.required_level <= 16 THEN 'level_9_16'
+                            ELSE 'level_17_20'
+                        END)
+                        FROM chat_clothing_catalog item WHERE item.id = $2
+                        ON CONFLICT (room_id, clothing_item_id) DO UPDATE
+                        SET shop_section_key = EXCLUDED.shop_section_key
+                        RETURNING clothing_item_id
+                    `, [roomId, id, sectionKey])
                     : await pool.query('DELETE FROM chat_shop_room_items WHERE room_id = $1 AND clothing_item_id = $2 RETURNING clothing_item_id', [roomId, id]);
                 if (listed && !result.rowCount) {
                     const { rowCount } = await pool.query('SELECT 1 FROM chat_clothing_catalog WHERE id = $1', [id]);
@@ -2764,7 +2794,8 @@ async function startServer() {
             const group = typeof groupName === 'string' ? groupName.normalize('NFKC').trim() : '';
             const normalizedItems = items.map((item) => ({
                 id: typeof item?.id === 'string' ? item.id : '',
-                label: typeof item?.label === 'string' ? item.label.normalize('NFKC').trim() : ''
+                label: typeof item?.label === 'string' ? item.label.normalize('NFKC').trim() : '',
+                sectionKey: ['level_1_8', 'level_9_16', 'level_17_20', 'custom'].includes(item?.sectionKey) ? item.sectionKey : ''
             }));
             const ids = normalizedItems.map((item) => item.id);
             if (!group || group.length > 60 || /[\u0000-\u001f\u007f]/.test(group)
@@ -2785,7 +2816,7 @@ async function startServer() {
                 );
                 if (!shopExists) throw new Error('NOT_A_SHOP');
                 const { rows: catalogItems } = await client.query(
-                    'SELECT id, category, target_avatar_type FROM chat_clothing_catalog WHERE id = ANY($1::bigint[])', [ids]
+                    'SELECT id, category, target_avatar_type, required_level FROM chat_clothing_catalog WHERE id = ANY($1::bigint[])', [ids]
                 );
                 if (catalogItems.length !== ids.length) throw new Error('ITEM_MISSING');
                 const firstItem = catalogItems[0];
@@ -2793,12 +2824,16 @@ async function startServer() {
                     throw new Error('INCOMPATIBLE_ITEMS');
                 }
                 for (const item of normalizedItems) {
+                    const catalogItem = catalogItems.find((entry) => String(entry.id) === item.id);
+                    const sectionKey = item.sectionKey || (Number(catalogItem.required_level) <= 8
+                        ? 'level_1_8' : Number(catalogItem.required_level) <= 16 ? 'level_9_16' : 'level_17_20');
                     const { rowCount } = await client.query(`
-                        INSERT INTO chat_shop_room_items (room_id, clothing_item_id, variant_group, variant_label)
-                        VALUES ($1, $2, $3, $4)
+                        INSERT INTO chat_shop_room_items (room_id, clothing_item_id, variant_group, variant_label, shop_section_key)
+                        VALUES ($1, $2, $3, $4, $5)
                         ON CONFLICT (room_id, clothing_item_id) DO UPDATE
-                        SET variant_group = EXCLUDED.variant_group, variant_label = EXCLUDED.variant_label
-                    `, [roomId, item.id, group, item.label]);
+                        SET variant_group = EXCLUDED.variant_group, variant_label = EXCLUDED.variant_label,
+                            shop_section_key = EXCLUDED.shop_section_key
+                    `, [roomId, item.id, group, item.label, sectionKey]);
                     if (!rowCount) throw new Error('SAVE_FAILED');
                 }
                 await client.query('COMMIT');
@@ -2846,7 +2881,7 @@ async function startServer() {
             if (!socket.data.canManageClothing || !activeSocketIds.has(socket.id)
                 || typeof roomId !== 'string' || !/^(common|disco|public:[1-9]\d{0,18})$/.test(roomId)
                 || !content || typeof content !== 'object' || Array.isArray(content)) return;
-            const categoryKeys = ['level_1_8', 'level_9_16', 'level_17_20', 'accessories', 'headwear', 'hair', 'beard', 'glasses', 'clothing', 'left_hand', 'right_hand', 'accessory'];
+            const categoryKeys = ['level_1_8', 'level_9_16', 'level_17_20', 'custom'];
             const cleanText = (value, max) => typeof value === 'string'
                 ? value.normalize('NFKC').trim().replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').slice(0, max)
                 : '';
@@ -2854,7 +2889,7 @@ async function startServer() {
                 title: cleanText(content.title, 60),
                 intro: cleanText(content.intro, 240),
                 welcome: cleanText(content.welcome, 240),
-                grouping: ['mixed', 'category'].includes(content.grouping) ? content.grouping : 'level',
+                customGroupTitle: cleanText(content.customGroupTitle, 40),
                 categories: {}
             };
             for (const key of categoryKeys) {
@@ -2894,7 +2929,7 @@ async function startServer() {
                 const { rows } = await pool.query(`
                     SELECT item.id, item.name, item.description, item.category, item.target_avatar_type,
                            item.required_level, item.price, item.image_version, item.animation_json,
-                           listed.variant_group, listed.variant_label
+                           listed.variant_group, listed.variant_label, listed.shop_section_key
                     FROM chat_clothing_catalog item
                     JOIN chat_shop_room_items listed ON listed.clothing_item_id = item.id AND listed.room_id = $2
                     WHERE item.target_avatar_type = (SELECT avatar_type FROM chat_users WHERE id = $1)
@@ -2904,6 +2939,9 @@ async function startServer() {
                 socket.emit('shop-items', { content: status.shop_content || {}, items: rows.map((item) => ({
                     id: String(item.id), name: item.name, description: item.description,
                     variantGroup: item.variant_group || '', variantLabel: item.variant_label || '',
+                    shopSectionKey: ['level_1_8', 'level_9_16', 'level_17_20', 'custom'].includes(item.shop_section_key)
+                        ? item.shop_section_key
+                        : Number(item.required_level) <= 8 ? 'level_1_8' : Number(item.required_level) <= 16 ? 'level_9_16' : 'level_17_20',
                     category: item.category, avatarType: item.target_avatar_type, requiredLevel: Number(item.required_level),
                     price: Number(item.price), imageVersion: Number(item.image_version || 1),
                     imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.image_version || 1}`,
