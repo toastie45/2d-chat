@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Reusable art-direction brief for creating new 2D chat-room backgrounds that fit the existing room illustration.",
+  "reference": {
+    "file": "public/images/test-room-background.png",
+    "description": "Top-down illustrated living room with warm plank flooring, leafy plants, a green sofa and rug in the upper-right, and a small chair with a round rug in the lower-left.",
+    "aspectRatio": "3:2"
+  },
+  "style": {
+    "medium": "Polished 2D digital illustration for a friendly virtual chat room",
+    "view": "Straight-down bird's-eye view; furniture tops and floor are visible, with no horizon or isometric side walls",
+    "outlines": "Distinct dark brown hand-inked outlines, clean and slightly organic rather than geometric or photorealistic",
+    "shading": "Soft painted highlights and compact contact shadows under furniture; gentle cel-shading with readable forms",
+    "texture": "Visible fine brush texture and material detail, especially wood grain, woven fibers, fabric seams, and plant leaves",
+    "finish": "Warm, inviting, game-ready illustration with consistent line weight and moderate detail"
+  },
+  "palette": {
+    "dominant": ["warm honey oak", "amber orange", "deep walnut brown"],
+    "accents": ["muted olive green", "leaf green", "cream", "rust orange"],
+    "contrast": "Dark outlines and shadows clearly separate props from the floor; keep the central floor area bright and readable"
+  },
+  "composition": {
+    "camera": "Orthographic overhead view",
+    "layout": "Room fills the whole canvas edge to edge. Place furniture and decoration around the perimeter, leaving a large, uncluttered central area for avatars to stand and move.",
+    "playableSpace": "Keep the center and likely avatar paths visually calm, unobstructed, and at a similar brightness to the reference floor.",
+    "edgeTreatment": "Objects may be partially cropped by the canvas edges to make the room feel continuous; avoid a visible frame or border.",
+    "depthCues": "Use subtle cast/contact shadows to show that sofas, chairs, tables, rugs, plants, and props rest on the floor. Do not make the floor look like a wall."
+  },
+  "generation": {
+    "promptTemplate": "Create a new top-down 2D chat-room background in the same visual style as the supplied reference. Room concept: {{roomConcept}}. Use a warm, hand-painted game illustration with dark brown ink outlines, softly shaded forms, visible material texture, and cozy amber lighting. Fill the full canvas with the room floor. Arrange room-specific furniture and decoration around the perimeter and preserve a wide, uncluttered central play area for small avatars. Match the reference's outline weight, texture density, overhead camera, and friendly polished finish. Aspect ratio 3:2.",
+    "negativePrompt": [
+      "photorealism",
+      "3D render",
+      "isometric view",
+      "perspective horizon",
+      "side walls",
+      "people",
+      "avatars",
+      "characters",
+      "text",
+      "logos",
+      "watermarks",
+      "UI elements",
+      "grid lines",
+      "tile diamonds",
+      "large furniture blocking the center",
+      "flat vector shapes",
+      "neon lighting",
+      "heavy blur",
+      "low-resolution texture"
+    ],
+    "deliverable": {
+      "type": "single static background image",
+      "aspectRatio": "3:2",
+      "recommendedFormat": "PNG or WebP",
+      "mustKeepCenterOpen": true,
+      "mustContainNoAvatar": true
+    }
+  },
+  "consistencyChecks": [
+    "The view is directly overhead and the room has no horizon.",
+    "The illustration uses the same warm hand-drawn outline and painted-texture language as the reference.",
+    "Furniture reads clearly at chat-canvas scale and has visible contact shadows.",
+    "The center remains open enough for multiple avatars to stand without covering key props.",
+    "There are no people, text, interface elements, logos, or grid overlays."
+  ]
+}

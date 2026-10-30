@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "room": {
+    "suggestedName": "Diskoteket",
+    "suggestedRoomNumber": 2,
+    "background": "public/images/disco-background.png",
+    "animatedBackground": "public/images/disco-background-spritesheet.png"
+  },
+  "backgroundAnimation": {
+    "columns": 2,
+    "rows": 2,
+    "frames": 4,
+    "fps": 3
+  },
+  "description": "Top-down illustrated nightclub in the same warm, hand-painted style as the existing room art. Includes a central illuminated dance floor, DJ booth in the upper-left, and a bar on the right with a service area for an avatar behind it.",
+  "notes": [
+    "Upload the regular background for a static room, or upload the spritesheet and use the animation values above.",
+    "The spritesheet repeats the same room layout across four lighting phases; only dance-floor colors and light beams shift.",
+    "Set locked tiles in the room editor wherever furniture should block avatar movement."
+  ]
+}

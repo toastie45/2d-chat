@@ -5393,7 +5393,7 @@
                         button.setAttribute('role', 'listitem');
                         const itemId = String(item.id);
                         const selected = wardrobeDraftIds.has(itemId);
-                        const locked = !selected && Number(item.requiredLevel) > wardrobeLevel;
+                        const locked = !isAdminUser && !selected && Number(item.requiredLevel) > wardrobeLevel;
                         button.setAttribute('aria-pressed', String(selected));
                         button.disabled = locked;
                         button.title = locked ? `Kræver level ${item.requiredLevel}. Du er level ${wardrobeLevel}.` : item.description || '';
@@ -8444,7 +8444,7 @@
                     viewProfileApartmentLink.hidden = false;
                 } else {
                     viewProfileApartmentValue.textContent = 'Ingen endnu';
-                    apartmentCreateButton.hidden = !viewingOwnProfile || level < 6;
+                    apartmentCreateButton.hidden = !viewingOwnProfile || (level < 6 && !isAdminUser);
                 }
                 updateProfileRelationship(profile.relationship);
                 viewProfileRealName.textContent = profile.realName || 'Ikke angivet.';

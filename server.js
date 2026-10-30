@@ -150,8 +150,9 @@ local function tryJoin(cell)
     local tileState = redis.call('HGET', KEYS[3], cell)
     local isClosed = tileState == 'closed' or (tileState and string.sub(tileState, 1, 7) == 'closed|')
     local isInvisible = ARGV[6] == '1'
+    local isAdmin = ARGV[8] == '1'
     local occupant = redis.call('HGET', KEYS[2], cell)
-    if (isInvisible or not occupant) and not isClosed then
+    if (isInvisible or not occupant) and (isAdmin or not isClosed) then
         local col, row = string.match(cell, '^([%-]?%d+):([%-]?%d+)$')
         local player = {
             id = ARGV[1],
@@ -176,7 +177,7 @@ local function tryJoin(cell)
 end
 
 -- In an apartment, prefer a designated door as the spawn point when available.
-for index = 8, #ARGV do
+for index = 9, #ARGV do
     local cell = ARGV[index]
     local tileState = redis.call('HGET', KEYS[3], cell)
     if tileState == 'door' or (tileState and string.sub(tileState, 1, 5) == 'door:') then
@@ -184,7 +185,7 @@ for index = 8, #ARGV do
         if player then return player end
     end
 end
-for index = 8, #ARGV do
+for index = 9, #ARGV do
     local player = tryJoin(ARGV[index])
     if player then return player end
 end
@@ -1475,7 +1476,7 @@ async function startServer() {
             const clientIp = getRequestIpAddress(request);
             const ipHash = hashRegistrationIp(clientIp, SESSION_SECRET);
             const ban = await getActiveIpBan(ipHash);
-            if (ban) {
+            if (ban && getAdminRole(request.session.user) === 'none') {
                 response.status(403).json({ code: 'CHAT_IP_BANNED', error: formatIpBanMessage(ban) });
                 return;
             }
@@ -1734,16 +1735,6 @@ async function startServer() {
     app.post('/api/auth/register', enforceAuthRateLimit, async (request, response, next) => {
         const tabId = requireTabId(request, response);
         if (!tabId) return;
-        try {
-            const ban = await getActiveIpBan(hashRegistrationIp(getRequestIpAddress(request), SESSION_SECRET));
-            if (ban) {
-                response.status(403).json({ code: 'CHAT_IP_BANNED', error: formatIpBanMessage(ban) });
-                return;
-            }
-        } catch (error) {
-            next(error);
-            return;
-        }
         const account = normalizeUsername(request.body && request.body.username);
         const password = request.body && request.body.password;
         const avatarType = request.body && request.body.avatarType;
@@ -1857,6 +1848,13 @@ async function startServer() {
                 response.status(401).json({ error: 'Forkert brugernavn eller adgangskode.' });
                 return;
             }
+            if (getAdminRole(userRecord) === 'none') {
+                const ban = await getActiveIpBan(hashRegistrationIp(getRequestIpAddress(request), SESSION_SECRET));
+                if (ban) {
+                    response.status(403).json({ code: 'CHAT_IP_BANNED', error: formatIpBanMessage(ban) });
+                    return;
+                }
+            }
             const user = { id: userRecord.id, username: userRecord.username, avatarType: userRecord.avatar_type === 'girl' ? 'girl' : 'boy' };
             await saveAuthenticatedSession(request, user, tabId);
             await pool.query('UPDATE chat_users SET last_login_at = NOW() WHERE id = $1', [user.id]);
@@ -1921,11 +1919,12 @@ async function startServer() {
         );
         socket.data.adminRole = getAdminRole(socket.data.user);
         socket.data.isAdmin = socket.data.adminRole === 'full';
+        socket.data.isChatAdmin = socket.data.adminRole !== 'none';
         socket.data.canManagePublicRooms = socket.data.isAdmin || socket.data.adminRole === 'rooms-clothing';
         socket.data.canManageClothing = socket.data.isAdmin || socket.data.adminRole === 'rooms-clothing';
         try {
             const ban = await getActiveIpBan(socket.data.ipHash);
-            if (ban) {
+            if (ban && !socket.data.isChatAdmin) {
                 next(new Error(`CHAT_IP_BANNED:${formatIpBanMessage(ban)}`));
                 return;
             }
@@ -2402,7 +2401,7 @@ async function startServer() {
     async function placeSocketInRoom(socket, roomId, { bypassRoomAccess = false } = {}) {
         if (isPublicChatRoomId(roomId)) {
             const policy = await getPublicRoomPolicy(roomId);
-            if (publicRoomAccessError(policy, bypassRoomAccess || Boolean(socket.data.canManagePublicRooms))) return null;
+        if (publicRoomAccessError(policy, bypassRoomAccess || Boolean(socket.data.isChatAdmin))) return null;
         }
         const keys = roomKeys(roomId);
         const apartmentTiles = await loadApartmentTiles(roomId);
@@ -2414,6 +2413,7 @@ async function startServer() {
                 JSON.stringify(clothing),
                 invisibleSocketIds.has(socket.id) ? '1' : '0',
                 socket.data.user.avatarType === 'girl' ? 'girl' : 'boy',
+                socket.data.isChatAdmin ? '1' : '0',
                 ...GRID_CELLS.map((cell) => `${cell.col}:${cell.row}`)]
         });
         if (!joined) return null;
@@ -2463,7 +2463,7 @@ async function startServer() {
         return publicPlayer(JSON.parse(joined));
     }
 
-    async function moveSocketNearTarget(socket, roomId, targetSocketId, { allowClosed = false } = {}) {
+    async function moveSocketNearTarget(socket, roomId, targetSocketId, { allowClosed = Boolean(socket.data.isChatAdmin) } = {}) {
         const keys = roomKeys(roomId);
         const targetJson = await redis.hGet(keys.players, targetSocketId);
         if (!targetJson) return false;
@@ -3469,7 +3469,9 @@ async function startServer() {
                     return;
                 }
                 const selectedItems = selectedIds.map((id) => ownedById.get(id));
-                const lockedItem = selectedItems.find((item) => Number(item.required_level) > level);
+                const lockedItem = socket.data.isChatAdmin
+                    ? null
+                    : selectedItems.find((item) => Number(item.required_level) > level);
                 if (lockedItem) {
                     await client.query('ROLLBACK');
                     socket.emit('wardrobe-action-result', {
@@ -4360,9 +4362,14 @@ async function startServer() {
                     cleanReason, cleanInitials, expiresAt]);
                 const banMessage = formatIpBanMessage({ reason: cleanReason, admin_initials: cleanInitials, expires_at: expiresAt });
                 const { rows: affectedSessions } = await pool.query(
-                    'SELECT socket_id FROM chat_online_sessions WHERE ip_hash = $1', [targetIpHash]
+                    `SELECT sessions.socket_id, users.username
+                     FROM chat_online_sessions sessions
+                     JOIN chat_users users ON users.id = sessions.user_id
+                     WHERE sessions.ip_hash = $1`, [targetIpHash]
                 );
-                const affectedSockets = affectedSessions.map((session) => session.socket_id);
+                const affectedSockets = affectedSessions
+                    .filter((session) => getAdminRole({ username: session.username }) === 'none')
+                    .map((session) => session.socket_id);
                 for (const id of affectedSockets) await kickPlayer(id, banMessage);
                 socket.emit('admin-action-result', {
                     success: true,
@@ -4396,7 +4403,7 @@ async function startServer() {
             if (!await isValidRoomId(roomId)) return;
             if (activeSocketRooms.get(socket.id) === roomId) return;
             if (isPublicChatRoomId(roomId)) {
-                const accessError = publicRoomAccessError(await getPublicRoomPolicy(roomId), Boolean(socket.data.canManagePublicRooms));
+                const accessError = publicRoomAccessError(await getPublicRoomPolicy(roomId), Boolean(socket.data.isChatAdmin));
                 if (accessError) {
                     socket.emit('room-error', { message: accessError });
                     return;
@@ -4408,7 +4415,7 @@ async function startServer() {
                 if (apartmentMatch) {
                     const { rows: [apartment] } = await pool.query('SELECT owner_id FROM chat_apartments WHERE id = $1', [apartmentMatch[1]]);
                     if (!apartment) return;
-                    if (!socket.data.isAdmin && String(apartment.owner_id) !== String(socket.data.user.id)) {
+                    if (!socket.data.isChatAdmin && String(apartment.owner_id) !== String(socket.data.user.id)) {
                         const admissionKey = `chat:apartment-admission:${socket.id}:${apartment.id}`;
                         const admission = await redis.getDel(admissionKey);
                         if (!admission) {
@@ -4829,7 +4836,7 @@ async function startServer() {
             if (!activeSocketIds.has(socket.id)) return;
             try {
                 await cleanupStalePlayers();
-                const publicRooms = (await getPublicRooms()).filter((room) => socket.data.canManagePublicRooms || !room.is_hidden);
+                const publicRooms = (await getPublicRooms()).filter((room) => socket.data.isChatAdmin || !room.is_hidden);
                 const rooms = publicRooms.map((room) => ({
                     id: room.id,
                     name: formatPublicRoomName(room),
@@ -4843,13 +4850,13 @@ async function startServer() {
                     SELECT DISTINCT a.id, a.apartment_number, a.apartment_name, a.owner_id::text AS owner_id, u.username
                     FROM chat_apartments a
                     JOIN chat_users u ON u.id = a.owner_id
-                    ${socket.data.isAdmin ? '' : 'JOIN chat_online_sessions s ON s.user_id = a.owner_id'}
+                    ${socket.data.isChatAdmin ? '' : 'JOIN chat_online_sessions s ON s.user_id = a.owner_id'}
                     ORDER BY a.apartment_number
                 `);
                 const visibleOnlineOwners = new Set([...activeSocketUsers.entries()]
                     .filter(([socketId]) => !invisibleSocketIds.has(socketId))
                     .map(([, userId]) => String(userId)));
-                const apartments = socket.data.isAdmin
+                const apartments = socket.data.isChatAdmin
                     ? apartmentRows
                     : apartmentRows.filter((apartment) => visibleOnlineOwners.has(apartment.owner_id));
                 for (const apartment of apartments) {
@@ -4902,7 +4909,7 @@ async function startServer() {
                     .filter((session) => !invisibleSocketIds.has(session.socket_id))
                     .map((session) => {
                     const roomId = roomBySocketId.get(session.socket_id) || null;
-                    const isPrivate = Boolean(roomId && hiddenRoomIds.has(roomId) && !socket.data.isAdmin);
+                    const isPrivate = Boolean(roomId && hiddenRoomIds.has(roomId) && !socket.data.isChatAdmin);
                     return {
                         userId: session.user_id,
                         name: session.username,
@@ -4942,7 +4949,7 @@ async function startServer() {
                     pool.query('SELECT accepted_chat_messages FROM chat_users WHERE id = $1', [socket.data.user.id])
                 ]);
                 const level = getUserLevel(totalOnlineMs, Number(progress?.accepted_chat_messages || 0));
-                if (level < 6) {
+                if (level < 6 && !socket.data.isChatAdmin) {
                     socket.emit('apartment-create-result', { error: 'Du skal nå level 6 for at få din egen lejlighed.' });
                     return;
                 }
@@ -4987,7 +4994,7 @@ async function startServer() {
                     socket.emit('apartment-visit-result', { message: 'Brugeren har skiftet rum. Prøv igen.' });
                     return;
                 }
-                if (socket.data.isAdmin) {
+                if (socket.data.isChatAdmin) {
                     if (socket.data.switchingRoom) return;
                     socket.data.switchingRoom = true;
                     try {
@@ -5249,7 +5256,7 @@ async function startServer() {
                         const apartmentRoomId = `apartment:${apartment.id}`;
                         if (activeSocketRooms.get(socket.id) === apartmentRoomId) {
                             socket.emit('profile-teleport-result', { message: `Du er allerede i lejlighed #${rawTarget}.` });
-                        } else if (socket.data.isAdmin) {
+                        } else if (socket.data.isChatAdmin) {
                             socket.data.switchingRoom = true;
                             try {
                                 const joined = await placeSocketInRoom(socket, apartmentRoomId);
@@ -6033,6 +6040,7 @@ async function startServer() {
                     JSON.stringify(clothing),
                     '0',
                     socket.data.user.avatarType === 'girl' ? 'girl' : 'boy',
+                    socket.data.isChatAdmin ? '1' : '0',
                     ...GRID_CELLS.map((cell) => `${cell.col}:${cell.row}`)
                 ];
                 const joinedPlayerJson = await redis.eval(PLAYER_JOIN_SCRIPT, {
@@ -6159,7 +6167,7 @@ async function startServer() {
                 const keys = roomKeys(roomId);
                 const movedPlayerJson = await redis.eval(PLAYER_MOVE_SCRIPT, {
                     keys: [keys.players, keys.cells, keys.tiles],
-                    arguments: [socket.id, String(position.col), String(position.row), String(Date.now()), socket.data.isAdmin ? '1' : '0']
+                    arguments: [socket.id, String(position.col), String(position.row), String(Date.now()), socket.data.isChatAdmin ? '1' : '0']
                 });
                 if (!movedPlayerJson) {
                     return;
