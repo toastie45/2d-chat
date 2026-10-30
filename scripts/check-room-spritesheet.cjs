@@ -6,7 +6,7 @@ const os = require('node:os');
 const http = require('node:http');
 const { spawn } = require('node:child_process');
 const assert = require('node:assert/strict');
-const djPresetId = process.env.ROOM_BACKGROUND_PRESET || 'disco-dj-seating-v2';
+const djPresetId = process.env.ROOM_BACKGROUND_PRESET || 'disco-dj-grid-v3';
 const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 const extract = (start, end) => html.slice(html.indexOf(start), html.indexOf(end, html.indexOf(start)));
 const code = extract('function normalizeClothingAnimation(', 'function getClothingSpriteFrame(')

@@ -1,0 +1,15 @@
+{
+  "gridCanvas": { "width": 540, "height": 360 },
+  "backgroundCanvas": { "width": 1536, "height": 1024 },
+  "stoolSprite": "public/images/disco-stool.png",
+  "sourceSeatCenter": { "x": 635, "y": 486 },
+  "sourceSeatWidth": 880,
+  "targetSeatWidth": 140,
+  "seats": [
+    { "cell": "2:-2", "x": 405, "y": 45, "area": "bar" },
+    { "cell": "3:-1", "x": 405, "y": 135, "area": "bar" },
+    { "cell": "4:0", "x": 405, "y": 225, "area": "bar" },
+    { "cell": "1:5", "x": 45, "y": 315, "area": "lounge" },
+    { "cell": "2:4", "x": 135, "y": 315, "area": "lounge" }
+  ]
+}

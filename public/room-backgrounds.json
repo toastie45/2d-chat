@@ -1,16 +1,16 @@
 {
   "backgrounds": [
     {
-      "id": "disco-dj-seating-v2",
-      "name": "Diskotek – større siddemøbler og DJ-pult",
-      "url": "/images/disco-dj-seating-spritesheet.png?v=2",
+      "id": "disco-dj-grid-v3",
+      "name": "Diskotek – stole placeret efter grid",
+      "url": "/images/disco-dj-grid-spritesheet.png?v=3",
       "animation": { "columns": 4, "rows": 2, "frames": 8, "fps": 6 },
       "overlay": {
-        "url": "/images/disco-dj-seating-overlay-spritesheet.png?v=2",
+        "url": "/images/disco-dj-grid-overlay-spritesheet.png?v=3",
         "animation": { "columns": 4, "rows": 2, "frames": 8, "fps": 6 }
       },
-      "openCells": ["-1:1"],
-      "closedCells": ["-1:2"]
+      "openCells": ["-1:1", "2:-2", "3:-1", "4:0", "1:5", "2:4"],
+      "closedCells": ["-1:2", "1:4"]
     }
   ]
 }

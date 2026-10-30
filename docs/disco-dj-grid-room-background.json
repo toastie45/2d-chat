@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "styleReference": "room-background-style.json",
+  "placementReference": "disco-dj-grid-placement.json",
+  "catalogId": "disco-dj-grid-v3",
+  "background": "public/images/disco-dj-grid-background.png",
+  "spritesheet": "public/images/disco-dj-grid-spritesheet.png",
+  "overlay": "public/images/disco-dj-grid-overlay-spritesheet.png",
+  "animation": { "columns": 4, "rows": 2, "frames": 8, "fps": 6 },
+  "notes": [
+    "Five complete stool sprites replace the clipped stools painted into the previous backgrounds.",
+    "Seat centers are composited at exact grid coordinates, rather than relying on generated image placement.",
+    "Three seats align vertically at x=405, y=45/135/225. Two lounge seats align at x=45/135, y=315.",
+    "Activation opens the five seat cells and DJ cell and keeps the DJ desk and table blocked.",
+    "The fixed camera, dance floor, DJ decks and animated foreground retain their alignment."
+  ]
+}

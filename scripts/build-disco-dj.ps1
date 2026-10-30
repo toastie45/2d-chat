@@ -1,19 +1,23 @@
-param([string]$EditedRoom, [string]$SeatingEdit)
+param([string]$EditedRoom, [string]$SeatingEdit, [switch]$GridAlignedSeating)
 $ErrorActionPreference = 'Stop'
 if ((!$EditedRoom -and !$SeatingEdit) -or ($EditedRoom -and $SeatingEdit)) {
     throw 'Supply either EditedRoom or SeatingEdit.'
 }
+if ($GridAlignedSeating -and !$SeatingEdit) { throw 'GridAlignedSeating requires SeatingEdit.' }
 Add-Type -AssemblyName System.Drawing
 Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @'
 using System;
 using System.Drawing;
 public static class DjRoomComposite {
-    public static void ApplySeating(Bitmap room, Bitmap edit) {
+    public static void ApplySeating(Bitmap room, Bitmap edit, bool gridAligned) {
         for (int y = 0; y < room.Height; y++) for (int x = 0; x < room.Width; x++) {
             double alpha = 0;
             if (x < 465 && y > 308)
                 alpha = Math.Min(1, Math.Min((465.0-x)/20, (y-308.0)/12));
-            else if (x > 1090 && x < 1295 && y > 170 && y < 760)
+            else if (gridAligned && x > 1074 && x < 1345 && y > 20 && y < 800)
+                alpha = Math.Min(1, Math.Min(Math.Min((x-1074.0)/6, (1345.0-x)/20),
+                    Math.Min((y-20.0)/20, (800.0-y)/20)));
+            else if (!gridAligned && x > 1090 && x < 1295 && y > 170 && y < 760)
                 alpha = Math.Min(1, Math.Min(Math.Min((x-1090.0)/20, (1295.0-x)/8),
                     Math.Min((y-170.0)/15, (760.0-y)/15)));
             if (alpha <= 0) continue;
@@ -39,8 +43,8 @@ public static class DjRoomComposite {
 }
 '@
 $assets = Join-Path $PSScriptRoot '..\public\images'
-$sourceName = if ($SeatingEdit) { 'disco-dj-background.png' } else { 'disco-background.png' }
-$prefix = if ($SeatingEdit) { 'disco-dj-seating' } else { 'disco-dj' }
+$sourceName = if ($GridAlignedSeating) { 'disco-dj-seating-background.png' } elseif ($SeatingEdit) { 'disco-dj-background.png' } else { 'disco-background.png' }
+$prefix = if ($GridAlignedSeating) { 'disco-dj-grid' } elseif ($SeatingEdit) { 'disco-dj-seating' } else { 'disco-dj' }
 $original = [System.Drawing.Bitmap]::new((Join-Path $assets $sourceName))
 $edit = [System.Drawing.Bitmap]::new($(if ($SeatingEdit) { $SeatingEdit } else { $EditedRoom }))
 if ($edit.Width -ne 1536 -or $edit.Height -ne 1024) { throw 'The edited room must be exactly 1536 x 1024 pixels.' }
@@ -51,8 +55,25 @@ $backgroundGraphics = [System.Drawing.Graphics]::FromImage($backgrounds)
 $overlayGraphics = [System.Drawing.Graphics]::FromImage($overlays)
 try {
     # Import only the AI-edited DJ area. All other source pixels, including bar and dance floor, stay exact.
-    if ($SeatingEdit) { [DjRoomComposite]::ApplySeating($room, $edit) }
+    if ($SeatingEdit) { [DjRoomComposite]::ApplySeating($room, $edit, $GridAlignedSeating.IsPresent) }
     else { [DjRoomComposite]::Apply($room, $edit) }
+    if ($GridAlignedSeating) {
+        $placement = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\docs\disco-dj-grid-placement.json') -Raw | ConvertFrom-Json
+        if ($placement.sourceSeatWidth -le 1) { throw 'Measure and record the stool sprite seat geometry first.' }
+        $stool = [System.Drawing.Bitmap]::new((Join-Path $PSScriptRoot ('..\' + $placement.stoolSprite)))
+        $furnitureGraphics = [System.Drawing.Graphics]::FromImage($room)
+        try {
+            $furnitureGraphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+            $spriteScale = $placement.targetSeatWidth / $placement.sourceSeatWidth
+            $gridScale = $placement.backgroundCanvas.width / $placement.gridCanvas.width
+            foreach ($seat in $placement.seats) {
+                $left = $seat.x * $gridScale - $placement.sourceSeatCenter.x * $spriteScale
+                $top = $seat.y * $gridScale - $placement.sourceSeatCenter.y * $spriteScale
+                $destination = [System.Drawing.RectangleF]::new($left,$top,$stool.Width*$spriteScale,$stool.Height*$spriteScale)
+                $furnitureGraphics.DrawImage($stool,$destination)
+            }
+        } finally { $furnitureGraphics.Dispose(); $stool.Dispose() }
+    }
     $room.Save((Join-Path $assets ($prefix + '-background.png')), [System.Drawing.Imaging.ImageFormat]::Png)
 
     $booth = [System.Drawing.Drawing2D.GraphicsPath]::new()
