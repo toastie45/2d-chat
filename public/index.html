@@ -2527,8 +2527,10 @@
             }
             function normalizeClothingAnimation(value = {}) {
                 const columns = Math.max(1, Math.min(16, Math.floor(Number(value?.columns) || 1)));
-                const rows = Math.max(1, Math.min(256, Math.floor(Number(value?.rows) || 1)));
-                const frames = Math.max(1, Math.min(columns * rows, 256, Math.floor(Number(value?.frames) || 1)));
+                const requestedRows = Math.max(1, Math.floor(Number(value?.rows) || 1));
+                const requestedFrames = Math.max(1, Math.min(256, Math.floor(Number(value?.frames) || 1)));
+                const rows = Math.max(1, Math.min(256, Math.max(requestedRows, Math.ceil(requestedFrames / columns))));
+                const frames = Math.max(1, Math.min(columns * rows, 256, requestedFrames));
                 const fps = Math.max(1, Math.min(24, Number(value?.fps) || 8));
                 return { columns, rows, frames, fps };
             }
@@ -4920,24 +4922,41 @@
                     const animationTitle = document.createElement('strong');
                     animationTitle.textContent = 'Spritesheet til rummets baggrund';
                     const animationHint = document.createElement('small');
-                    animationHint.textContent = 'Ét billede pr. frame, læst fra venstre mod højre og derefter næste række. Brug 1 × 1 til en fast baggrund.';
+                    animationHint.textContent = 'Angiv antal frames og kolonner. Rækker beregnes automatisk; sæt kolonner til 1 for et lodret spritesheet.';
                     const animationFields = {};
                     for (const [key, labelText, value, max] of [
-                        ['columns', 'Kolonner', roomAnimation.columns, 16],
-                        ['rows', 'Rækker', roomAnimation.rows, 16],
                         ['frames', 'Frames', roomAnimation.frames, 256],
+                        ['columns', 'Kolonner', roomAnimation.columns, 16],
+                        ['rows', 'Rækker (beregnes)', roomAnimation.rows, 256],
                         ['fps', 'FPS', roomAnimation.fps, 24]
                     ]) {
                         const label = document.createElement('label');
                         label.textContent = labelText;
                         const input = document.createElement('input');
                         input.type = 'number'; input.min = '1'; input.max = String(max); input.step = '1'; input.value = String(value);
+                        if (key === 'rows') input.readOnly = true;
                         input.setAttribute('aria-label', `${labelText} i baggrundens spritesheet`);
                         animationFields[key] = input;
                         label.append(input);
                         animationControls.append(label);
                     }
                     animationControls.prepend(animationTitle, animationHint);
+                    const animationSummary = document.createElement('small');
+                    animationSummary.className = 'admin-room-animation-hint';
+                    animationSummary.setAttribute('aria-live', 'polite');
+                    const syncRoomAnimationGrid = () => {
+                        const frames = Math.floor(Number(animationFields.frames.value));
+                        const columns = Math.floor(Number(animationFields.columns.value));
+                        if (!Number.isFinite(frames) || frames < 1 || !Number.isFinite(columns) || columns < 1) return;
+                        const rows = Math.ceil(frames / columns);
+                        animationFields.rows.value = String(rows);
+                        animationSummary.textContent = `${columns} x ${rows} felter - ${frames} frames.`;
+                    };
+                    animationControls.append(animationSummary);
+                    [animationFields.frames, animationFields.columns].forEach((input) =>
+                        input.addEventListener('input', syncRoomAnimationGrid)
+                    );
+                    syncRoomAnimationGrid();
                     const fileInput = document.createElement('input');
                     fileInput.className = 'admin-room-file';
                     fileInput.type = 'file';

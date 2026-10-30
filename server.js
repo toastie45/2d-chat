@@ -445,10 +445,10 @@ function isGridCoordinate(col, row) {
 
 function normalizeClothingAnimation(value = {}) {
     const columns = Number.isInteger(Number(value?.columns)) ? Number(value.columns) : 1;
-    const rows = Number.isInteger(Number(value?.rows)) ? Number(value.rows) : 1;
     const safeColumns = Math.min(16, Math.max(1, columns));
-    const safeRows = Math.min(256, Math.max(1, rows));
     const frames = Number.isInteger(Number(value?.frames)) ? Number(value.frames) : 1;
+    const requestedRows = Number.isInteger(Number(value?.rows)) ? Math.max(1, Number(value.rows)) : 1;
+    const safeRows = Math.min(256, Math.max(requestedRows, Math.ceil(Math.max(1, Math.min(256, frames)) / safeColumns)));
     const fps = Number.isInteger(Number(value?.fps)) ? Number(value.fps) : 8;
     return {
         columns: safeColumns,
