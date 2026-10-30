@@ -4718,6 +4718,7 @@
                 }
                 statusElement.textContent = 'Tilpasser billedet til rummets 3:2-format…';
                 const animation = normalizeClothingAnimation(animationInput);
+                statusElement.textContent = `Tilpasser 3:2-billeder · gitter ${animation.columns} × ${animation.rows} · ${animation.frames} frames…`;
                 if (![animationInput.columns, animationInput.rows, animationInput.frames, animationInput.fps].every(Number.isFinite)
                     || animationInput.columns !== animation.columns || animationInput.rows !== animation.rows
                     || animationInput.frames !== animation.frames || animationInput.fps !== animation.fps) {
@@ -4731,10 +4732,6 @@
                     await source.decode();
                     if (!source.naturalWidth || !source.naturalHeight || source.naturalWidth > 8000 || source.naturalHeight > 8000) {
                         statusElement.textContent = 'Billedet skal være mindre end 8000 × 8000 px.';
-                        return;
-                    }
-                    if (source.naturalWidth % animation.columns !== 0 || source.naturalHeight % animation.rows !== 0) {
-                        statusElement.textContent = 'Spritesheetets bredde og højde skal kunne deles ligeligt i kolonner og rækker.';
                         return;
                     }
                     const isSpriteSheet = animation.columns > 1 || animation.rows > 1 || animation.frames > 1;
@@ -4785,6 +4782,26 @@
                 } finally {
                     URL.revokeObjectURL(objectUrl);
                 }
+            }
+
+            function suggestRoomSpriteGrid(imageWidth, imageHeight, frames) {
+                // Room canvases use a 3:2 aspect ratio. Pick the grid whose individual
+                // cells most closely match that ratio while still fitting all frames.
+                const sourceRatio = imageWidth / imageHeight;
+                const targetRatio = 3 / 2;
+                let best = null;
+                for (let rows = 1; rows <= 32; rows += 1) {
+                    for (let columns = 1; columns <= 16; columns += 1) {
+                        const cells = columns * rows;
+                        if (cells < frames) continue;
+                        const frameRatio = sourceRatio * rows / columns;
+                        const ratioError = Math.abs(Math.log(frameRatio / targetRatio));
+                        const wastedCells = cells - frames;
+                        const score = ratioError * 100 + wastedCells * 0.01;
+                        if (!best || score < best.score) best = { columns, rows, score, frameRatio };
+                    }
+                }
+                return best;
             }
 
             async function uploadAdminRoomOverlay(roomId, file, statusElement) {
@@ -4969,24 +4986,41 @@
                     backgroundStatus.className = 'admin-room-bg-status';
                     backgroundStatus.dataset.roomBackgroundStatus = room.id;
                     chooseBackground.addEventListener('click', () => fileInput.click());
-                    fileInput.addEventListener('change', () => {
-                        if (fileInput.files?.[0]) {
-                            const frames = Math.floor(Number(animationFields.frames.value));
-                            const columns = Math.floor(Number(animationFields.columns.value));
-                            const rows = Math.floor(Number(animationFields.rows.value));
-                            if (frames > columns * rows) {
-                                backgroundStatus.textContent = 'Antal frames kan ikke være større end antal felter i spritesheetet.';
-                                fileInput.value = '';
+                    fileInput.addEventListener('change', async () => {
+                        const file = fileInput.files?.[0];
+                        if (!file) return;
+                        const frames = Math.floor(Number(animationFields.frames.value));
+                        if (!Number.isFinite(frames) || frames < 1) {
+                            backgroundStatus.textContent = 'Angiv et gyldigt antal frames først.';
+                            fileInput.value = '';
+                            return;
+                        }
+                        const objectUrl = URL.createObjectURL(file);
+                        try {
+                            const source = new Image();
+                            source.src = objectUrl;
+                            await source.decode();
+                            const suggestion = suggestRoomSpriteGrid(source.naturalWidth, source.naturalHeight, frames);
+                            if (!suggestion) {
+                                backgroundStatus.textContent = 'Kunne ikke finde et gitter til dette antal frames.';
                                 return;
                             }
-                            uploadAdminRoomBackground(room.id, fileInput.files[0], backgroundStatus, {
-                                columns,
-                                rows,
+                            animationFields.columns.value = String(suggestion.columns);
+                            animationFields.rows.value = String(suggestion.rows);
+                            syncRoomAnimationGrid();
+                            backgroundStatus.textContent = `Gitter fundet: ${suggestion.columns} kolonne(r) × ${suggestion.rows} række(r). ${source.naturalWidth} × ${source.naturalHeight} px, ca. ${Math.round(source.naturalWidth / suggestion.columns)} × ${Math.round(source.naturalHeight / suggestion.rows)} px pr. frame.`;
+                            uploadAdminRoomBackground(room.id, file, backgroundStatus, {
+                                columns: suggestion.columns,
+                                rows: suggestion.rows,
                                 frames,
                                 fps: Number(animationFields.fps.value)
                             });
+                        } catch {
+                            backgroundStatus.textContent = 'Billedet kunne ikke læses. Prøv en anden fil.';
+                        } finally {
+                            URL.revokeObjectURL(objectUrl);
+                            fileInput.value = '';
                         }
-                        fileInput.value = '';
                     });
                     backgroundTools.append(fileInput, animationControls, chooseBackground);
                     if (room.hasBackground) {
@@ -5008,7 +5042,7 @@
                     const backgroundState = document.createElement('span');
                     backgroundState.className = 'admin-room-config-state';
                     backgroundState.textContent = room.hasBackground
-                        ? `Spritesheet · ${roomAnimation.frames} frames · ${roomAnimation.fps} FPS`
+                        ? `Spritesheet · ${roomAnimation.columns} × ${roomAnimation.rows} · ${roomAnimation.frames} frames · ${roomAnimation.fps} FPS`
                         : 'Standardbaggrund';
                     backgroundSummary.append(backgroundState);
                     const backgroundContent = document.createElement('div');
