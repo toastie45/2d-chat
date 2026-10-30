@@ -5746,7 +5746,6 @@
                 adminShopCopyTitle.value = content.title || '';
                 adminShopCopyIntro.value = content.intro || '';
                 adminShopCopyWelcome.value = content.welcome || '';
-                activeShopCategory = '';
                 document.querySelectorAll('[data-shop-copy-category]').forEach((field) => {
                     const category = field.dataset.shopCopyCategory;
                     const property = field.dataset.shopCopyField;
@@ -5796,7 +5795,9 @@
                 };
                 const groupedItems = new Map(sections.map((section) => [section.key, []]));
                 for (const item of shopItemsCache) groupedItems.get(getSectionForItem(item)).push(item);
-                const visibleSections = sections.filter((section) => groupedItems.get(section.key).length > 0);
+                // Keep the storefront landing page stable: categories remain visible even
+                // when a shop is temporarily empty or all its items are being edited.
+                const visibleSections = sections;
 
                 if (!activeShopCategory) {
                     shopBackButton.hidden = true;
