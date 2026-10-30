@@ -4939,7 +4939,7 @@
                     const animationTitle = document.createElement('strong');
                     animationTitle.textContent = 'Spritesheet til rummets baggrund';
                     const animationHint = document.createElement('small');
-                    animationHint.textContent = 'Frames er antal billeder, der afspilles. Kolonner og rækker beskriver hele spritesheetets gitter.';
+                    animationHint.textContent = 'Vælg billedet, kontrollér gitteret, og tryk Gem baggrund. Rummets Gem-knap gemmer navn og adgang.';
                     const animationFields = {};
                     for (const [key, labelText, value, max] of [
                         ['frames', 'Frames', roomAnimation.frames, 256],
@@ -4981,14 +4981,36 @@
                     const chooseBackground = document.createElement('button');
                     chooseBackground.className = 'admin-row-button';
                     chooseBackground.type = 'button';
-                    chooseBackground.textContent = 'Upload baggrund';
+                    chooseBackground.textContent = 'Vælg baggrund';
+                    const saveBackground = document.createElement('button');
+                    saveBackground.className = 'admin-row-button';
+                    saveBackground.type = 'button';
+                    saveBackground.textContent = 'Gem baggrund';
+                    saveBackground.disabled = true;
+                    let selectedRoomBackgroundFile = null;
                     const backgroundStatus = document.createElement('span');
                     backgroundStatus.className = 'admin-room-bg-status';
                     backgroundStatus.dataset.roomBackgroundStatus = room.id;
                     chooseBackground.addEventListener('click', () => fileInput.click());
+                    saveBackground.addEventListener('click', () => {
+                        if (!selectedRoomBackgroundFile) {
+                            backgroundStatus.textContent = 'Vælg en baggrundsfil først.';
+                            return;
+                        }
+                        uploadAdminRoomBackground(room.id, selectedRoomBackgroundFile, backgroundStatus, {
+                            columns: Number(animationFields.columns.value),
+                            rows: Number(animationFields.rows.value),
+                            frames: Number(animationFields.frames.value),
+                            fps: Number(animationFields.fps.value)
+                        });
+                        selectedRoomBackgroundFile = null;
+                        saveBackground.disabled = true;
+                    });
                     fileInput.addEventListener('change', async () => {
                         const file = fileInput.files?.[0];
                         if (!file) return;
+                        selectedRoomBackgroundFile = null;
+                        saveBackground.disabled = true;
                         const frames = Math.floor(Number(animationFields.frames.value));
                         if (!Number.isFinite(frames) || frames < 1) {
                             backgroundStatus.textContent = 'Angiv et gyldigt antal frames først.';
@@ -5008,13 +5030,9 @@
                             animationFields.columns.value = String(suggestion.columns);
                             animationFields.rows.value = String(suggestion.rows);
                             syncRoomAnimationGrid();
-                            backgroundStatus.textContent = `Gitter fundet: ${suggestion.columns} kolonne(r) × ${suggestion.rows} række(r). ${source.naturalWidth} × ${source.naturalHeight} px, ca. ${Math.round(source.naturalWidth / suggestion.columns)} × ${Math.round(source.naturalHeight / suggestion.rows)} px pr. frame.`;
-                            uploadAdminRoomBackground(room.id, file, backgroundStatus, {
-                                columns: suggestion.columns,
-                                rows: suggestion.rows,
-                                frames,
-                                fps: Number(animationFields.fps.value)
-                            });
+                            selectedRoomBackgroundFile = file;
+                            saveBackground.disabled = false;
+                            backgroundStatus.textContent = `Gitter foreslaet: ${suggestion.columns} x ${suggestion.rows} med ${frames} frames. Ret indstillingerne, og tryk derefter Gem baggrund.`;
                         } catch {
                             backgroundStatus.textContent = 'Billedet kunne ikke læses. Prøv en anden fil.';
                         } finally {
@@ -5022,7 +5040,7 @@
                             fileInput.value = '';
                         }
                     });
-                    backgroundTools.append(fileInput, animationControls, chooseBackground);
+                    backgroundTools.append(fileInput, animationControls, chooseBackground, saveBackground);
                     if (room.hasBackground) {
                         const resetBackground = document.createElement('button');
                         resetBackground.className = 'admin-row-button';
