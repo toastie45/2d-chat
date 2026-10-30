@@ -962,6 +962,9 @@
         .admin-room-background-card { display: grid; gap: 8px; flex: 1 0 100%; padding: 9px; border: 1px solid #353732; border-radius: 7px; background: #151613; }
         .admin-room-background-card > strong { font-size: 10px; }
         .admin-room-background-card > small { color: var(--muted); font-size: 9px; line-height: 1.45; }
+        .admin-room-background-library { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; align-items: end; }
+        .admin-room-background-library label { display: grid; gap: 5px; min-width: 0; color: var(--muted); font-size: 10px; }
+        .admin-room-background-library select { width: 100%; min-width: 0; }
         .admin-room-sprite-preview { position: relative; width: 100%; max-width: 360px; aspect-ratio: 3 / 2; overflow: hidden; border-radius: 6px; background: #080a08; }
         .admin-room-sprite-preview img { position: absolute; max-width: none; object-fit: fill; }
         .admin-room-animation { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: 7px; flex: 1 0 100%; padding: 9px; border: 1px solid #353732; border-radius: 7px; background: #151613; }
@@ -5097,8 +5100,10 @@
                                 selectedFile = file;
                                 save.disabled = false;
                                 status.textContent = file.name + ' er klar (' + source.naturalWidth + ' × ' + source.naturalHeight + ' px). Gem for at bruge den i rummet.';
+                                return true;
                             } catch {
                                 status.textContent = 'Billedet kunne ikke læses. Prøv en anden fil.';
+                                return false;
                             } finally {
                                 URL.revokeObjectURL(objectUrl);
                                 if (currentVersion === selectionVersion) input.value = '';
@@ -5121,28 +5126,90 @@
                         });
                         actions.append(choose, save, status);
                         if (type === 'spritesheet') {
-                            const example = document.createElement('button');
-                            example.type = 'button';
-                            example.className = 'admin-row-button';
-                            example.textContent = 'Vælg diskotekets animation';
-                            example.addEventListener('click', async () => {
-                                example.disabled = true;
-                                status.textContent = 'Henter diskotekets animation…';
+                            const library = document.createElement('div');
+                            library.className = 'admin-room-background-library';
+                            const label = document.createElement('label');
+                            label.textContent = 'Færdige spritesheets';
+                            const presets = document.createElement('select');
+                            presets.setAttribute('aria-label', 'Vælg en færdig baggrund til ' + room.name);
+                            presets.append(new Option('Vælg baggrund…', ''));
+                            label.append(presets);
+                            const activatePreset = document.createElement('button');
+                            activatePreset.type = 'button';
+                            activatePreset.className = 'admin-row-button';
+                            activatePreset.textContent = 'Aktivér';
+                            activatePreset.disabled = true;
+                            activatePreset.dataset.roomBackgroundSave = room.id;
+                            activatePreset.dataset.roomBackgroundPresetReady = 'false';
+                            let backgrounds = [];
+                            let presetFile = null;
+                            let presetAnimation = null;
+                            let presetRevision = 0;
+                            let activating = false;
+                            const clearPreset = () => {
+                                presetRevision++;
+                                presets.value = '';
+                                presetFile = null;
+                                presetAnimation = null;
+                                activatePreset.disabled = true;
+                                activatePreset.dataset.roomBackgroundPresetReady = 'false';
+                            };
+                            input.addEventListener('change', clearPreset);
+                            Object.values(animationFields).forEach((field) => field.addEventListener('input', clearPreset));
+                            presets.addEventListener('change', async () => {
+                                const revision = ++presetRevision;
+                                const background = backgrounds.find((entry) => entry.id === presets.value);
+                                presetFile = null;
+                                presetAnimation = null;
+                                activatePreset.disabled = true;
+                                activatePreset.dataset.roomBackgroundPresetReady = 'false';
+                                if (!background) return;
+                                status.textContent = 'Henter forhåndsvisning…';
                                 try {
-                                    const response = await fetch('/images/disco-background-spritesheet.png?v=2');
+                                    const response = await fetch(background.url);
                                     if (!response.ok) throw new Error('download');
                                     const blob = await response.blob();
-                                    for (const [key, value] of Object.entries({ columns: 2, rows: 2, frames: 4, fps: 3 })) {
+                                    if (revision !== presetRevision) return;
+                                    for (const [key, value] of Object.entries(background.animation)) {
                                         animationFields[key].value = String(value);
                                     }
-                                    await selectFile(new File([blob], 'disco-background-spritesheet.png', { type: 'image/png' }));
+                                    const file = new File([blob], background.id + '.png', { type: blob.type });
+                                    const ready = await selectFile(file);
+                                    if (!ready || revision !== presetRevision) return;
+                                    presetFile = file;
+                                    presetAnimation = { ...background.animation };
+                                    activatePreset.disabled = false;
+                                    activatePreset.dataset.roomBackgroundPresetReady = 'true';
+                                    status.textContent = 'Forhåndsvisning af ' + background.name + '. Aktivér gemmer baggrund og indstillinger på rummet.';
                                 } catch {
-                                    status.textContent = 'Animationen kunne ikke hentes. Prøv igen.';
-                                } finally {
-                                    example.disabled = false;
+                                    if (revision === presetRevision) status.textContent = 'Baggrunden kunne ikke hentes. Vælg den igen for at prøve på ny.';
                                 }
                             });
-                            actions.prepend(example);
+                            activatePreset.addEventListener('click', async () => {
+                                if (!presetFile || !presetAnimation || activating) return;
+                                activating = true;
+                                activatePreset.disabled = true;
+                                save.disabled = true;
+                                presets.disabled = true;
+                                choose.disabled = true;
+                                try {
+                                    const started = await uploadAdminRoomBackground(room.id, presetFile, status, presetAnimation, 'spritesheet');
+                                    activatePreset.disabled = started;
+                                    save.disabled = started;
+                                } finally {
+                                    activating = false;
+                                    presets.disabled = false;
+                                    choose.disabled = false;
+                                }
+                            });
+                            RoomSpritesheet.loadCatalog().then((entries) => {
+                                backgrounds = entries;
+                                for (const background of entries) presets.append(new Option(background.name, background.id));
+                            }).catch(() => {
+                                status.textContent = 'Baggrundslisten kunne ikke hentes. Du kan stadig uploade din egen fil.';
+                            });
+                            library.append(label, activatePreset);
+                            card.append(library);
                         }
                         const hasSavedBackground = type === 'static'
                             ? room.hasStaticBackground
@@ -5159,7 +5226,7 @@
                             });
                             actions.append(activate);
                         }
-                        card.append(heading, description, input);
+                        card.prepend(heading, description, input);
                         if (type === 'spritesheet') card.append(animationControls, spritePreview);
                         card.append(actions);
                         return card;
@@ -8266,7 +8333,7 @@
                 }
                 if (!success) {
                     for (const button of adminPublicRooms.querySelectorAll('[data-room-background-save]')) {
-                        button.disabled = false;
+                        button.disabled = button.dataset.roomBackgroundPresetReady === 'false';
                     }
                 }
                 if (success && adminSectionSelect.value === 'rooms') socket.emit('admin-public-rooms-request');

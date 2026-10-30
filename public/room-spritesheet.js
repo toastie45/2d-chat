@@ -47,7 +47,29 @@
         });
     }
 
-    const api = { validate, hasDistinctFrames, previewFrames };
+    let catalogPromise;
+    function loadCatalog() {
+        if (!catalogPromise) {
+            catalogPromise = fetch('/room-backgrounds.json', { cache: 'no-cache' })
+                .then(async (response) => {
+                    if (!response.ok) throw new Error('Baggrundslisten kunne ikke hentes.');
+                    const catalog = await response.json();
+                    if (!Array.isArray(catalog.backgrounds)) throw new Error('Baggrundslisten er ugyldig.');
+                    for (const background of catalog.backgrounds) {
+                        if (typeof background.id !== 'string' || typeof background.name !== 'string'
+                            || typeof background.url !== 'string' || !background.url.startsWith('/images/')
+                            || validate(background.animation || {})) throw new Error('En baggrund har ugyldige indstillinger.');
+                    }
+                    return catalog.backgrounds;
+                }).catch((error) => {
+                    catalogPromise = null;
+                    throw error;
+                });
+        }
+        return catalogPromise;
+    }
+
+    const api = { validate, hasDistinctFrames, previewFrames, loadCatalog };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.RoomSpritesheet = api;
 })(typeof window === 'undefined' ? globalThis : window);

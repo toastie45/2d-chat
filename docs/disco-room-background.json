@@ -16,7 +16,8 @@
   "notes": [
     "Upload the regular background for a static room, or upload the spritesheet and use the animation values above.",
     "Four distinct dance-floor color phases share exactly the same room pixels outside the dance floor. Furniture and camera position never move.",
-    "Admin > Navigation og rum > Baggrund og spritesheet > Vælg diskotekets animation loads this asset and its settings. Check the animated preview, then click Gem spritesheet-baggrund.",
+    "Admin > Navigation og rum > Baggrund og spritesheet > Færdige spritesheets lists this asset. Select it to preview, then click Aktivér to save and activate it on that room in one action.",
+    "New generated spritesheets belong in public/images with their URL and exact animation settings registered in public/room-backgrounds.json.",
     "Rebuild the sheet from the static scene with scripts/build-disco-spritesheet.ps1.",
     "Set locked tiles in the room editor wherever furniture should block avatar movement."
   ]

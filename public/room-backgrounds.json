@@ -1,0 +1,10 @@
+{
+  "backgrounds": [
+    {
+      "id": "disco-lights-v2",
+      "name": "Diskotek – levende dansegulv",
+      "url": "/images/disco-background-spritesheet.png?v=2",
+      "animation": { "columns": 2, "rows": 2, "frames": 4, "fps": 3 }
+    }
+  ]
+}
