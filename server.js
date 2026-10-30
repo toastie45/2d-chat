@@ -2846,7 +2846,7 @@ async function startServer() {
             if (!socket.data.canManageClothing || !activeSocketIds.has(socket.id)
                 || typeof roomId !== 'string' || !/^(common|disco|public:[1-9]\d{0,18})$/.test(roomId)
                 || !content || typeof content !== 'object' || Array.isArray(content)) return;
-            const categoryKeys = ['level_1_8', 'level_9_16', 'level_17_20', 'accessories'];
+            const categoryKeys = ['level_1_8', 'level_9_16', 'level_17_20', 'accessories', 'headwear', 'hair', 'beard', 'glasses', 'clothing', 'left_hand', 'right_hand', 'accessory'];
             const cleanText = (value, max) => typeof value === 'string'
                 ? value.normalize('NFKC').trim().replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').slice(0, max)
                 : '';
@@ -2854,6 +2854,7 @@ async function startServer() {
                 title: cleanText(content.title, 60),
                 intro: cleanText(content.intro, 240),
                 welcome: cleanText(content.welcome, 240),
+                grouping: ['level', 'category'].includes(content.grouping) ? content.grouping : 'mixed',
                 categories: {}
             };
             for (const key of categoryKeys) {

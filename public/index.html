@@ -2110,16 +2110,33 @@
                                 <details class="admin-shop-copy-editor">
                                     <summary>Rediger butikkens tekster</summary>
                                     <p class="admin-shop-note">Teksterne gælder kun for den valgte butik.</p>
+                                    <label class="profile-field" for="admin-shop-grouping">Vis varer efter
+                                        <select id="admin-shop-grouping">
+                                            <option value="mixed">Tøj efter level · øvrige dele efter varetype</option>
+                                            <option value="level">Level (tøj efter level, øvrige dele samlet)</option>
+                                            <option value="category">Varetype (hår, skæg, briller osv.)</option>
+                                        </select>
+                                    </label>
                                     <div class="admin-shop-copy-grid">
                                         <label>Butikkens overskrift<input id="admin-shop-copy-title" maxlength="60" placeholder="Butik"></label>
                                         <label>Intro under overskriften<textarea id="admin-shop-copy-intro" maxlength="240" rows="2"></textarea></label>
                                         <label>Velkomst over kategorierne<textarea id="admin-shop-copy-welcome" maxlength="240" rows="2"></textarea></label>
                                     </div>
-                                    <div class="admin-shop-copy-grid admin-shop-copy-categories">
+                                    <div class="admin-shop-copy-grid admin-shop-copy-categories" id="admin-shop-level-copy-fields">
                                         <fieldset><legend>Level 1-8</legend><label>Overskrift<input data-shop-copy-category="level_1_8" data-shop-copy-field="title" maxlength="40"></label><label>Beskrivelse<textarea data-shop-copy-category="level_1_8" data-shop-copy-field="description" maxlength="180" rows="2"></textarea></label></fieldset>
                                         <fieldset><legend>Level 9-16</legend><label>Overskrift<input data-shop-copy-category="level_9_16" data-shop-copy-field="title" maxlength="40"></label><label>Beskrivelse<textarea data-shop-copy-category="level_9_16" data-shop-copy-field="description" maxlength="180" rows="2"></textarea></label></fieldset>
                                         <fieldset><legend>Level 17-20</legend><label>Overskrift<input data-shop-copy-category="level_17_20" data-shop-copy-field="title" maxlength="40"></label><label>Beskrivelse<textarea data-shop-copy-category="level_17_20" data-shop-copy-field="description" maxlength="180" rows="2"></textarea></label></fieldset>
                                         <fieldset><legend>Tilbehør</legend><label>Overskrift<input data-shop-copy-category="accessories" data-shop-copy-field="title" maxlength="40"></label><label>Beskrivelse<textarea data-shop-copy-category="accessories" data-shop-copy-field="description" maxlength="180" rows="2"></textarea></label></fieldset>
+                                    </div>
+                                    <div class="admin-shop-copy-grid admin-shop-copy-categories" id="admin-shop-type-copy-fields" hidden>
+                                        <fieldset><legend>Hovedbeklædning</legend><label>Overskrift<input data-shop-copy-category="headwear" data-shop-copy-field="title" maxlength="40"></label><label>Beskrivelse<textarea data-shop-copy-category="headwear" data-shop-copy-field="description" maxlength="180" rows="2"></textarea></label></fieldset>
+                                        <fieldset><legend>Hår</legend><label>Overskrift<input data-shop-copy-category="hair" data-shop-copy-field="title" maxlength="40"></label><label>Beskrivelse<textarea data-shop-copy-category="hair" data-shop-copy-field="description" maxlength="180" rows="2"></textarea></label></fieldset>
+                                        <fieldset><legend>Skæg</legend><label>Overskrift<input data-shop-copy-category="beard" data-shop-copy-field="title" maxlength="40"></label><label>Beskrivelse<textarea data-shop-copy-category="beard" data-shop-copy-field="description" maxlength="180" rows="2"></textarea></label></fieldset>
+                                        <fieldset><legend>Briller</legend><label>Overskrift<input data-shop-copy-category="glasses" data-shop-copy-field="title" maxlength="40"></label><label>Beskrivelse<textarea data-shop-copy-category="glasses" data-shop-copy-field="description" maxlength="180" rows="2"></textarea></label></fieldset>
+                                        <fieldset><legend>Tøj</legend><label>Overskrift<input data-shop-copy-category="clothing" data-shop-copy-field="title" maxlength="40"></label><label>Beskrivelse<textarea data-shop-copy-category="clothing" data-shop-copy-field="description" maxlength="180" rows="2"></textarea></label></fieldset>
+                                        <fieldset><legend>Venstre hånd</legend><label>Overskrift<input data-shop-copy-category="left_hand" data-shop-copy-field="title" maxlength="40"></label><label>Beskrivelse<textarea data-shop-copy-category="left_hand" data-shop-copy-field="description" maxlength="180" rows="2"></textarea></label></fieldset>
+                                        <fieldset><legend>Højre hånd</legend><label>Overskrift<input data-shop-copy-category="right_hand" data-shop-copy-field="title" maxlength="40"></label><label>Beskrivelse<textarea data-shop-copy-category="right_hand" data-shop-copy-field="description" maxlength="180" rows="2"></textarea></label></fieldset>
+                                        <fieldset><legend>Tilbehør</legend><label>Overskrift<input data-shop-copy-category="accessory" data-shop-copy-field="title" maxlength="40"></label><label>Beskrivelse<textarea data-shop-copy-category="accessory" data-shop-copy-field="description" maxlength="180" rows="2"></textarea></label></fieldset>
                                     </div>
                                     <button class="admin-row-button" id="admin-shop-copy-save" type="button">Gem tekster</button>
                                 </details>
@@ -2633,6 +2650,9 @@
             const adminShopCopyTitle = document.getElementById('admin-shop-copy-title');
             const adminShopCopyIntro = document.getElementById('admin-shop-copy-intro');
             const adminShopCopyWelcome = document.getElementById('admin-shop-copy-welcome');
+            const adminShopGrouping = document.getElementById('admin-shop-grouping');
+            const adminShopTypeCopyFields = document.getElementById('admin-shop-type-copy-fields');
+            const adminShopLevelCopyFields = document.getElementById('admin-shop-level-copy-fields');
             const adminShopCopySave = document.getElementById('admin-shop-copy-save');
             let shopIsOpen = false;
             let activeRoomIsShop = false;
@@ -2648,6 +2668,16 @@
                     level_17_20: { title: 'Level 17-20', description: 'Gå på opdagelse blandt styles til de højeste levels.' },
                     accessories: { title: 'Tilbehør', description: 'Sæt dit eget præg på figuren med hår, hatte, skæg, briller og andre detaljer.' }
                 }
+            };
+            const SHOP_TYPE_DEFAULTS = {
+                headwear: { title: 'Hovedbeklædning', description: 'Hatte og andre dele til hovedet.' },
+                hair: { title: 'Hår', description: 'Find en frisure til din figur.' },
+                beard: { title: 'Skæg', description: 'Vælg skæg og ansigtshår.' },
+                glasses: { title: 'Briller', description: 'Briller og andet til øjnene.' },
+                clothing: { title: 'Tøj', description: 'Tøj til din figur.' },
+                left_hand: { title: 'Venstre hånd', description: 'Genstande til venstre hånd.' },
+                right_hand: { title: 'Højre hånd', description: 'Genstande til højre hånd.' },
+                accessory: { title: 'Tilbehør', description: 'Andre detaljer til din figur.' }
             };
             let activeShopContent = DEFAULT_SHOP_CONTENT;
             const wardrobeLeftCategories = document.getElementById('wardrobe-left-categories');
@@ -5501,14 +5531,21 @@
                     adminShopCatalog.append(empty);
                     return;
                 }
-                const sections = [
-                    { key: 'level_1_8', title: 'Level 1-8' },
-                    { key: 'level_9_16', title: 'Level 9-16' },
-                    { key: 'level_17_20', title: 'Level 17-20' },
-                    { key: 'accessories', title: 'Tilbehør' }
-                ];
+                const levelSections = [
+                        { key: 'level_1_8', title: 'Level 1-8' },
+                        { key: 'level_9_16', title: 'Level 9-16' },
+                        { key: 'level_17_20', title: 'Level 17-20' },
+                        { key: 'accessories', title: 'Tilbehør' }
+                    ];
+                const typeSections = Object.entries(SHOP_TYPE_DEFAULTS)
+                    .filter(([key]) => key !== 'clothing')
+                    .map(([key, value]) => ({ key, title: activeShopContent.categories[key]?.title || value.title }));
+                const sections = adminShopGrouping.value === 'category'
+                    ? Object.entries(SHOP_TYPE_DEFAULTS).map(([key, value]) => ({ key, title: activeShopContent.categories[key]?.title || value.title }))
+                    : adminShopGrouping.value === 'mixed' ? [...levelSections.slice(0, 3), ...typeSections] : levelSections;
                 const getSectionForItem = (item) => {
-                    if (item.category !== 'clothing') return 'accessories';
+                    if (adminShopGrouping.value === 'category') return SHOP_TYPE_DEFAULTS[item.category] ? item.category : 'accessory';
+                    if (item.category !== 'clothing') return adminShopGrouping.value === 'mixed' ? (SHOP_TYPE_DEFAULTS[item.category] ? item.category : 'accessory') : 'accessories';
                     const level = Math.max(1, Number(item.requiredLevel) || 1);
                     return level <= 8 ? 'level_1_8' : level <= 16 ? 'level_9_16' : 'level_17_20';
                 };
@@ -5614,7 +5651,8 @@
             function normalizeShopContent(content = {}) {
                 const source = content && typeof content === 'object' ? content : {};
                 const categories = {};
-                for (const [key, fallback] of Object.entries(DEFAULT_SHOP_CONTENT.categories)) {
+                const categoryDefaults = { ...DEFAULT_SHOP_CONTENT.categories, ...SHOP_TYPE_DEFAULTS };
+                for (const [key, fallback] of Object.entries(categoryDefaults)) {
                     const value = source.categories?.[key] || {};
                     categories[key] = {
                         title: String(value.title || '').trim() || fallback.title,
@@ -5625,6 +5663,7 @@
                     title: String(source.title || '').trim() || DEFAULT_SHOP_CONTENT.title,
                     intro: String(source.intro || '').trim() || DEFAULT_SHOP_CONTENT.intro,
                     welcome: String(source.welcome || '').trim() || DEFAULT_SHOP_CONTENT.welcome,
+                    grouping: ['level', 'category'].includes(source.grouping) ? source.grouping : 'mixed',
                     categories
                 };
             }
@@ -5636,6 +5675,10 @@
                 adminShopCopyTitle.value = content.title || '';
                 adminShopCopyIntro.value = content.intro || '';
                 adminShopCopyWelcome.value = content.welcome || '';
+                adminShopGrouping.value = activeShopContent.grouping;
+                adminShopTypeCopyFields.hidden = activeShopContent.grouping === 'level';
+                adminShopLevelCopyFields.hidden = activeShopContent.grouping === 'category';
+                activeShopCategory = '';
                 document.querySelectorAll('[data-shop-copy-category]').forEach((field) => {
                     const category = field.dataset.shopCopyCategory;
                     const property = field.dataset.shopCopyField;
@@ -5655,6 +5698,7 @@
                     title: adminShopCopyTitle.value,
                     intro: adminShopCopyIntro.value,
                     welcome: adminShopCopyWelcome.value,
+                    grouping: adminShopGrouping.value,
                     categories
                 };
             }
@@ -5669,12 +5713,15 @@
                     return;
                 }
 
-                const sections = Object.keys(DEFAULT_SHOP_CONTENT.categories).map((key) => ({
-                    key,
-                    ...activeShopContent.categories[key]
-                }));
+                const levelSections = Object.keys(DEFAULT_SHOP_CONTENT.categories).map((key) => ({ key, ...activeShopContent.categories[key] }));
+                const typeSections = Object.keys(SHOP_TYPE_DEFAULTS).filter((key) => key !== 'clothing')
+                    .map((key) => ({ key, ...activeShopContent.categories[key] }));
+                const sections = activeShopContent.grouping === 'category'
+                    ? Object.keys(SHOP_TYPE_DEFAULTS).map((key) => ({ key, ...activeShopContent.categories[key] }))
+                    : activeShopContent.grouping === 'mixed' ? [...levelSections.slice(0, 3), ...typeSections] : levelSections;
                 const getSectionForItem = (item) => {
-                    if (item.category !== 'clothing') return 'accessories';
+                    if (activeShopContent.grouping === 'category') return SHOP_TYPE_DEFAULTS[item.category] ? item.category : 'accessory';
+                    if (item.category !== 'clothing') return activeShopContent.grouping === 'mixed' ? (SHOP_TYPE_DEFAULTS[item.category] ? item.category : 'accessory') : 'accessories';
                     const level = Math.max(1, Number(item.requiredLevel) || 1);
                     return level <= 8 ? 'level_1_8' : level <= 16 ? 'level_9_16' : 'level_17_20';
                 };
@@ -5684,7 +5731,7 @@
                 if (!activeShopCategory) {
                     shopBackButton.hidden = true;
                     shopStatus.textContent = activeShopContent.welcome;
-                    for (const section of sections) {
+                    for (const section of sections.filter((entry) => groupedItems.get(entry.key)?.length)) {
                         const card = document.createElement('article');
                         card.className = 'shop-category-card';
                         card.setAttribute('role', 'listitem');
@@ -6703,6 +6750,12 @@
                     roomId: adminShopRoomSelect.value,
                     content: collectAdminShopContent()
                 });
+            });
+            adminShopGrouping.addEventListener('change', () => {
+                const useTypeGroups = adminShopGrouping.value === 'category';
+                adminShopTypeCopyFields.hidden = adminShopGrouping.value === 'level';
+                adminShopLevelCopyFields.hidden = useTypeGroups;
+                renderAdminShopCatalog();
             });
             adminShopOpenToggle.addEventListener('click', () => {
                 if (!adminShopRoomSelect.value) return;
