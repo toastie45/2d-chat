@@ -2854,7 +2854,7 @@ async function startServer() {
                 title: cleanText(content.title, 60),
                 intro: cleanText(content.intro, 240),
                 welcome: cleanText(content.welcome, 240),
-                grouping: ['level', 'category'].includes(content.grouping) ? content.grouping : 'mixed',
+                grouping: ['mixed', 'category'].includes(content.grouping) ? content.grouping : 'level',
                 categories: {}
             };
             for (const key of categoryKeys) {

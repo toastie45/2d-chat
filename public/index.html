@@ -2112,8 +2112,8 @@
                                     <p class="admin-shop-note">Teksterne gælder kun for den valgte butik.</p>
                                     <label class="profile-field" for="admin-shop-grouping">Vis varer efter
                                         <select id="admin-shop-grouping">
-                                            <option value="mixed">Tøj efter level · øvrige dele efter varetype</option>
                                             <option value="level">Level (tøj efter level, øvrige dele samlet)</option>
+                                            <option value="mixed">Tøj efter level · øvrige dele efter varetype</option>
                                             <option value="category">Varetype (hår, skæg, briller osv.)</option>
                                         </select>
                                     </label>
@@ -5663,7 +5663,7 @@
                     title: String(source.title || '').trim() || DEFAULT_SHOP_CONTENT.title,
                     intro: String(source.intro || '').trim() || DEFAULT_SHOP_CONTENT.intro,
                     welcome: String(source.welcome || '').trim() || DEFAULT_SHOP_CONTENT.welcome,
-                    grouping: ['level', 'category'].includes(source.grouping) ? source.grouping : 'mixed',
+                    grouping: ['mixed', 'category'].includes(source.grouping) ? source.grouping : 'level',
                     categories
                 };
             }
@@ -5731,7 +5731,7 @@
                 if (!activeShopCategory) {
                     shopBackButton.hidden = true;
                     shopStatus.textContent = activeShopContent.welcome;
-                    for (const section of sections.filter((entry) => groupedItems.get(entry.key)?.length)) {
+                    for (const section of sections) {
                         const card = document.createElement('article');
                         card.className = 'shop-category-card';
                         card.setAttribute('role', 'listitem');
