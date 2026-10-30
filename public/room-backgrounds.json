@@ -1,6 +1,18 @@
 {
   "backgrounds": [
     {
+      "id": "disco-dj-v1",
+      "name": "Diskotek – DJ-pult, roterende plader og dansegulv",
+      "url": "/images/disco-dj-spritesheet.png?v=1",
+      "animation": { "columns": 4, "rows": 2, "frames": 8, "fps": 6 },
+      "overlay": {
+        "url": "/images/disco-dj-overlay-spritesheet.png?v=1",
+        "animation": { "columns": 4, "rows": 2, "frames": 8, "fps": 6 }
+      },
+      "openCells": ["-1:1"],
+      "closedCells": ["-1:2"]
+    },
+    {
       "id": "disco-lights-v2",
       "name": "Diskotek – levende dansegulv",
       "url": "/images/disco-background-spritesheet.png?v=2",

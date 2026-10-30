@@ -9,12 +9,18 @@ const assert = require('node:assert/strict');
 const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 const extract = (start, end) => html.slice(html.indexOf(start), html.indexOf(end, html.indexOf(start)));
 const code = extract('function normalizeClothingAnimation(', 'function getClothingSpriteFrame(')
+    + extract('function getClothingSpriteFrame(', 'function getAdminClothingAnimation(')
+    + extract('const roomOverlayImage = new Image();', 'const avatarImage = new Image();')
+    + extract('function getBoardFramePlan(', 'function gameLoop(')
     + extract('async function uploadAdminRoomBackground(', 'async function uploadAdminRoomOverlay(')
     + extract('function renderAdminPublicRooms(', 'function drawWardrobeAvatarPreview(');
 const fixture = `<!doctype html><meta charset="utf-8"><style>${html.match(/<style>([\s\S]*?)<\/style>/)[1]}</style>
 <div id="rooms"></div><p id="status"></p><script src="/room-spritesheet.js"></script><script>
 const adminPublicRooms=document.getElementById('rooms'), adminRoomsStatus=document.getElementById('status');
-const activeRoom='none', sent=[], socket={connected:true,emit:(event,payload)=>sent.push({event,payload})};${code}</script>`;
+const activeRoom='none', sent=[], socket={connected:true,emit:(event,payload)=>sent.push({event,payload})};
+const requestBoardRender=()=>{}, roomBackgroundImageLoaded=false, roomBackgroundAnimation={frames:1},
+    isAdminInvisible=false, players={}, whisperBubbles=new Map(), activeSidePanel='none',
+    wardrobePanel={hidden:true}, adminClothingView={hidden:true};${code}</script>`;
 const server = http.createServer((req, res) => {
     if (req.url === '/') { res.setHeader('Content-Type', 'text/html; charset=utf-8'); return res.end(fixture); }
     const file = path.resolve(__dirname, '../public', '.' + req.url.split('?')[0]);
@@ -97,6 +103,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
             const upload=sent[0].payload;
             check(upload.image.length<=950000&&upload.type==='spritesheet','size and type valid');
             check(upload.id==='disco','chosen room receives preset');
+            check(upload.clearOverlay===true&&!upload.overlay,'plain preset clears an earlier DJ overlay');
             check(JSON.stringify(upload.animation)===JSON.stringify(settings),'metadata valid');
             const url=URL.createObjectURL(new Blob([upload.image],{type:'image/webp'}));
             check(RoomSpritesheet.hasDistinctFrames(await load(url),settings),'compressed frames still animate');
@@ -104,7 +111,43 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
             const frames=document.querySelector('.admin-room-animation input');
             frames.value='3';frames.dispatchEvent(new Event('input'));
             check(activate.disabled&&presets.value==='','manual edits clear preset activation');
-            return {result:'PASS: catalog, preview, one-click activation, duplicate protection and upload compression',bytes:upload.image.length,positions};
+            sent.length=0;
+            presets.value='disco-dj-v1';presets.dispatchEvent(new Event('change'));
+            for(let i=0;i<200&&(activate.disabled||preview.querySelectorAll('img').length!==2);i++)await new Promise(r=>setTimeout(r,25));
+            check(!activate.disabled&&preview.querySelectorAll('img').length===2,'DJ background and foreground preview together');
+            const overlay=preview.querySelectorAll('img')[1];
+            check(overlay.getAnimations()[0],'foreground animates');
+            activate.click();
+            for(let i=0;i<200&&sent.length===0;i++)await new Promise(r=>setTimeout(r,25));
+            check(sent.length===1,'DJ activates atomically');
+            const dj=sent[0].payload;
+            check(dj.animation.frames===8&&dj.animation.fps===6,'DJ frames correct');
+            check(dj.overlay.image.length<=850000&&dj.overlay.animation.frames===8,'foreground metadata and image uploaded');
+            check(dj.openCells.includes('-1:1')&&dj.clearOverlay===false,'DJ standing cell opened');
+            check(dj.closedCells.includes('-1:2'),'desk tile stays blocked');
+            check(dj.image.length<=950000,'DJ sheet fits upload limit');
+            setRoomOverlay('/images/disco-dj-overlay-spritesheet.png',{x:0,y:0,rotation:0,scale:1,animation:dj.overlay.animation});
+            for(let i=0;i<100&&!roomOverlayImageLoaded;i++)await new Promise(r=>setTimeout(r,20));
+            check(roomOverlayImageLoaded,'live foreground loads');
+            const now=Date.now(), plan=getBoardFramePlan(now);
+            check(Number.isFinite(plan.nextAt)&&plan.nextAt-now<170,'live renderer schedules foreground animation');
+            const first=getClothingSpriteFrame(roomOverlayImage,roomOverlayAnimation,0);
+            const second=getClothingSpriteFrame(roomOverlayImage,roomOverlayAnimation,170);
+            check(first.sx===0&&second.sx===768&&first.sw===768,'live renderer crops individual foreground frames');
+            const samples=document.createElement('canvas');samples.width=768;samples.height=512;
+            const sampleContext=samples.getContext('2d',{willReadFrequently:true});
+            sampleContext.drawImage(roomOverlayImage,0,0,768,512,0,0,768,512);
+            const firstPixels=new Uint8ClampedArray(sampleContext.getImageData(80,65,145,50).data);
+            sampleContext.clearRect(0,0,768,512);
+            sampleContext.drawImage(roomOverlayImage,768,0,768,512,0,0,768,512);
+            const secondPixels=sampleContext.getImageData(80,65,145,50).data;
+            check(secondPixels.some((v,i)=>Math.abs(v-firstPixels[i])>10),'record markings rotate between adjacent frames');
+            const alpha=sampleContext.getImageData(0,0,768,512).data;
+            check(alpha[3]===0&&alpha[(300*768+400)*4+3]===0,'foreground whitespace stays transparent');
+            setRoomOverlay('/images/disco-background.png',{});
+            for(let i=0;i<100&&!roomOverlayImageLoaded;i++)await new Promise(r=>setTimeout(r,20));
+            check(!Number.isFinite(getBoardFramePlan(Date.now()).nextAt),'static foreground stops animation timers');
+            return {result:'PASS: catalog, preview, one-click DJ bundle, overlay, standing cell and compression',bytes:upload.image.length,djBytes:dj.image.length,overlayBytes:dj.overlay.image.length,positions};
         })()` });
         if (result.result.exceptionDetails) throw new Error(JSON.stringify(result.result.exceptionDetails));
         console.log(JSON.stringify(result.result.result.value, null, 2));

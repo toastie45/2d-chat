@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "styleReference": "room-background-style.json",
+  "catalogId": "disco-dj-v1",
+  "background": "public/images/disco-dj-background.png",
+  "spritesheet": "public/images/disco-dj-spritesheet.png",
+  "overlay": "public/images/disco-dj-overlay-spritesheet.png",
+  "animation": { "columns": 4, "rows": 2, "frames": 8, "fps": 6 },
+  "openCells": ["-1:1"],
+  "closedCells": ["-1:2"],
+  "notes": [
+    "Only the upper-left DJ area is redesigned. The original bar and dance floor remain in their exact positions.",
+    "Vinyl label and groove markings rotate at 45 RPM. Equipment and tonearms stay fixed.",
+    "Each dance-floor phase lasts two frames, retaining the original three lighting changes per second.",
+    "The foreground sheet uses full-frame transparency and sits above avatars and below speech bubbles.",
+    "Activating the catalog entry saves the background, animated foreground and DJ standing cell together.",
+    "The DJ standing cell is col=-1,row=1 at x=135,y=45 on the 540x360 movement grid."
+  ]
+}

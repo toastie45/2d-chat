@@ -2326,7 +2326,11 @@
             let roomOverlayImageLoaded = false;
             let roomOverlayImageUrl = '';
             let roomOverlayTransform = { x: 0, y: 0, rotation: 0, scale: 1 };
+            let roomOverlayAnimation = { columns: 1, rows: 1, frames: 1, fps: 8 };
             function setRoomOverlay(url = '', transform = {}) {
+                const nextAnimation = normalizeClothingAnimation(transform?.animation || {});
+                const animationChanged = JSON.stringify(nextAnimation) !== JSON.stringify(roomOverlayAnimation);
+                roomOverlayAnimation = nextAnimation;
                 const nextUrl = typeof url === 'string' ? url : '';
                 const nextTransform = {
                     x: Math.max(-270, Math.min(270, Number(transform?.x) || 0)),
@@ -2337,7 +2341,7 @@
                 const transformChanged = Object.keys(nextTransform).some((key) => nextTransform[key] !== roomOverlayTransform[key]);
                 roomOverlayTransform = nextTransform;
                 if (nextUrl === roomOverlayImageUrl) {
-                    if (transformChanged) requestBoardRender();
+                    if (transformChanged || animationChanged) requestBoardRender();
                     return;
                 }
                 roomOverlayImageUrl = nextUrl;
@@ -4719,7 +4723,7 @@
                 resetAdminClothingForm(wasEditing ? 'Redigeringen blev annulleret.' : 'Formularen er ryddet.');
             });
 
-            async function uploadAdminRoomBackground(roomId, file, statusElement, animationInput, type) {
+            async function uploadAdminRoomBackground(roomId, file, statusElement, animationInput, type, bundle = {}) {
                 if (!file || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
                     statusElement.textContent = 'Vælg en PNG-, JPG- eller WebP-fil.';
                     return false;
@@ -4823,7 +4827,8 @@
                         id: roomId,
                         image: new Uint8Array(await blob.arrayBuffer()),
                         animation,
-                        type
+                        type,
+                        ...bundle
                     });
                     return true;
                 } catch (error) {
@@ -4959,7 +4964,19 @@
                     previewOverlay.className = 'admin-room-preview-overlay';
                     previewOverlay.alt = '';
                     previewOverlay.hidden = !room.overlayUrl;
-                    if (room.overlayUrl) previewOverlay.src = room.overlayUrl;
+                    if (room.overlayUrl) {
+                        const overlaySource = new Image();
+                        overlaySource.addEventListener('load', () => {
+                            const settings = normalizeClothingAnimation(room.overlayTransform?.animation || {});
+                            const thumbnail = document.createElement('canvas');
+                            thumbnail.width = 540; thumbnail.height = 360;
+                            thumbnail.getContext('2d').drawImage(overlaySource, 0, 0,
+                                overlaySource.naturalWidth / settings.columns, overlaySource.naturalHeight / settings.rows,
+                                0, 0, 540, 360);
+                            previewOverlay.src = thumbnail.toDataURL('image/png');
+                        }, { once: true });
+                        overlaySource.src = room.overlayUrl;
+                    }
                     preview.append(previewBackground, previewOverlay);
                     const editFields = document.createElement('div');
                     editFields.append(meta, form);
@@ -4998,6 +5015,9 @@
                     spritePreview.setAttribute('aria-label', 'Animation med de valgte indstillinger');
                     let spritePreviewImage = null;
                     let spritePreviewAnimation = null;
+                    let spritePreviewOverlay = null;
+                    let spritePreviewOverlayAnimation = null;
+                    let spritePreviewOverlaySettings = null;
                     let selectedRoomSpriteDimensions = null;
                     const readRoomSpriteAnimation = () => ({
                         columns: Number(animationFields.columns.value),
@@ -5007,7 +5027,9 @@
                     });
                     const updateSpritePreview = () => {
                         if (spritePreviewAnimation) spritePreviewAnimation.cancel();
+                        if (spritePreviewOverlayAnimation) spritePreviewOverlayAnimation.cancel();
                         spritePreviewAnimation = null;
+                        spritePreviewOverlayAnimation = null;
                         if (!spritePreviewImage) return;
                         const settings = readRoomSpriteAnimation();
                         const width = spritePreviewImage.naturalWidth;
@@ -5029,6 +5051,18 @@
                             duration: settings.frames / settings.fps * 1000,
                             iterations: Infinity
                         });
+                        spritePreviewAnimation.startTime = document.timeline.currentTime;
+                        if (spritePreviewOverlay && spritePreviewOverlaySettings) {
+                            const overlaySettings = spritePreviewOverlaySettings;
+                            spritePreviewOverlay.style.width = `${overlaySettings.columns * 100}%`;
+                            spritePreviewOverlay.style.height = `${overlaySettings.rows * 100}%`;
+                            spritePreviewOverlay.style.left = '0';
+                            spritePreviewOverlay.style.top = '0';
+                            spritePreviewOverlayAnimation = spritePreviewOverlay.animate(RoomSpritesheet.previewFrames(overlaySettings), {
+                                duration: overlaySettings.frames / overlaySettings.fps * 1000, iterations: Infinity
+                            });
+                            spritePreviewOverlayAnimation.startTime = spritePreviewAnimation.startTime;
+                        }
                     };
                     const syncRoomAnimationGrid = () => {
                         updateSpritePreview();
@@ -5094,7 +5128,7 @@
                                     selectedRoomSpriteDimensions = { width: source.naturalWidth, height: source.naturalHeight };
                                     spritePreviewImage = source;
                                     source.alt = 'Forhåndsvisning af spritesheet';
-                                    spritePreview.replaceChildren(source);
+                                    spritePreview.replaceChildren(source, ...(spritePreviewOverlay ? [spritePreviewOverlay] : []));
                                     syncRoomAnimationGrid();
                                 }
                                 selectedFile = file;
@@ -5144,6 +5178,7 @@
                             let backgrounds = [];
                             let presetFile = null;
                             let presetAnimation = null;
+                            let presetBundle = {};
                             let presetRevision = 0;
                             let activating = false;
                             const clearPreset = () => {
@@ -5151,6 +5186,11 @@
                                 presets.value = '';
                                 presetFile = null;
                                 presetAnimation = null;
+                                presetBundle = {};
+                                spritePreviewOverlay?.remove();
+                                spritePreviewOverlay = null;
+                                spritePreviewOverlaySettings = null;
+                                spritePreviewOverlayAnimation?.cancel();
                                 activatePreset.disabled = true;
                                 activatePreset.dataset.roomBackgroundPresetReady = 'false';
                             };
@@ -5161,6 +5201,10 @@
                                 const background = backgrounds.find((entry) => entry.id === presets.value);
                                 presetFile = null;
                                 presetAnimation = null;
+                                presetBundle = {};
+                                spritePreviewOverlay?.remove();
+                                spritePreviewOverlay = null;
+                                spritePreviewOverlaySettings = null;
                                 activatePreset.disabled = true;
                                 activatePreset.dataset.roomBackgroundPresetReady = 'false';
                                 if (!background) return;
@@ -5170,6 +5214,24 @@
                                     if (!response.ok) throw new Error('download');
                                     const blob = await response.blob();
                                     if (revision !== presetRevision) return;
+                                    const bundle = { clearOverlay: !background.overlay };
+                                    if (background.overlay) {
+                                        const overlayResponse = await fetch(background.overlay.url);
+                                        if (!overlayResponse.ok) throw new Error('overlay-download');
+                                        const overlayBlob = await overlayResponse.blob();
+                                        if (overlayBlob.size > 850_000) throw new Error('overlay-size');
+                                        const overlayUrl = URL.createObjectURL(overlayBlob);
+                                        const overlayImage = new Image();
+                                        try { overlayImage.src = overlayUrl; await overlayImage.decode(); }
+                                        finally { URL.revokeObjectURL(overlayUrl); }
+                                        if (revision !== presetRevision) return;
+                                        spritePreviewOverlay = overlayImage;
+                                        spritePreviewOverlay.alt = 'DJ-pult foran figurer';
+                                        spritePreviewOverlaySettings = background.overlay.animation;
+                                        bundle.overlay = { image: new Uint8Array(await overlayBlob.arrayBuffer()), animation: background.overlay.animation };
+                                    }
+                                    if (background.openCells) bundle.openCells = background.openCells;
+                                    if (background.closedCells) bundle.closedCells = background.closedCells;
                                     for (const [key, value] of Object.entries(background.animation)) {
                                         animationFields[key].value = String(value);
                                     }
@@ -5178,9 +5240,10 @@
                                     if (!ready || revision !== presetRevision) return;
                                     presetFile = file;
                                     presetAnimation = { ...background.animation };
+                                    presetBundle = bundle;
                                     activatePreset.disabled = false;
                                     activatePreset.dataset.roomBackgroundPresetReady = 'true';
-                                    status.textContent = 'Forhåndsvisning af ' + background.name + '. Aktivér gemmer baggrund og indstillinger på rummet.';
+                                    status.textContent = 'Forhåndsvisning af ' + background.name + '. Aktivér gemmer baggrund, indstillinger og eventuelt overlay på rummet.';
                                 } catch {
                                     if (revision === presetRevision) status.textContent = 'Baggrunden kunne ikke hentes. Vælg den igen for at prøve på ny.';
                                 }
@@ -5193,7 +5256,7 @@
                                 presets.disabled = true;
                                 choose.disabled = true;
                                 try {
-                                    const started = await uploadAdminRoomBackground(room.id, presetFile, status, presetAnimation, 'spritesheet');
+                                    const started = await uploadAdminRoomBackground(room.id, presetFile, status, presetAnimation, 'spritesheet', presetBundle);
                                     activatePreset.disabled = started;
                                     save.disabled = started;
                                 } finally {
@@ -5314,7 +5377,7 @@
                         previewOverlay.style.left = `${50 + transform.x / 540 * 100}%`;
                         previewOverlay.style.top = `${50 + transform.y / 360 * 100}%`;
                         previewOverlay.style.transform = `translate(-50%, -50%) rotate(${transform.rotation}deg) scale(${transform.scale})`;
-                        if (activeRoom === room.id) setRoomOverlay(room.overlayUrl, transform);
+                        if (activeRoom === room.id) setRoomOverlay(room.overlayUrl, { ...transform, animation: room.overlayTransform?.animation });
                     };
                     const transformForm = document.createElement('form');
                     transformForm.className = 'admin-room-overlay-transform';
@@ -6746,11 +6809,13 @@
 
                 // Decorative overlays sit above the room background and every avatar.
                 if (roomOverlayImageLoaded) {
+                    const frame = getClothingSpriteFrame(roomOverlayImage, roomOverlayAnimation, now);
                     ctx.save();
                     ctx.translate(gridLayout.width / 2 + roomOverlayTransform.x, gridLayout.height / 2 + roomOverlayTransform.y);
                     ctx.rotate(roomOverlayTransform.rotation * Math.PI / 180);
                     ctx.scale(roomOverlayTransform.scale, roomOverlayTransform.scale);
-                    ctx.drawImage(roomOverlayImage, -gridLayout.width / 2, -gridLayout.height / 2, gridLayout.width, gridLayout.height);
+                    ctx.drawImage(roomOverlayImage, frame.sx, frame.sy, frame.sw, frame.sh,
+                        -gridLayout.width / 2, -gridLayout.height / 2, gridLayout.width, gridLayout.height);
                     ctx.restore();
                 }
 
@@ -6898,6 +6963,9 @@
                 if (roomBackgroundImageLoaded && roomBackgroundAnimation.frames > 1) {
                     clothingFps = Math.max(clothingFps, roomBackgroundAnimation.fps);
                     boardBackgroundDirty = true;
+                }
+                if (roomOverlayImageLoaded && roomOverlayAnimation.frames > 1) {
+                    clothingFps = Math.max(clothingFps, roomOverlayAnimation.fps);
                 }
                 if (isAdminInvisible) nextAt = now + 60;
                 for (const player of Object.values(players)) {

@@ -30,6 +30,7 @@ const { analyzeProgressionMessage, SPAM_HISTORY_LIMIT, SPAM_HISTORY_WINDOW_MS } 
 const { GUESTBOOK_MESSAGE_MAX_LENGTH, normalizeGuestbookMessage } = require('./lib/guestbook');
 const { USER_SEARCH_RESULT_LIMIT, getUserSearchPatterns } = require('./lib/user-search');
 const GRID_LAYOUT = require('./public/grid-layout');
+const { prepareRoomBackgroundBundle } = require('./lib/room-background-bundle');
 const { LEVEL_REQUIREMENTS, getUserLevel } = require('./public/level-progression');
 const PRIVATE_MAIL_SUBJECT_MAX_LENGTH = 100;
 const PRIVATE_MAIL_MESSAGE_MAX_LENGTH = 2000;
@@ -615,7 +616,9 @@ async function startServer() {
     });
     const app = express();
     const server = http.createServer(app);
-    const io = new Server(server, { maxHttpBufferSize: 1_100_000 });
+    // A catalog activation can include a background plus a transparent foreground.
+    // Allow both attachments together, including base64 overhead on polling clients.
+    const io = new Server(server, { maxHttpBufferSize: 2_600_000 });
     const PgSessionStore = connectPgSimple(session);
     const sessionStore = new PgSessionStore({
         pool,
@@ -718,6 +721,12 @@ async function startServer() {
             y: clamp(value?.y, -180, 180, 0),
             rotation: clamp(value?.rotation, -180, 180, 0),
             scale: clamp(value?.scale, 0.25, 3, 1)
+        };
+    }
+    function getPublicRoomOverlayTransform(room) {
+        return {
+            ...normalizePublicRoomOverlayTransform(room?.overlay_transform),
+            animation: normalizeClothingAnimation(room?.overlay_transform?.animation)
         };
     }
     function normalizeClothingTransform(value = {}, category = '') {
@@ -2438,7 +2447,7 @@ async function startServer() {
             roomBackgroundUrl: getPublicRoomBackgroundUrl(publicRoom),
             roomBackgroundAnimation: getPublicRoomBackgroundAnimation(publicRoom),
             roomOverlayUrl: getPublicRoomOverlayUrl(publicRoom),
-            roomOverlayTransform: normalizePublicRoomOverlayTransform(publicRoom?.overlay_transform),
+            roomOverlayTransform: getPublicRoomOverlayTransform(publicRoom),
             isShop: publicRoom?.is_shop === true,
             shopIsOpen: publicRoom?.shop_is_open === true
         };
@@ -2632,7 +2641,7 @@ async function startServer() {
                 spritesheetBackgroundAnimation: getPublicRoomBackgroundAnimation({ ...room, background_type: 'spritesheet' }),
                 hasOverlay: room.has_overlay,
                 overlayUrl: getPublicRoomOverlayUrl(room),
-                overlayTransform: normalizePublicRoomOverlayTransform(room.overlay_transform),
+                overlayTransform: getPublicRoomOverlayTransform(room),
                 count: await redis.hLen(roomKeys(room.id).players)
             })));
             socket.emit('admin-public-rooms', { rooms: result });
@@ -3622,7 +3631,7 @@ async function startServer() {
             }
         });
 
-        socket.on('admin-public-room-background-upload', async ({ id, image, animation, type } = {}) => {
+        socket.on('admin-public-room-background-upload', async ({ id, image, animation, type, overlay, openCells, closedCells, clearOverlay } = {}) => {
             if (!socket.data.canManagePublicRooms || !activeSocketIds.has(socket.id)) return;
             const backgroundType = type === 'static' || type === 'spritesheet' ? type : null;
             const bytes = Buffer.isBuffer(image) ? image : image instanceof Uint8Array ? Buffer.from(image) : null;
@@ -3644,26 +3653,47 @@ async function startServer() {
                 });
                 return;
             }
+            let bundle;
+            try { bundle = prepareRoomBackgroundBundle({ overlay, openCells, closedCells, clearOverlay }); }
+            catch (error) {
+                socket.emit('admin-room-background-result', { success: false, message: error.message });
+                return;
+            }
             try {
                 const mimeType = isJpeg ? 'image/jpeg' : isPng ? 'image/png' : 'image/webp';
+                const bundleUpdate = `,
+                    overlay_image = CASE WHEN NOT $9::boolean THEN overlay_image ELSE $5::bytea END,
+                    overlay_mime_type = CASE WHEN NOT $9::boolean THEN overlay_mime_type ELSE $6::text END,
+                    overlay_updated_at = CASE WHEN NOT $9::boolean THEN overlay_updated_at ELSE NOW() END,
+                    overlay_version = overlay_version + CASE WHEN NOT $9::boolean THEN 0 ELSE 1 END,
+                    overlay_transform = CASE WHEN NOT $9::boolean THEN overlay_transform ELSE $7::jsonb END,
+                    layout_json = layout_json || $8::jsonb`;
+                const values = [id, bytes, mimeType, JSON.stringify(normalizedAnimation), bundle.image, bundle.mimeType,
+                    bundle.transform ? JSON.stringify(bundle.transform) : null, JSON.stringify(bundle.layout), bundle.replaceOverlay];
                 const { rowCount } = backgroundType === 'static'
                     ? await pool.query(`
                         UPDATE chat_public_rooms
                         SET background_image = $2, background_mime_type = $3,
                             background_updated_at = NOW(), background_version = background_version + 1,
-                            background_type = 'static'
+                            background_type = 'static', background_animation_json = $4::jsonb
+                            ${bundleUpdate}
                         WHERE id = $1
-                    `, [id, bytes, mimeType])
+                    `, values)
                     : await pool.query(`
                         UPDATE chat_public_rooms
                         SET background_spritesheet_image = $2, background_spritesheet_mime_type = $3,
                             background_spritesheet_updated_at = NOW(), background_spritesheet_version = background_spritesheet_version + 1,
                             background_spritesheet_animation_json = $4::jsonb, background_type = 'spritesheet'
+                            ${bundleUpdate}
                         WHERE id = $1
-                    `, [id, bytes, mimeType, JSON.stringify(normalizedAnimation)]);
+                    `, values);
                 if (!rowCount) {
                     socket.emit('admin-room-background-result', { success: false, message: 'Rummet findes ikke længere.' });
                     return;
+                }
+                if (Object.keys(bundle.layout).length) {
+                    const tiles = await loadApartmentTiles(id);
+                    io.to(roomChannel(id)).emit('public-room-layout-updated', { roomId: id, tiles });
                 }
                 const { rows: [room] } = await pool.query(`
                     SELECT id, room_number, name, welcome_title, welcome_text,
@@ -3683,7 +3713,7 @@ async function startServer() {
                     roomBackgroundUrl: getPublicRoomBackgroundUrl(room),
                     roomBackgroundAnimation: getPublicRoomBackgroundAnimation(room),
                     roomOverlayUrl: getPublicRoomOverlayUrl(room),
-                    roomOverlayTransform: normalizePublicRoomOverlayTransform(room.overlay_transform)
+                    roomOverlayTransform: getPublicRoomOverlayTransform(room)
                 });
                 socket.emit('admin-room-background-result', { success: true, message: `Baggrunden for ${roomName} er opdateret.` });
                 await sendAdminPublicRooms();
@@ -3726,7 +3756,7 @@ async function startServer() {
                     roomBackgroundUrl: getPublicRoomBackgroundUrl(room),
                     roomBackgroundAnimation: getPublicRoomBackgroundAnimation(room),
                     roomOverlayUrl: getPublicRoomOverlayUrl(room),
-                    roomOverlayTransform: normalizePublicRoomOverlayTransform(room.overlay_transform)
+                    roomOverlayTransform: getPublicRoomOverlayTransform(room)
                 });
                 socket.emit('admin-room-background-result', { success: true, message: `${roomName} bruger nu den valgte baggrund.` });
                 await sendAdminPublicRooms();
@@ -3766,7 +3796,7 @@ async function startServer() {
                     roomBackgroundUrl: null,
                     roomBackgroundAnimation: getPublicRoomBackgroundAnimation(room),
                     roomOverlayUrl: getPublicRoomOverlayUrl(room),
-                    roomOverlayTransform: normalizePublicRoomOverlayTransform(room.overlay_transform)
+                    roomOverlayTransform: getPublicRoomOverlayTransform(room)
                 });
                 socket.emit('admin-room-background-result', { success: true, message: `${roomName} bruger nu standardbaggrunden. Dine uploads er gemt.` });
                 await sendAdminPublicRooms();
@@ -3794,7 +3824,8 @@ async function startServer() {
                 const { rowCount } = await pool.query(`
                     UPDATE chat_public_rooms
                     SET overlay_image = $2, overlay_mime_type = $3,
-                        overlay_updated_at = NOW(), overlay_version = overlay_version + 1
+                        overlay_updated_at = NOW(), overlay_version = overlay_version + 1,
+                        overlay_transform = overlay_transform || '{"animation":{"columns":1,"rows":1,"frames":1,"fps":8}}'::jsonb
                     WHERE id = $1
                 `, [id, bytes, mimeType]);
                 if (!rowCount) {
@@ -3821,7 +3852,7 @@ async function startServer() {
                     roomBackgroundUrl: getPublicRoomBackgroundUrl(room),
                     roomBackgroundAnimation: getPublicRoomBackgroundAnimation(room),
                     roomOverlayUrl: getPublicRoomOverlayUrl(room),
-                    roomOverlayTransform: normalizePublicRoomOverlayTransform(room.overlay_transform)
+                    roomOverlayTransform: getPublicRoomOverlayTransform(room)
                 });
                 socket.emit('admin-room-overlay-result', { id, success: true, message: `Overlayet til ${roomName} er gemt.` });
                 await sendAdminPublicRooms();
@@ -3866,7 +3897,7 @@ async function startServer() {
                     roomBackgroundUrl: getPublicRoomBackgroundUrl(room),
                     roomBackgroundAnimation: getPublicRoomBackgroundAnimation(room),
                     roomOverlayUrl: null,
-                    roomOverlayTransform: normalizePublicRoomOverlayTransform(room.overlay_transform)
+                    roomOverlayTransform: getPublicRoomOverlayTransform(room)
                 });
                 socket.emit('admin-room-overlay-result', { id, success: true, message: `Overlayet til ${roomName} er fjernet.` });
                 await sendAdminPublicRooms();
@@ -3892,7 +3923,9 @@ async function startServer() {
             const transform = { x: values[0], y: values[1], rotation: values[2], scale: values[3] };
             try {
                 const { rowCount } = await pool.query(
-                    'UPDATE chat_public_rooms SET overlay_transform = $2::jsonb WHERE id = $1',
+                    `UPDATE chat_public_rooms SET overlay_transform = $2::jsonb ||
+                        jsonb_build_object('animation', COALESCE(overlay_transform->'animation',
+                            '{"columns":1,"rows":1,"frames":1,"fps":8}'::jsonb)) WHERE id = $1`,
                     [id, JSON.stringify(transform)]
                 );
                 if (!rowCount) {
@@ -3919,7 +3952,7 @@ async function startServer() {
                     roomBackgroundUrl: getPublicRoomBackgroundUrl(room),
                     roomBackgroundAnimation: getPublicRoomBackgroundAnimation(room),
                     roomOverlayUrl: getPublicRoomOverlayUrl(room),
-                    roomOverlayTransform: normalizePublicRoomOverlayTransform(room.overlay_transform)
+                    roomOverlayTransform: getPublicRoomOverlayTransform(room)
                 });
                 socket.emit('admin-room-overlay-result', { id, success: true, message: `Placeringen af overlayet til ${roomName} er gemt.` });
                 await sendAdminPublicRooms();
@@ -4027,7 +4060,7 @@ async function startServer() {
                     roomBackgroundUrl: getPublicRoomBackgroundUrl(updatedRoom),
                     roomBackgroundAnimation: getPublicRoomBackgroundAnimation(updatedRoom),
                     roomOverlayUrl: getPublicRoomOverlayUrl(updatedRoom),
-                    roomOverlayTransform: normalizePublicRoomOverlayTransform(updatedRoom.overlay_transform),
+                    roomOverlayTransform: getPublicRoomOverlayTransform(updatedRoom),
                     isShop: updatedRoom.is_shop === true,
                     shopIsOpen: updatedRoom.shop_is_open === true
                 });

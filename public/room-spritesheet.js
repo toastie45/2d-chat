@@ -59,6 +59,9 @@
                         if (typeof background.id !== 'string' || typeof background.name !== 'string'
                             || typeof background.url !== 'string' || !background.url.startsWith('/images/')
                             || validate(background.animation || {})) throw new Error('En baggrund har ugyldige indstillinger.');
+                        if (background.overlay && (typeof background.overlay.url !== 'string'
+                            || !background.overlay.url.startsWith('/images/')
+                            || validate(background.overlay.animation || {}))) throw new Error('Overlayets indstillinger er ugyldige.');
                     }
                     return catalog.backgrounds;
                 }).catch((error) => {
