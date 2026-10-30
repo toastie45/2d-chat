@@ -1,0 +1,20 @@
+{
+  "gridCanvas": { "width": 540, "height": 360 },
+  "backgroundCanvas": { "width": 1536, "height": 1024 },
+  "avatar": { "width": 54, "height": 75, "labelHeight": 19, "bottomMargin": 5 },
+  "stoolSprite": "public/images/disco-standing-chair.png",
+  "sourceSupportPoint": { "x": 620, "y": 740 },
+  "sourceSeatWidth": 500,
+  "targetSeatWidth": 110,
+  "seats": [
+    { "cell": "2:-2", "x": 405, "y": 45, "footY": 82.5, "area": "bar" },
+    { "cell": "3:-1", "x": 405, "y": 135, "footY": 172.5, "area": "bar" },
+    { "cell": "4:0", "x": 405, "y": 225, "footY": 262.5, "area": "bar" },
+    { "cell": "1:5", "x": 45, "y": 315, "footY": 336, "area": "lounge" },
+    { "cell": "2:4", "x": 135, "y": 315, "footY": 336, "area": "lounge" }
+  ],
+  "notes": [
+    "The furniture support is placed under the actual feet of the unchanged standing avatar.",
+    "Bottom-row avatars are clamped by getAvatarDrawY; use their rendered foot position, not raw grid y plus half the avatar height."
+  ]
+}

@@ -6,22 +6,24 @@ const os = require('node:os');
 const http = require('node:http');
 const { spawn } = require('node:child_process');
 const assert = require('node:assert/strict');
-const djPresetId = process.env.ROOM_BACKGROUND_PRESET || 'disco-dj-grid-v3';
+const djPresetId = process.env.ROOM_BACKGROUND_PRESET || 'disco-standing-v4';
 const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 const extract = (start, end) => html.slice(html.indexOf(start), html.indexOf(end, html.indexOf(start)));
 const code = extract('function normalizeClothingAnimation(', 'function getClothingSpriteFrame(')
     + extract('function getClothingSpriteFrame(', 'function getAdminClothingAnimation(')
+    + extract('function getAvatarDrawY(', 'function getBubblePlacement(')
     + extract('const roomOverlayImage = new Image();', 'const avatarImage = new Image();')
     + extract('function getBoardFramePlan(', 'function gameLoop(')
     + extract('async function uploadAdminRoomBackground(', 'async function uploadAdminRoomOverlay(')
     + extract('function renderAdminPublicRooms(', 'function drawWardrobeAvatarPreview(');
 const fixture = `<!doctype html><meta charset="utf-8"><style>${html.match(/<style>([\s\S]*?)<\/style>/)[1]}</style>
-<div id="rooms"></div><p id="status"></p><script src="/room-spritesheet.js"></script><script>
+<div id="rooms"></div><p id="status"></p><script src="/grid-layout.js"></script><script src="/room-spritesheet.js"></script><script>
 const adminPublicRooms=document.getElementById('rooms'), adminRoomsStatus=document.getElementById('status');
 const activeRoom='none', sent=[], socket={connected:true,emit:(event,payload)=>sent.push({event,payload})};
 const requestBoardRender=()=>{}, roomBackgroundImageLoaded=false, roomBackgroundAnimation={frames:1},
     isAdminInvisible=false, players={}, whisperBubbles=new Map(), activeSidePanel='none',
-    wardrobePanel={hidden:true}, adminClothingView={hidden:true};${code}</script>`;
+    wardrobePanel={hidden:true}, adminClothingView={hidden:true}, gridLayout=ChatGridLayout,
+    avatarImageLoaded=true, avatarWidth=54, avatarHeight=75, avatarRadius=13;${code}</script>`;
 const server = http.createServer((req, res) => {
     if (req.url === '/') { res.setHeader('Content-Type', 'text/html; charset=utf-8'); return res.end(fixture); }
     const file = path.resolve(__dirname, '../public', '.' + req.url.split('?')[0]);
@@ -146,13 +148,41 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
             check(secondPixels.some((v,i)=>Math.abs(v-firstPixels[i])>10),'record markings rotate between adjacent frames');
             const alpha=sampleContext.getImageData(0,0,768,512).data;
             check(alpha[3]===0&&alpha[(300*768+400)*4+3]===0,'foreground whitespace stays transparent');
+            let previewPng;
+            if (${Boolean(process.env.ROOM_PREVIEW_PATH)}) {
+                const canvas=document.createElement('canvas');canvas.width=1536;canvas.height=1024;
+                const context=canvas.getContext('2d');context.scale(1536/gridLayout.width,1024/gridLayout.height);
+                context.imageSmoothingEnabled=true;context.imageSmoothingQuality='high';
+                const background=await load(preset.url);
+                const frame=getClothingSpriteFrame(background,preset.animation,0);
+                context.drawImage(background,frame.sx,frame.sy,frame.sw,frame.sh,0,0,540,360);
+                const avatar=await load('/images/mand.png');
+                const targets=[{x:405,y:135},{x:45,y:315},{x:225,y:225}];
+                for(const position of targets){
+                    const y=getAvatarDrawY(position);
+                    context.fillStyle='rgba(0,0,0,.25)';context.beginPath();
+                    context.ellipse(position.x,y+avatarHeight/2-1,13,5,0,0,Math.PI*2);context.fill();
+                    context.drawImage(avatar,position.x-avatarWidth/2,y-avatarHeight/2,avatarWidth,avatarHeight);
+                    check(y+avatarHeight/2<=336,'preview uses actual bottom clamping');
+                }
+                const foreground=getClothingSpriteFrame(roomOverlayImage,roomOverlayAnimation,0);
+                context.drawImage(roomOverlayImage,foreground.sx,foreground.sy,foreground.sw,foreground.sh,0,0,540,360);
+                previewPng=canvas.toDataURL('image/png');
+            }
             setRoomOverlay('/images/disco-background.png',{});
             for(let i=0;i<100&&!roomOverlayImageLoaded;i++)await new Promise(r=>setTimeout(r,20));
             check(!Number.isFinite(getBoardFramePlan(Date.now()).nextAt),'static foreground stops animation timers');
-            return {result:'PASS: catalog, preview, one-click DJ bundle, overlay, standing cell and compression',bytes:upload.image.length,djBytes:dj.image.length,overlayBytes:dj.overlay.image.length,positions};
+            return {result:'PASS: catalog, preview, one-click DJ bundle, overlay, standing cell and compression',bytes:upload.image.length,djBytes:dj.image.length,overlayBytes:dj.overlay.image.length,positions,previewPng};
         })()` });
         if (result.result.exceptionDetails) throw new Error(JSON.stringify(result.result.exceptionDetails));
-        console.log(JSON.stringify(result.result.result.value, null, 2));
+        const value = result.result.result.value;
+        if (value.previewPng) {
+            const previewPath = path.resolve(process.env.ROOM_PREVIEW_PATH);
+            fs.writeFileSync(previewPath, Buffer.from(value.previewPng.split(',')[1], 'base64'));
+            delete value.previewPng;
+            value.previewPath = previewPath;
+        }
+        console.log(JSON.stringify(value, null, 2));
     } finally {
         if (ws) ws.close();
         browser.kill();

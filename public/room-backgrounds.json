@@ -1,12 +1,12 @@
 {
   "backgrounds": [
     {
-      "id": "disco-dj-grid-v3",
-      "name": "Diskotek – stole placeret efter grid",
-      "url": "/images/disco-dj-grid-spritesheet.png?v=3",
+      "id": "disco-standing-v4",
+      "name": "Diskotek – møbler til stående avatarer",
+      "url": "/images/disco-standing-spritesheet.png?v=4",
       "animation": { "columns": 4, "rows": 2, "frames": 8, "fps": 6 },
       "overlay": {
-        "url": "/images/disco-dj-grid-overlay-spritesheet.png?v=3",
+        "url": "/images/disco-standing-overlay-spritesheet.png?v=4",
         "animation": { "columns": 4, "rows": 2, "frames": 8, "fps": 6 }
       },
       "openCells": ["-1:1", "2:-2", "3:-1", "4:0", "1:5", "2:4"],

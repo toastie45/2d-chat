@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "styleReference": "room-background-style.json",
+  "placementReference": "disco-standing-placement.json",
+  "catalogId": "disco-standing-v4",
+  "background": "public/images/disco-standing-background.png",
+  "spritesheet": "public/images/disco-standing-spritesheet.png",
+  "overlay": "public/images/disco-standing-overlay-spritesheet.png",
+  "animation": { "columns": 4, "rows": 2, "frames": 8, "fps": 6 },
+  "notes": [
+    "Low matte chairs are positioned beneath the feet of the original standing avatar, not beneath its center.",
+    "The character remains the existing 54x75 sprite. No new pose or sitting animation is introduced.",
+    "The bottom-row foot position accounts for getAvatarDrawY and the reserved name-label space.",
+    "Optional real-renderer preview: set ROOM_PREVIEW_PATH and run scripts/check-room-spritesheet.cjs.",
+    "Only this version appears in the catalog. Activation includes the DJ foreground and animation."
+  ]
+}

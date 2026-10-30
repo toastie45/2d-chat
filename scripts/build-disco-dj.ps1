@@ -1,9 +1,10 @@
-param([string]$EditedRoom, [string]$SeatingEdit, [switch]$GridAlignedSeating)
+param([string]$EditedRoom, [string]$SeatingEdit, [switch]$GridAlignedSeating, [switch]$StandingFurniture)
 $ErrorActionPreference = 'Stop'
 if ((!$EditedRoom -and !$SeatingEdit) -or ($EditedRoom -and $SeatingEdit)) {
     throw 'Supply either EditedRoom or SeatingEdit.'
 }
 if ($GridAlignedSeating -and !$SeatingEdit) { throw 'GridAlignedSeating requires SeatingEdit.' }
+if ($StandingFurniture -and !$GridAlignedSeating) { throw 'StandingFurniture requires GridAlignedSeating.' }
 Add-Type -AssemblyName System.Drawing
 Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @'
 using System;
@@ -44,7 +45,7 @@ public static class DjRoomComposite {
 '@
 $assets = Join-Path $PSScriptRoot '..\public\images'
 $sourceName = if ($GridAlignedSeating) { 'disco-dj-seating-background.png' } elseif ($SeatingEdit) { 'disco-dj-background.png' } else { 'disco-background.png' }
-$prefix = if ($GridAlignedSeating) { 'disco-dj-grid' } elseif ($SeatingEdit) { 'disco-dj-seating' } else { 'disco-dj' }
+$prefix = if ($StandingFurniture) { 'disco-standing' } elseif ($GridAlignedSeating) { 'disco-dj-grid' } elseif ($SeatingEdit) { 'disco-dj-seating' } else { 'disco-dj' }
 $original = [System.Drawing.Bitmap]::new((Join-Path $assets $sourceName))
 $edit = [System.Drawing.Bitmap]::new($(if ($SeatingEdit) { $SeatingEdit } else { $EditedRoom }))
 if ($edit.Width -ne 1536 -or $edit.Height -ne 1024) { throw 'The edited room must be exactly 1536 x 1024 pixels.' }
@@ -58,7 +59,8 @@ try {
     if ($SeatingEdit) { [DjRoomComposite]::ApplySeating($room, $edit, $GridAlignedSeating.IsPresent) }
     else { [DjRoomComposite]::Apply($room, $edit) }
     if ($GridAlignedSeating) {
-        $placement = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\docs\disco-dj-grid-placement.json') -Raw | ConvertFrom-Json
+        $placementName = if ($StandingFurniture) { 'disco-standing-placement.json' } else { 'disco-dj-grid-placement.json' }
+        $placement = Get-Content -LiteralPath (Join-Path $PSScriptRoot ('..\docs\' + $placementName)) -Raw | ConvertFrom-Json
         if ($placement.sourceSeatWidth -le 1) { throw 'Measure and record the stool sprite seat geometry first.' }
         $stool = [System.Drawing.Bitmap]::new((Join-Path $PSScriptRoot ('..\' + $placement.stoolSprite)))
         $furnitureGraphics = [System.Drawing.Graphics]::FromImage($room)
@@ -66,9 +68,16 @@ try {
             $furnitureGraphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
             $spriteScale = $placement.targetSeatWidth / $placement.sourceSeatWidth
             $gridScale = $placement.backgroundCanvas.width / $placement.gridCanvas.width
+            $sourceAnchor = if ($StandingFurniture) { $placement.sourceSupportPoint } else { $placement.sourceSeatCenter }
             foreach ($seat in $placement.seats) {
-                $left = $seat.x * $gridScale - $placement.sourceSeatCenter.x * $spriteScale
-                $top = $seat.y * $gridScale - $placement.sourceSeatCenter.y * $spriteScale
+                $left = $seat.x * $gridScale - $sourceAnchor.x * $spriteScale
+                $supportY = $seat.y
+                if ($StandingFurniture) {
+                    $avatarHalfHeight = $placement.avatar.height / 2
+                    $maxAvatarY = $placement.gridCanvas.height - $placement.avatar.labelHeight - $placement.avatar.bottomMargin - $avatarHalfHeight
+                    $supportY = [math]::Min($seat.y, $maxAvatarY) + $avatarHalfHeight
+                }
+                $top = $supportY * $gridScale - $sourceAnchor.y * $spriteScale
                 $destination = [System.Drawing.RectangleF]::new($left,$top,$stool.Width*$spriteScale,$stool.Height*$spriteScale)
                 $furnitureGraphics.DrawImage($stool,$destination)
             }
