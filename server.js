@@ -327,6 +327,7 @@ local removed = {}
 local entries = redis.call('HGETALL', KEYS[1])
 local cutoff = tonumber(ARGV[1])
 local now = tonumber(ARGV[2])
+local exemptIds = cjson.decode(ARGV[3])
 for index = 1, #entries, 2 do
     local id = entries[index]
     local player = cjson.decode(entries[index + 1])
@@ -335,7 +336,7 @@ for index = 1, #entries, 2 do
     if not player.joinedAt then player.joinedAt = now end
     if player.invisible == nil then player.invisible = false end
     local lastActivityAt = tonumber(player.lastActivityAt or player.joinedAt or player.lastSeen or 0)
-    if lastActivityAt < cutoff then
+    if lastActivityAt < cutoff and not exemptIds[id] then
         local cell = player.col .. ':' .. player.row
         if redis.call('HGET', KEYS[2], cell) == id then
             redis.call('HDEL', KEYS[2], cell)
@@ -2071,12 +2072,16 @@ async function startServer() {
 
     async function kickIdlePlayers() {
         let removedAnyPlayers = false;
+        // fetchSockets includes admins connected to other server instances.
+        const exemptIds = Object.fromEntries((await io.fetchSockets())
+            .filter((socket) => socket.data.adminRole === 'full' || socket.data.adminRole === 'rooms-clothing')
+            .map((socket) => [socket.id, true]));
         for (const roomId of await getAllRoomIds()) {
             const keys = roomKeys(roomId);
             const now = Date.now();
             const removedIds = await redis.eval(KICK_IDLE_PLAYERS_SCRIPT, {
                 keys: [keys.players, keys.cells],
-                arguments: [String(now - PLAYER_IDLE_TIMEOUT), String(now)]
+                arguments: [String(now - PLAYER_IDLE_TIMEOUT), String(now), JSON.stringify(exemptIds)]
             });
             for (const id of removedIds) {
                 removedAnyPlayers = true;
