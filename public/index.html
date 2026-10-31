@@ -919,6 +919,25 @@
         .admin-user-search { width: 100%; min-height: 36px; margin-bottom: 10px; padding: 8px 10px; border: 1px solid #3b3e36; border-radius: 7px; background: #151613; color: #f2f0e9; font: inherit; font-size: 11px; }
         .admin-user-search:focus { border-color: #9fc65f; outline: 2px solid #9fc65f33; }
         .admin-list { display: grid; gap: 8px; }
+        .admin-logs-intro { margin: 0 0 12px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+        .admin-log-filters { display: grid; grid-template-columns: minmax(160px, 1.2fr) minmax(130px, .8fr) minmax(130px, .8fr); gap: 9px; padding: 12px; border: 1px solid #393b33; border-radius: 9px; background: #191a17; }
+        .admin-log-filters label { display: grid; gap: 4px; color: var(--muted); font-size: 10px; }
+        .admin-log-filters .admin-log-search-field { grid-column: 1 / -1; }
+        .admin-log-filters input, .admin-log-filters select { min-width: 0; min-height: 35px; padding: 7px 9px; border: 1px solid #3b3e36; border-radius: 7px; background: #151613; color: #f2f0e9; font: inherit; font-size: 11px; color-scheme: dark; }
+        .admin-log-filter-actions { display: flex; flex-wrap: wrap; gap: 7px; grid-column: 1 / -1; padding-top: 2px; }
+        .admin-log-results { display: grid; gap: 8px; margin-top: 10px; }
+        .admin-log-entry { padding: 10px 12px; border: 1px solid #393b33; border-radius: 11px 11px 11px 3px; background: #20211d; }
+        .admin-log-entry.chat { border-left: 3px solid #9fc65f; }
+        .admin-log-entry.account { border-left: 3px solid #71837f; }
+        .admin-log-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-bottom: 5px; }
+        .admin-log-user { color: #f2f0e9; font-size: 11px; font-weight: 750; }
+        .admin-log-time { margin-left: auto; color: var(--muted); font-size: 9px; }
+        .admin-log-badge { padding: 2px 6px; border-radius: 999px; background: #30342b; color: #c9dfa6; font-size: 8px; font-weight: 700; text-transform: uppercase; }
+        .admin-log-message { margin: 0; color: #e3e4dd; font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+        @media (max-width: 620px) {
+            .admin-log-filters { grid-template-columns: 1fr; }
+            .admin-log-filters .admin-log-search-field, .admin-log-filter-actions { grid-column: 1; }
+        }
         .admin-user-row, .admin-ban-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 11px; border: 1px solid #393b33; border-radius: 8px; background: #20211d; }
         .admin-user-details, .admin-ban-details { display: grid; min-width: 0; gap: 4px; }
         .admin-user-name, .admin-ban-name { color: #f2f0e9; font-size: 12px; font-weight: 650; }
@@ -2006,6 +2025,7 @@
                                 <option value="catalog">Tøjkatalog</option>
                                 <option value="shop">Butik</option>
                                 <option value="avatars">Avatarer</option>
+                                <option value="logs">Logs</option>
                             </select>
                             <section class="admin-welcome" id="admin-welcome-view" aria-labelledby="admin-welcome-title">
                                 <h3 id="admin-welcome-title">Velkommen til adminpanelet</h3>
@@ -2025,6 +2045,30 @@
                                         <div class="admin-list" id="admin-ip-bans" role="list"></div>
                                     </section>
                                 </div>
+                            </section>
+                            <section class="admin-section" id="admin-logs-view" aria-labelledby="admin-logs-title" hidden>
+                                <h3 class="admin-subsection-title" id="admin-logs-title">Søg i logs</h3>
+                                <p class="admin-logs-intro">Vælg en bestemt logkategori eller saml alle registrerede kategorier i én kronologisk oversigt.</p>
+                                <form class="admin-log-filters" id="admin-logs-form">
+                                    <label class="admin-log-search-field">Søg i brugernavn eller besked
+                                        <input id="admin-logs-search" type="search" maxlength="100" placeholder="Søg efter bruger eller tekst…">
+                                    </label>
+                                    <label>Logtype
+                                        <select id="admin-logs-type">
+                                            <option value="all">Alle logkategorier</option>
+                                            <option value="account">Kontohændelser</option>
+                                            <option value="chat">Chatbeskeder</option>
+                                        </select>
+                                    </label>
+                                    <label>Fra dato<input id="admin-logs-from" type="date"></label>
+                                    <label>Til dato<input id="admin-logs-to" type="date"></label>
+                                    <div class="admin-log-filter-actions">
+                                        <button class="admin-row-button" type="submit">Vis resultater</button>
+                                        <button class="admin-row-button" id="admin-logs-reset" type="button">Nulstil filtre</button>
+                                    </div>
+                                </form>
+                                <p class="admin-status" id="admin-logs-status" aria-live="polite"></p>
+                                <div class="admin-log-results" id="admin-logs-results" role="list"></div>
                             </section>
                             <section class="admin-section" id="admin-rooms-view" aria-labelledby="admin-rooms-title" hidden>
                                 <h3 class="visually-hidden" id="admin-rooms-title">Navigator - etager og rum</h3>
@@ -2779,6 +2823,15 @@
             const adminClothingView = document.getElementById('admin-clothing-view');
             const adminShopView = document.getElementById('admin-shop-view');
             const adminAvatarsView = document.getElementById('admin-avatars-view');
+            const adminLogsView = document.getElementById('admin-logs-view');
+            const adminLogsForm = document.getElementById('admin-logs-form');
+            const adminLogsSearch = document.getElementById('admin-logs-search');
+            const adminLogsType = document.getElementById('admin-logs-type');
+            const adminLogsFrom = document.getElementById('admin-logs-from');
+            const adminLogsTo = document.getElementById('admin-logs-to');
+            const adminLogsReset = document.getElementById('admin-logs-reset');
+            const adminLogsStatus = document.getElementById('admin-logs-status');
+            const adminLogsResults = document.getElementById('admin-logs-results');
             const adminAvatarForm = document.getElementById('admin-avatar-form');
             const adminGirlAvatarFile = document.getElementById('admin-girl-avatar-file');
             const adminAvatarStatus = document.getElementById('admin-avatar-status');
@@ -4358,11 +4411,27 @@
                 socket.emit('admin-online-users-request', { query });
             }
 
+            function requestAdminLogs() {
+                if (!isFullAdminUser) return;
+                if (adminLogsFrom.value && adminLogsTo.value && adminLogsFrom.value > adminLogsTo.value) {
+                    adminLogsStatus.textContent = 'Fra-datoen skal ligge før til-datoen.';
+                    return;
+                }
+                adminLogsStatus.textContent = 'Henter logs…';
+                adminLogsResults.replaceChildren();
+                socket.emit('admin-logs-request', {
+                    type: adminLogsType.value,
+                    query: adminLogsSearch.value,
+                    fromDate: adminLogsFrom.value,
+                    toDate: adminLogsTo.value
+                });
+            }
+
             function selectAdminSection() {
                 if (adminSectionSelect.value === 'users' && !isFullAdminUser
                     || adminSectionSelect.value === 'rooms' && !canManagePublicRooms
                     || ['clothing', 'catalog', 'shop'].includes(adminSectionSelect.value) && !canManageClothing
-                    || adminSectionSelect.value === 'avatars' && !isFullAdminUser) {
+                    || ['avatars', 'logs'].includes(adminSectionSelect.value) && !isFullAdminUser) {
                     adminSectionSelect.value = '';
                 }
                 const showUsers = adminSectionSelect.value === 'users' && isFullAdminUser;
@@ -4371,13 +4440,15 @@
                 const showCatalog = adminSectionSelect.value === 'catalog' && canManageClothing;
                 const showAdminShop = adminSectionSelect.value === 'shop' && canManageClothing;
                 const showAvatars = adminSectionSelect.value === 'avatars' && isFullAdminUser;
-                adminWelcomeView.hidden = showUsers || showRooms || showClothing || showCatalog || showAdminShop || showAvatars;
+                const showLogs = adminSectionSelect.value === 'logs' && isFullAdminUser;
+                adminWelcomeView.hidden = showUsers || showRooms || showClothing || showCatalog || showAdminShop || showAvatars || showLogs;
                 adminUsersView.hidden = !showUsers;
                 adminRoomsView.hidden = !showRooms;
                 adminClothingView.hidden = !showClothing;
                 document.getElementById('admin-catalog-view').hidden = !showCatalog;
                 adminShopView.hidden = !showAdminShop;
                 adminAvatarsView.hidden = !showAvatars;
+                adminLogsView.hidden = !showLogs;
                 if (showUsers) {
                     requestAdminUserList();
                     socket.emit('admin-ip-bans-request');
@@ -4385,6 +4456,7 @@
                 if (showRooms) socket.emit('admin-public-rooms-request');
                 if (showClothing || showCatalog) socket.emit('admin-clothing-items-request');
                 if (showAdminShop) socket.emit('admin-shop-rooms-request');
+                if (showLogs) requestAdminLogs();
             }
 
             let adminClothingPreviewImage = null;
@@ -7375,8 +7447,17 @@
                 document.getElementById('admin-catalog-view').hidden = true;
                 adminShopView.hidden = true;
                 adminAvatarsView.hidden = true;
+                adminLogsView.hidden = true;
             });
             adminSectionSelect.addEventListener('change', selectAdminSection);
+            adminLogsForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                requestAdminLogs();
+            });
+            adminLogsReset.addEventListener('click', () => {
+                adminLogsForm.reset();
+                requestAdminLogs();
+            });
             adminClothingCatalogSearch.addEventListener('input', () => renderAdminClothingCatalog());
             adminClothingCatalogCategory.addEventListener('change', () => renderAdminClothingCatalog());
             adminClothingCatalogAvatar.addEventListener('change', () => renderAdminClothingCatalog());
@@ -8482,6 +8563,51 @@
                 adminGirlAvatarPreview.hidden = false;
             });
 
+            socket.on('admin-logs-result', ({ logs = [], error = '', truncated = false } = {}) => {
+                if (!isFullAdminUser || adminSectionSelect.value !== 'logs') return;
+                adminLogsResults.replaceChildren();
+                if (error) {
+                    adminLogsStatus.textContent = error;
+                    return;
+                }
+                const entries = Array.isArray(logs) ? logs : [];
+                adminLogsStatus.textContent = entries.length
+                    ? `${entries.length} log${entries.length === 1 ? '' : 's'} fundet${truncated ? ' · viser de 300 nyeste' : ''}.`
+                    : 'Ingen logs matcher dit valg.';
+                for (const entry of entries) {
+                    const article = document.createElement('article');
+                    article.className = `admin-log-entry ${entry.source === 'chat' ? 'chat' : 'account'}`;
+                    article.setAttribute('role', 'listitem');
+                    const meta = document.createElement('div');
+                    meta.className = 'admin-log-meta';
+                    const username = document.createElement('span');
+                    username.className = 'admin-log-user';
+                    username.textContent = entry.username || 'Ukendt bruger';
+                    const badge = document.createElement('span');
+                    badge.className = 'admin-log-badge';
+                    const accountEventLabels = {
+                        account_created: 'Konto · Oprettet',
+                        login: 'Konto · Login',
+                        logout: 'Konto · Logout',
+                        password_changed: 'Konto · Adgangskode',
+                        account_deleted: 'Konto · Slettet'
+                    };
+                    badge.textContent = entry.source === 'chat'
+                        ? 'Brugerchat'
+                        : accountEventLabels[entry.eventType] || 'Konto';
+                    const time = document.createElement('time');
+                    time.className = 'admin-log-time';
+                    const createdAt = new Date(entry.createdAt);
+                    time.textContent = Number.isNaN(createdAt.getTime()) ? '' : createdAt.toLocaleString('da-DK');
+                    meta.append(username, badge, time);
+                    const message = document.createElement('p');
+                    message.className = 'admin-log-message';
+                    message.textContent = entry.message || '';
+                    article.append(meta, message);
+                    adminLogsResults.append(article);
+                }
+            });
+
             socket.on('admin-status', ({ isAdmin, role, canManageUsers, canManagePublicRooms: mayManageRooms, canManageClothing: mayManageClothing } = {}) => {
                 isAdminUser = isAdmin === true;
                 isFullAdminUser = canManageUsers === true || role === 'full';
@@ -8494,6 +8620,7 @@
                 adminSectionSelect.querySelector('option[value="catalog"]').hidden = !canManageClothing;
                 adminSectionSelect.querySelector('option[value="shop"]').hidden = !canManageClothing;
                 adminSectionSelect.querySelector('option[value="avatars"]').hidden = !isFullAdminUser;
+                adminSectionSelect.querySelector('option[value="logs"]').hidden = !isFullAdminUser;
                 selectAdminSection();
                 if (contextPlayerId === myId) updateAvatarContextMute();
             });

@@ -39,7 +39,7 @@ const PRIVATE_MAIL_MESSAGE_MAX_LENGTH = 2000;
 
 const MESSAGE_DURATION = 10_000;
 const OFFLINE_PROFILE_PREFIX = 'user:';
-const HISTORY_LIMIT = 500;
+const HISTORY_LIMIT = 100_000;
 const PRESENCE_HEARTBEAT_INTERVAL = 10_000;
 const PRESENCE_EXPIRY = 45_000;
 const PRESENCE_CLEANUP_INTERVAL = 15_000;
@@ -1230,6 +1230,30 @@ async function startServer() {
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS chat_messages_recent_idx ON chat_messages (id DESC)');
     await pool.query('CREATE INDEX IF NOT EXISTS chat_messages_user_recent_idx ON chat_messages (user_id, id DESC)');
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS chat_account_logs (
+            id BIGSERIAL PRIMARY KEY,
+            user_id BIGINT REFERENCES chat_users(id) ON DELETE SET NULL,
+            username VARCHAR(18) NOT NULL,
+            event_type VARCHAR(32) NOT NULL,
+            message VARCHAR(300) NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS chat_account_logs_recent_idx ON chat_account_logs (created_at DESC)');
+    await pool.query('CREATE INDEX IF NOT EXISTS chat_account_logs_user_recent_idx ON chat_account_logs (user_id, created_at DESC)');
+
+    async function writeAccountLog(user, eventType, message) {
+        if (!user?.id || !user?.username) return;
+        try {
+            await pool.query(
+                'INSERT INTO chat_account_logs (user_id, username, event_type, message) VALUES ($1, $2, $3, $4)',
+                [user.id, user.username, eventType, message]
+            );
+        } catch (error) {
+            console.error('Could not write account log:', getSafeErrorCode(error));
+        }
+    }
 
     await redisPublisher.connect();
     await redisSubscriber.connect();
@@ -1695,6 +1719,10 @@ async function startServer() {
                 `SELECT sid FROM "session" WHERE sess->'user'->>'id' = $1`, [userId]
             );
             await client.query(`DELETE FROM "session" WHERE sess->'user'->>'id' = $1`, [userId]);
+            await client.query(
+                'INSERT INTO chat_account_logs (user_id, username, event_type, message) VALUES ($1, $2, $3, $4)',
+                [userId, account.username, 'account_deleted', 'Kontoen blev slettet af brugeren.']
+            );
             await client.query('DELETE FROM chat_users WHERE id = $1', [userId]);
             await client.query('COMMIT');
 
@@ -1761,6 +1789,7 @@ async function startServer() {
                 'UPDATE chat_users SET password_hash = $1 WHERE id = $2',
                 [passwordHash, request.session.user.id]
             );
+            await writeAccountLog(request.session.user, 'password_changed', 'Adgangskoden blev ændret.');
             response.json({ success: true });
         } catch (error) {
             next(error);
@@ -1918,6 +1947,7 @@ async function startServer() {
                 client.release();
             }
             await saveAuthenticatedSession(request, user, tabId);
+            await writeAccountLog(user, 'account_created', 'Kontoen blev oprettet.');
             response.status(201).json({ user });
         } catch (error) {
             if (error.code === '23505') {
@@ -1972,6 +2002,7 @@ async function startServer() {
             const user = { id: userRecord.id, username: userRecord.username, avatarType: userRecord.avatar_type === 'girl' ? 'girl' : 'boy' };
             await saveAuthenticatedSession(request, user, tabId);
             await pool.query('UPDATE chat_users SET last_login_at = NOW() WHERE id = $1', [user.id]);
+            await writeAccountLog(user, 'login', 'Brugeren loggede ind.');
             await redis.del(getRateLimitKey(request));
             response.json({ user });
         } catch (error) {
@@ -1986,6 +2017,7 @@ async function startServer() {
             return;
         }
         const sessionId = request.sessionID;
+        const user = request.session.user;
         request.session.destroy((error) => {
             if (error) {
                 next(error);
@@ -1997,6 +2029,7 @@ async function startServer() {
                 sameSite: 'lax'
             });
             if (sessionId) io.in(`session:${sessionId}`).disconnectSockets(true);
+            void writeAccountLog(user, 'logout', 'Brugeren loggede ud.');
             response.status(204).end();
         });
     });
@@ -4382,6 +4415,40 @@ async function startServer() {
             }
         });
 
+        socket.on('admin-logs-request', async (payload = {}) => {
+            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            const logType = ['account', 'chat', 'all'].includes(payload.type) ? payload.type : 'all';
+            const query = typeof payload.query === 'string' ? payload.query.normalize('NFKC').trim().slice(0, 100) : '';
+            const fromDate = typeof payload.fromDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(payload.fromDate) ? payload.fromDate : null;
+            const toDate = typeof payload.toDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(payload.toDate) ? payload.toDate : null;
+            if (fromDate && toDate && fromDate > toDate) {
+                socket.emit('admin-logs-result', { error: 'Fra-datoen skal ligge før til-datoen.' });
+                return;
+            }
+            const escapedQuery = `%${query.replace(/[\\%_]/g, '\\$&')}%`;
+            const accountSource = `SELECT 'account'::text AS source, username, event_type, message, created_at FROM chat_account_logs`;
+            const chatSource = `SELECT 'chat'::text AS source, username, 'chat_message'::varchar AS event_type, message, created_at FROM chat_messages`;
+            const selectedSource = logType === 'account' ? accountSource : logType === 'chat' ? chatSource : `${accountSource} UNION ALL ${chatSource}`;
+            try {
+                const { rows } = await pool.query(`
+                    SELECT source, username, event_type, message, created_at
+                    FROM (${selectedSource}) AS logs
+                    WHERE ($1::date IS NULL OR created_at >= $1::date)
+                      AND ($2::date IS NULL OR created_at < $2::date + INTERVAL '1 day')
+                      AND ($3::text = '' OR username ILIKE $4 ESCAPE '\\' OR message ILIKE $4 ESCAPE '\\')
+                    ORDER BY created_at DESC
+                    LIMIT 300
+                `, [fromDate, toDate, query, escapedQuery]);
+                socket.emit('admin-logs-result', {
+                    logs: rows.map((row) => ({ source: row.source, username: row.username, eventType: row.event_type, message: row.message, createdAt: row.created_at })),
+                    truncated: rows.length === 300
+                });
+            } catch (error) {
+                console.error('Could not load admin logs:', getSafeErrorCode(error));
+                socket.emit('admin-logs-result', { error: 'Loggene kunne ikke hentes.' });
+            }
+        });
+
         socket.on('admin-user-bobs-adjust', async ({ targetUserId, amount, initials: rawInitials } = {}) => {
             if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
             const userId = typeof targetUserId === 'string' && /^[1-9]\d{0,18}$/.test(targetUserId)
@@ -6680,10 +6747,16 @@ async function startServer() {
                         'INSERT INTO chat_messages (user_id, username, message) VALUES ($1, $2, $3) RETURNING id, created_at',
                         [socket.data.user.id, socket.data.user.username, cleanText]
                     );
-                    await client.query(
-                        'DELETE FROM chat_messages WHERE id NOT IN (SELECT id FROM chat_messages ORDER BY id DESC LIMIT $1)',
-                        [HISTORY_LIMIT]
-                    );
+                    if (BigInt(insertResult.rows[0].id) % 500n === 0n) {
+                        await client.query(`
+                            DELETE FROM chat_messages
+                            WHERE id < (
+                                SELECT id FROM chat_messages
+                                ORDER BY id DESC
+                                OFFSET $1 LIMIT 1
+                            )
+                        `, [HISTORY_LIMIT]);
+                    }
                     if (progressionCheck.countsForProgression) {
                         const { rows: [progress] } = await client.query(`
                             UPDATE chat_users
