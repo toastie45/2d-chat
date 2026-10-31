@@ -478,7 +478,7 @@ function publicPlayer(player) {
             name: item.name,
             category: item.category,
             imageVersion: Number(item.imageVersion || 1),
-            imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${Number(item.imageVersion || 1)}`,
+            imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${Number(item.imageVersion || 1)}&asset=2`,
             // Preserve animation settings when room joins rebuild player objects.
             animation: normalizeClothingAnimation(item.animation),
             x: item.x,
@@ -1332,7 +1332,7 @@ async function startServer() {
                 return;
             }
             response.set({
-                'Cache-Control': 'public, max-age=31536000, immutable',
+                'Cache-Control': 'no-store, max-age=0',
                 'X-Content-Type-Options': 'nosniff'
             });
             response.type(item.mime_type).send(item.image);
@@ -2242,7 +2242,7 @@ async function startServer() {
                 name: row.name,
                 category: row.category,
                 imageVersion: Number(row.image_version || 1),
-                imageUrl: `/api/clothing-items/${encodeURIComponent(row.id)}/image?v=${row.image_version || 1}`,
+                imageUrl: `/api/clothing-items/${encodeURIComponent(row.id)}/image?v=${row.image_version || 1}&asset=2`,
                 animation: normalizeClothingAnimation(row.animation_json),
                 x: transform.x,
                 y: transform.y,
@@ -2326,7 +2326,7 @@ async function startServer() {
                 name: item.name,
                 category: item.category,
                 imageVersion: Number(item.image_version || 1),
-                imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.image_version || 1}`,
+                imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.image_version || 1}&asset=2`,
                 animation: normalizeClothingAnimation(item.animation_json),
                 x: transform.x,
                 y: transform.y,
@@ -2758,7 +2758,7 @@ async function startServer() {
                 requiredLevel: Number(item.required_level), price: Number(item.price),
                 shopListed: Boolean(item.is_shop_listed),
                 imageVersion: Number(item.image_version || 1),
-                imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.image_version || 1}`,
+                imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.image_version || 1}&asset=2`,
                 animation: normalizeClothingAnimation(item.animation_json),
                 transform: normalizeClothingTransform(item.transform_json, item.category)
             });
@@ -2887,7 +2887,7 @@ async function startServer() {
                         ? 'custom'
                         : Number(item.required_level) <= 8 ? 'level_1_8' : Number(item.required_level) <= 16 ? 'level_9_16' : 'level_17_20',
                     avatarType: item.target_avatar_type, requiredLevel: Number(item.required_level), price: Number(item.price),
-                    imageVersion: Number(item.image_version || 1), imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.image_version || 1}`,
+                    imageVersion: Number(item.image_version || 1), imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.image_version || 1}&asset=2`,
                     animation: normalizeClothingAnimation(item.animation_json),
                     shopListed: item.is_shop_listed === true
                 })) });
@@ -3156,7 +3156,7 @@ async function startServer() {
                         : Number(item.required_level) <= 8 ? 'level_1_8' : Number(item.required_level) <= 16 ? 'level_9_16' : 'level_17_20',
                     category: item.category, avatarType: item.target_avatar_type, requiredLevel: Number(item.required_level),
                     price: Number(item.price), owned: item.owned === true, imageVersion: Number(item.image_version || 1),
-                    imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.image_version || 1}`,
+                    imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.image_version || 1}&asset=2`,
                     animation: normalizeClothingAnimation(item.animation_json)
                 })) });
             } catch (error) {
@@ -3313,8 +3313,8 @@ async function startServer() {
                 try{
                     await client.query('BEGIN');
                     const {rows:[item]}=await client.query(`
-                        INSERT INTO chat_clothing_catalog (name,description,category,target_avatar_type,image,mime_type,required_level,price,transform_json,animation_json,variant_group,variant_label)
-                        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11,$12) RETURNING id
+                        INSERT INTO chat_clothing_catalog (name,description,category,target_avatar_type,image,mime_type,required_level,price,transform_json,animation_json,variant_group,variant_label,image_version)
+                        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11,$12,FLOOR(EXTRACT(EPOCH FROM clock_timestamp()) * 1000)::bigint) RETURNING id
                     `,[name,description,category,targetAvatarType,image,isPng?'image/png':'image/webp',requiredLevel,price,JSON.stringify({x,y,rotation,scale,scaleX,scaleY,skewX,skewY,layerPosition}),JSON.stringify(animation),variantGroup,variantLabel]);
                     if(target)await client.query('INSERT INTO chat_clothing_assignments (target_user_id,clothing_item_id) VALUES ($1,$2)',[target.id,item.id]);
                     await client.query('COMMIT');
@@ -3391,7 +3391,8 @@ async function startServer() {
                         required_level = $6, price = $7, transform_json = $8::jsonb,
                         animation_json = $9::jsonb, variant_group = $10, variant_label = $11,
                         image = COALESCE($12, image), mime_type = COALESCE($13, mime_type),
-                        image_version = image_version + CASE WHEN $12::bytea IS NULL THEN 0 ELSE 1 END
+                        image_version = CASE WHEN $12::bytea IS NULL THEN image_version
+                            ELSE GREATEST(image_version + 1, FLOOR(EXTRACT(EPOCH FROM clock_timestamp()) * 1000)::bigint) END
                     WHERE id = $1
                     RETURNING id
                 `, [id, name, description, category, targetAvatarType, requiredLevel, price,
@@ -3568,7 +3569,7 @@ async function startServer() {
                     equipped: item.is_equipped,
                     wardrobeCount: Number(item.owner_count || 0),
                     imageVersion: Number(item.image_version || 1),
-                    imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.image_version || 1}`,
+                    imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.image_version || 1}&asset=2`,
                     animation: normalizeClothingAnimation(item.animation_json),
                     ...normalizeClothingTransform(item.transform_json, item.category)
                 }))

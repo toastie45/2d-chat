@@ -2563,7 +2563,7 @@
             boevetAvatarImage.src = '/images/boevet.png';
             function getClothingImage(item) {
                 if (!item?.id || !item.imageUrl) return null;
-                const cacheKey = `${item.id}:${item.imageVersion || 1}`;
+                const cacheKey = item.imageUrl;
                 let image = clothingImageCache.get(cacheKey);
                 if (!image) {
                     image = new Image();
@@ -2573,6 +2573,7 @@
                         requestBoardRender();
                         drawWardrobeAvatarPreview();
                     });
+                    image.addEventListener('error', () => clothingImageCache.delete(cacheKey), { once: true });
                     image.src = item.imageUrl;
                     clothingImageCache.set(cacheKey, image);
                 }
@@ -2601,7 +2602,7 @@
                     draw(loaded);
                     return;
                 }
-                const pending = clothingImageCache.get(`${item?.id}:${item?.imageVersion || 1}`);
+                const pending = clothingImageCache.get(item?.imageUrl);
                 if (pending) {
                     const onLoad = () => draw(pending);
                     if (pending.loaded) onLoad();
@@ -4776,7 +4777,7 @@
                 adminClothingPreviewImage.addEventListener('error', () => {
                     adminClothingStatus.textContent = 'Det gemte billede kunne ikke indlæses i previewet.';
                 }, { once: true });
-                adminClothingPreviewImage.src = item.imageUrl || `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.imageVersion || 1}`;
+                adminClothingPreviewImage.src = item.imageUrl || `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.imageVersion || 1}&asset=2`;
                 drawAdminClothingPreview();
                 adminClothingForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
