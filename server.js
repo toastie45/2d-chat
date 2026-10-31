@@ -817,12 +817,27 @@ async function startServer() {
             user_id BIGINT NOT NULL REFERENCES chat_users(id) ON DELETE CASCADE,
             amount BIGINT NOT NULL CHECK (amount <> 0),
             balance_after BIGINT NOT NULL CHECK (balance_after >= 0),
-            transaction_type VARCHAR(24) NOT NULL CHECK (transaction_type IN ('online_time', 'shop_purchase')),
+            transaction_type VARCHAR(24) NOT NULL CHECK (transaction_type IN ('online_time', 'shop_purchase', 'admin_adjustment')),
             reference_key VARCHAR(100) NOT NULL,
             metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             UNIQUE (user_id, reference_key)
         )
+    `);
+    await pool.query(`
+        DO $$
+        DECLARE current_definition TEXT;
+        BEGIN
+            SELECT pg_get_constraintdef(oid) INTO current_definition
+            FROM pg_constraint
+            WHERE conname = 'chat_bobs_transactions_transaction_type_check'
+              AND conrelid = 'chat_bobs_transactions'::regclass;
+            IF current_definition IS NOT NULL AND POSITION('admin_adjustment' IN current_definition) = 0 THEN
+                ALTER TABLE chat_bobs_transactions DROP CONSTRAINT chat_bobs_transactions_transaction_type_check;
+                ALTER TABLE chat_bobs_transactions ADD CONSTRAINT chat_bobs_transactions_transaction_type_check
+                    CHECK (transaction_type IN ('online_time', 'shop_purchase', 'admin_adjustment'));
+            END IF;
+        END $$
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS chat_bobs_transactions_user_idx ON chat_bobs_transactions (user_id, created_at DESC)');
     await pool.query(`
@@ -4290,14 +4305,15 @@ async function startServer() {
                     ])
                 ]);
                 const { rows: onlineSessions } = await pool.query(`
-                    SELECT s.socket_id, s.user_id::text AS user_id, s.ip_hash, u.username
+                    SELECT s.socket_id, s.user_id::text AS user_id, s.ip_hash, u.username,
+                           u.bobs_balance::text AS bobs_balance
                     FROM chat_online_sessions s JOIN chat_users u ON u.id = s.user_id
                 `);
                 const onlineBySocket = new Map(onlineSessions.map((session) => [session.socket_id, session]));
                 if (searchQuery) {
                     const onlineByUserId = new Map(onlineSessions.map((session) => [session.user_id, session]));
                     const { rows: accounts } = await pool.query(`
-                        SELECT id::text AS user_id, username,
+                        SELECT id::text AS user_id, username, bobs_balance::text AS bobs_balance,
                                (registration_ip_hash IS NOT NULL OR EXISTS (
                                    SELECT 1 FROM chat_user_last_ips last_ip WHERE last_ip.user_id = chat_users.id
                                )) AS has_known_ip,
@@ -4317,6 +4333,7 @@ async function startServer() {
                             socketId: session?.socket_id || null,
                             userId: account.user_id,
                             username: account.username,
+                            bobsBalance: Number(account.bobs_balance || 0),
                             roomName: session && invisibleSocketIds.has(session.socket_id) ? 'Offline · usynlig' : session ? 'Online' : 'Offline',
                             isOnline: Boolean(session && !invisibleSocketIds.has(session.socket_id)),
                             isConnected: Boolean(session),
@@ -4344,6 +4361,7 @@ async function startServer() {
                             socketId,
                             userId: onlineSession?.user_id || String(activeSocketUsers.get(socketId) || ''),
                             username: onlineSession?.username || player.name,
+                            bobsBalance: Number(onlineSession?.bobs_balance || 0),
                             roomId,
                             roomName: invisibleSocketIds.has(socketId) ? 'Offline · usynlig' : roomNames.get(roomId) || 'Ukendt rum',
                             isOnline: !invisibleSocketIds.has(socketId),
@@ -4360,6 +4378,65 @@ async function startServer() {
             } catch (error) {
                 console.error('Could not load admin online users:', getSafeErrorCode(error));
                 socket.emit('admin-error', { message: 'Brugerlisten kunne ikke hentes.' });
+            }
+        });
+
+        socket.on('admin-user-bobs-adjust', async ({ targetUserId, amount } = {}) => {
+            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            const userId = typeof targetUserId === 'string' && /^[1-9]\d{0,18}$/.test(targetUserId)
+                ? targetUserId
+                : null;
+            const adjustment = Number(amount);
+            const fail = (message) => socket.emit('admin-action-result', { success: false, message });
+            if (!userId || !Number.isSafeInteger(adjustment) || adjustment === 0 || Math.abs(adjustment) > 1_000_000) {
+                fail('Angiv et helt beløb mellem -1.000.000 og 1.000.000 Bobs.');
+                return;
+            }
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+                const { rows: [target] } = await client.query(`
+                    SELECT id::text AS id, username, bobs_balance::text AS bobs_balance
+                    FROM chat_users WHERE id = $1 FOR UPDATE
+                `, [userId]);
+                if (!target) {
+                    await client.query('ROLLBACK');
+                    fail('Brugeren findes ikke længere.');
+                    return;
+                }
+                const balance = Number(target.bobs_balance || 0);
+                const nextBalance = balance + adjustment;
+                if (nextBalance < 0) {
+                    await client.query('ROLLBACK');
+                    fail(`${target.username} har kun ${balance.toLocaleString('da-DK')} Bobs.`);
+                    return;
+                }
+                await client.query('UPDATE chat_users SET bobs_balance = $2 WHERE id = $1', [userId, nextBalance]);
+                await client.query(`
+                    INSERT INTO chat_bobs_transactions
+                        (user_id, amount, balance_after, transaction_type, reference_key, metadata)
+                    VALUES ($1, $2, $3, 'admin_adjustment', $4, $5::jsonb)
+                `, [
+                    userId,
+                    adjustment,
+                    nextBalance,
+                    `admin:${socket.data.user.id}:${Date.now()}:${crypto.randomUUID()}`,
+                    JSON.stringify({ adminUserId: String(socket.data.user.id), adminUsername: socket.data.user.username })
+                ]);
+                await client.query('COMMIT');
+                io.to(`chat-progress:${userId}`).emit('user-bobs', { balance: nextBalance });
+                socket.emit('admin-user-bobs-result', {
+                    success: true,
+                    userId,
+                    balance: nextBalance,
+                    message: `${target.username} har nu ${nextBalance.toLocaleString('da-DK')} Bobs.`
+                });
+            } catch (error) {
+                try { await client.query('ROLLBACK'); } catch {}
+                console.error('Could not adjust user Bobs:', getSafeErrorCode(error));
+                fail('Bobs-saldoen kunne ikke ændres. Prøv igen.');
+            } finally {
+                client.release();
             }
         });
 
