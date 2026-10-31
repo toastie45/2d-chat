@@ -22,7 +22,7 @@ const adminPublicRooms=document.getElementById('rooms'), adminRoomsStatus=docume
 const activeRoom='none', sent=[], socket={connected:true,emit:(event,payload)=>sent.push({event,payload})};
 const requestBoardRender=()=>{}, roomBackgroundImageLoaded=false, roomBackgroundAnimation={frames:1},
     isAdminInvisible=false, players={}, whisperBubbles=new Map(), activeSidePanel='none',
-    wardrobePanel={hidden:true}, adminClothingView={hidden:true}, gridLayout=ChatGridLayout,
+    wardrobePanel={hidden:true}, membersPanel={hidden:true}, onlineUsers=[], adminClothingView={hidden:true}, gridLayout=ChatGridLayout,
     avatarImageLoaded=true, avatarWidth=54, avatarHeight=75, avatarRadius=13;${code}</script>`;
 const server = http.createServer((req, res) => {
     if (req.url === '/') { res.setHeader('Content-Type', 'text/html; charset=utf-8'); return res.end(fixture); }

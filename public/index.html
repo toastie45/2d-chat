@@ -1562,12 +1562,10 @@
         }
         .chat-panel-heading { padding-right: 44px; min-height: 32px; }
         .chat-panel-detached .chat-panel-heading { padding-right: 0; }
-        .profile-identity { display: flex; align-items: center; gap: 12px; min-height: 150px; padding: 14px 16px; margin-bottom: 14px; border: 1px solid #353930; border-radius: 12px; background: #191c17; }
-        #profile-face-preview { width: 46px; height: 46px; flex: 0 0 46px; border-radius: 12px; background: #10130f; border: 1px solid #3a4132; }
-        .profile-identity-text { min-width: 0; flex: 1; }
-        .profile-identity-text p { margin: 0 0 6px; font-size: 17px; font-weight: 650; overflow-wrap: anywhere; }
-        .profile-identity-text span { color: var(--muted); font-size: 11px; }
-        #profile-outfit-preview { width: 126px; height: 140px; flex: 0 0 126px; object-fit: contain; }
+        .profile-identity { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 16px 8px; margin-bottom: 14px; border: 1px solid #353930; border-radius: 12px; background: #191c17; text-align: center; }
+        .profile-identity-text { min-width: 0; width: 100%; }
+        .profile-identity-text p { margin: 0; font-size: 17px; font-weight: 650; overflow-wrap: anywhere; }
+        #profile-outfit-preview { width: 144px; height: 160px; object-fit: contain; }
         .admin-room-level { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
         .admin-room-level input[type=number] { width: 64px; min-height: 32px; padding: 5px 8px; }
         .admin-room-level input[type=checkbox] { width: auto; min-height: auto; }
@@ -1583,9 +1581,14 @@
         @media (max-width: 480px) {
             .profile-identity { gap: 8px; padding: 12px; }
             .profile-identity-text p { font-size: 15px; }
-            #profile-outfit-preview { width: 90px; height: 112px; flex-basis: 90px; }
+            #profile-outfit-preview { width: 126px; height: 140px; }
             .admin-user-row { align-items: flex-start; flex-direction: column; }
         }
+        #member-list .member-profile-link { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; text-align: left; }
+        #member-list .member-profile-link span { overflow: hidden; text-overflow: ellipsis; }
+        .member-face { width: 36px; height: 36px; flex: 0 0 36px; border: 1px solid #353d2d; border-radius: 10px; background: #10130f; }
+        #member-list .member { padding: 5px 0; }
+        #member-list .member-room { max-width: 50%; overflow-wrap: anywhere; }
     </style>
 </head>
 <body>
@@ -1933,8 +1936,7 @@
                         <section class="side-panel profile-panel" id="profile-view-panel" aria-labelledby="profile-view-title" hidden>
                             <h2 class="side-title" id="profile-view-title">Profil</h2>
                             <div class="profile-identity">
-                                <canvas id="profile-face-preview" width="112" height="112" aria-label="Avatarens ansigt"></canvas>
-                                <div class="profile-identity-text"><p id="profile-view-name">Henter profil…</p><span>Profil &amp; garderobe</span></div>
+                                <div class="profile-identity-text"><p id="profile-view-name">Henter profil…</p></div>
                                 <canvas id="profile-outfit-preview" width="252" height="280" aria-label="Avatar med gemt outfit"></canvas>
                             </div>
                             <div class="profile-actions" aria-label="Profilhandlinger">
@@ -3017,6 +3019,7 @@
 
             let players = {};
             let onlineUsers = [];
+            const onlineFaceCanvases = new Map();
             let chatOnlineCount = null;
             let myId = null;
             let ownApartment = null;
@@ -3445,6 +3448,7 @@
                 if (activeSidePanel && activeSidePanel !== panel && remember) {
                     sidePanelHistory.push(activeSidePanel);
                 }
+                if (activeSidePanel === 'members' && panel !== 'members' && socket.connected) socket.emit('online-list-close');
                 activeSidePanel = panel;
                 if (panel !== 'profile-view') {
                     if (viewingProfileUserId && socket.connected) socket.emit('profile-view-close');
@@ -3554,7 +3558,6 @@
                     ? `${roomBackgroundAnimation.columns * 100}% ${roomBackgroundAnimation.rows * 100}%`
                     : '';
                 updateRoomEditorBackgroundFrame();
-                drawProfileAvatar();
                 const tileSide = cellSize / Math.SQRT2;
                 for (const cell of gridCells) {
                     const key = `${cell.col}:${cell.row}`;
@@ -4074,7 +4077,7 @@
                 profileTeleportButton.hidden = true;
                 selectSidePanel('profile-view');
                 viewedProfileProgress = null;
-                for (const id of ['profile-face-preview', 'profile-outfit-preview']) {
+                for (const id of ['profile-outfit-preview']) {
                     const canvas = document.getElementById(id);
                     canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
                 }
@@ -4243,6 +4246,7 @@
                 const countLabel = `${onlineUsers.length} ${onlineUsers.length === 1 ? 'person' : 'personer'}`;
                 membersNavButton.setAttribute('aria-label', `Vis online på Chatten, ${countLabel} online`);
                 memberList.replaceChildren();
+                onlineFaceCanvases.clear();
                 memberEmpty.textContent = onlineUsers.length ? '' : 'Der er ingen online brugere lige nu.';
                 memberEmpty.classList.toggle('hidden', onlineUsers.length > 0);
 
@@ -4257,7 +4261,13 @@
                     const name = document.createElement('button');
                     name.className = 'member-name member-profile-link';
                     name.type = 'button';
-                    name.textContent = `${player.name}${player.isSelf ? ' (dig)' : ''}`;
+                    const face = document.createElement('canvas');
+                    face.className = 'member-face'; face.width = 112; face.height = 112;
+                    face.setAttribute('aria-hidden', 'true');
+                    onlineFaceCanvases.set(String(player.userId), face);
+                    const label = document.createElement('span');
+                    label.textContent = `${player.name}${player.isSelf ? ' (dig)' : ''}`;
+                    name.append(face, label);
                     name.setAttribute('aria-label', `Vis profilen for ${player.name}`);
                     name.addEventListener('click', () => showPublicProfile(`user:${player.userId}`));
                     const room = document.createElement('button');
@@ -4275,6 +4285,7 @@
                     row.append(name, room);
                     memberList.append(row);
                 });
+                drawOnlineUserFaces();
             }
 
             function formatAdminDate(value) {
@@ -5609,18 +5620,40 @@
 
             const profileRenderCanvas = document.createElement('canvas');
             profileRenderCanvas.width = 432; profileRenderCanvas.height = 480;
+            function drawAvatarFace(face, player) {
+                const context = profileRenderCanvas.getContext('2d');
+                const faceContext = face.getContext('2d');
+                faceContext.clearRect(0, 0, face.width, face.height);
+                const avatar = getAvatarImageForPlayer(player);
+                if (!avatar) return;
+                context.clearRect(0, 0, 432, 480);
+                context.drawImage(avatar, 108, 90, 216, 300);
+                const clothing = (Array.isArray(player.clothing) ? [...player.clothing] : [])
+                    .filter((item) => ['headwear', 'hair', 'beard', 'glasses', 'clothing'].includes(item.category))
+                    .sort((a, b) => getClothingDrawOrder(a) - getClothingDrawOrder(b));
+                for (const item of clothing) {
+                    const image = getClothingImage(item);
+                    if (image) drawClothingLayer(context, image, item, 216, 240, 216, 300);
+                }
+                faceContext.drawImage(profileRenderCanvas, 66, 65, 300, 300, 0, 0, face.width, face.height);
+            }
+
+            function drawOnlineUserFaces() {
+                if (membersPanel.hidden) return;
+                for (const player of onlineUsers) {
+                    const face = onlineFaceCanvases.get(String(player.userId));
+                    if (face) drawAvatarFace(face, player);
+                }
+            }
+
             function drawProfileAvatar() {
                 if (activeSidePanel !== 'profile-view' || !viewedProfileProgress) return;
                 const profile = viewedProfileProgress;
                 const avatar = getAvatarImageForPlayer(profile);
                 const full = document.getElementById('profile-outfit-preview');
-                const face = document.getElementById('profile-face-preview');
                 const fullContext = full.getContext('2d');
-                const faceContext = face.getContext('2d');
                 full.setAttribute('aria-label', 'Gemt outfit for ' + profile.avatarName);
-                face.setAttribute('aria-label', 'Ansigt for ' + profile.avatarName);
                 fullContext.clearRect(0, 0, full.width, full.height);
-                faceContext.clearRect(0, 0, face.width, face.height);
                 if (!avatar) return;
                 const context = profileRenderCanvas.getContext('2d');
                 context.clearRect(0, 0, 432, 480);
@@ -5632,15 +5665,6 @@
                     if (image) drawClothingLayer(context, image, item, 216, 240, 216, 300);
                 }
                 fullContext.drawImage(profileRenderCanvas, 0, 0, 432, 480, 0, 0, full.width, full.height);
-                // Keep handheld props out of the small face icon.
-                context.clearRect(0, 0, 432, 480);
-                context.drawImage(avatar, 108, 90, 216, 300);
-                for (const item of clothing) {
-                    if (!['headwear', 'hair', 'beard', 'glasses'].includes(item.category)) continue;
-                    const image = getClothingImage(item);
-                    if (image) drawClothingLayer(context, image, item, 216, 240, 216, 300);
-                }
-                faceContext.drawImage(profileRenderCanvas, 98, 65, 236, 236, 0, 0, face.width, face.height);
             }
 
             function drawWardrobeAvatarPreview() {
@@ -7133,6 +7157,12 @@
                         if (animation.frames > 1) clothingFps = Math.max(clothingFps, animation.fps);
                     }
                 }
+                if (!membersPanel.hidden) {
+                    for (const player of onlineUsers) for (const item of player.clothing || []) {
+                        const animation = normalizeClothingAnimation(item.animation);
+                        if (animation.frames > 1) clothingFps = Math.max(clothingFps, animation.fps);
+                    }
+                }
                 if (clothingFps > 0) nextAt = Math.min(nextAt, now + 1000 / clothingFps);
                 return { animate, nextAt };
             }
@@ -7143,6 +7173,8 @@
                 if (document.hidden || gameSection.classList.contains('hidden')) return;
                 drawBoard();
                 updateRoomEditorBackgroundFrame();
+                drawProfileAvatar();
+                drawOnlineUserFaces();
                 if (activeSidePanel === 'wardrobe' && !wardrobePanel.hidden) drawWardrobeAvatarPreview();
                 if (!adminClothingView.hidden && adminClothingPreviewImage?.naturalWidth) drawAdminClothingPreview();
                 const framePlan = getBoardFramePlan(Date.now());
@@ -7226,6 +7258,7 @@
                 const previousPanel = sidePanelHistory.pop();
                 if (!previousPanel) return;
                 selectSidePanel(previousPanel, { remember: false });
+                if (previousPanel === 'members') socket.emit('online-users-request');
             });
             const openOnlineUsersPanel = () => {
                 selectSidePanel('members');
@@ -8635,6 +8668,14 @@
             });
 
             socket.on('online-users', ({ users = [] } = {}) => renderOnlineUsers(users));
+
+            socket.on('online-user-outfit-updated', ({ userId, clothing = [] } = {}) => {
+                const player = onlineUsers.find((user) => String(user.userId) === String(userId));
+                if (!player || membersPanel.hidden) return;
+                player.clothing = Array.isArray(clothing) ? clothing : [];
+                drawOnlineUserFaces();
+                requestBoardRender();
+            });
 
             socket.on('chat-online-count', ({ count } = {}) => {
                 if (!Number.isInteger(count) || count < 0) return;

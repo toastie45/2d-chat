@@ -17,6 +17,7 @@ const bridge = `window.testUI = {
     panel:selectSidePanel,
     admin(value) { selectSidePanel('admin'); adminSectionSelect.value=value; selectAdminSection(); },
     rooms:renderAdminPublicRooms, users:renderAdminOnlineUsers,
+    online:renderOnlineUsers,
     profile(profile) { selectSidePanel('profile-view'); viewingProfilePlayerId=profile.playerId; window.testSocket.receive('profile-info',profile); },
     drawProfileAvatar
 };`;
@@ -101,8 +102,22 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
             check(before!==image.toDataURL(),'saved outfit changes redraw profile');
             testSocket.receive('profile-outfit-updated',{userId:'2',clothing:[]});
             testUI.drawProfileAvatar();
+            testUI.panel('members');
+            testUI.online([{id:'guest',userId:'2',name:'Jeppe',avatarType:'boy',roomId:'apartment:101',roomName:'#101 Lejlighed',clothing:[]}]);
+            const icon=document.querySelector('#member-list .member-face');
+            const plainIcon=icon.toDataURL();
+            check(icon.width===112&&getComputedStyle(icon).width==='36px','online face has compact display size');
+            check(icon.getContext('2d').getImageData(0,0,112,112).data.some((v,i)=>i%4===3&&v>0),'online face renders');
+            testSocket.receive('online-user-outfit-updated',{userId:'2',clothing:[{id:'fixture',category:'glasses',imageUrl:c.toDataURL(),x:0,y:0,scale:1}]});
+            await new Promise(r=>setTimeout(r,100));
+            check(plainIcon!==icon.toDataURL(),'online face follows saved outfit updates');
+            document.querySelector('#member-list .member-room').click();
+            check(testSocket.sent.some(e=>e.event==='apartment-visit'&&e.payload.apartmentId==='101'),'room link still visits apartment');
+            document.querySelector('#member-list .member-profile-link').click();
+            check(testSocket.sent.some(e=>e.event==='profile-request'&&e.payload.playerId==='user:2'),'face and name still open profile');
+            check(testSocket.sent.some(e=>e.event==='online-list-close'),'online outfit subscription stops after leaving list');
             check(uiErrors.length===0,'runtime errors: '+uiErrors.join('; '));
-            return {result:'PASS: navigation, separate catalog, Bobs, warning transfer, room level, profile rendering and outfit updates'};
+            return {result:'PASS: admin controls, profile previews and live online-list face icons with clickable names and rooms'};
         })()` });
         if (result.result.exceptionDetails) throw new Error(JSON.stringify(result.result.exceptionDetails));
         console.log(JSON.stringify(result.result.result.value));

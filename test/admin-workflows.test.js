@@ -140,3 +140,54 @@ test('editing catalog appearance preserves shop levels and refreshes every assig
     assert.deepEqual(refreshed.sort(), ['2', '3']);
     assert.ok(events.some((event) => event.success));
 });
+
+test('online outfits are fetched in one query and retain each account’s own layer order', async () => {
+    const start = source.indexOf('    async function getUsersClothing(');
+    const end = source.indexOf('    async function refreshOnlineUserClothing', start);
+    const queries = [];
+    const context = {
+        normalizeWardrobeCategoryOrder: (value) => value,
+        normalizeClothingTransform: () => ({}), normalizeClothingAnimation: (value) => value,
+        WARDROBE_CATEGORIES: ['hair', 'beard'],
+        pool: { query: async (sql, values) => {
+            queries.push({ sql, values });
+            return { rows: [
+                { user_id: '2', id: 7, category: 'hair', wardrobe_category_order: ['hair', 'beard'] },
+                { user_id: '3', id: 8, category: 'hair', wardrobe_category_order: ['beard', 'hair'] }
+            ] };
+        } }
+    };
+    vm.runInNewContext(source.slice(start, end) + '\nthis.load = getUsersClothing;', context);
+    const result = await context.load(['2', '3']);
+    assert.equal(queries.length, 1);
+    assert.match(queries[0].sql, /ANY\(\$1::bigint\[\]\)/);
+    assert.equal(result.get('2')[0].layerOrder, 2);
+    assert.equal(result.get('3')[0].layerOrder, 1);
+    await context.load([]);
+    assert.equal(queries.length, 1);
+});
+
+test('online outfit notifications go only to list viewers and never expose invisible users', async () => {
+    const start = source.indexOf('    async function refreshOnlineUserClothing(');
+    const end = source.indexOf('    async function enforceClothingLevelForAssignments', start);
+    const messages = [];
+    const viewer = (id, watching) => ({ id, data: { viewingOnlineList: watching }, emit: (event, payload) => messages.push({ id, event, payload }) });
+    const context = {
+        getUserClothing: async () => [{ id: 'hat', category: 'headwear' }, { id: 'shirt', category: 'clothing' }, { id: 'cup', category: 'left_hand' }],
+        io: { sockets: { sockets: new Map([['viewer', viewer('viewer', true)], ['other', viewer('other', false)]]) } },
+        activeSocketIds: new Set(['viewer', 'other', 'target']), activeSocketUsers: new Map([['target', '2']]),
+        invisibleSocketIds: new Set(), activeSocketRooms: new Map()
+    };
+    vm.runInNewContext(source.slice(start, end) + '\nthis.refresh = refreshOnlineUserClothing;', context);
+    await context.refresh('2');
+    assert.equal(messages.length, 1);
+    assert.equal(messages[0].id, 'viewer');
+    assert.equal(messages[0].event, 'online-user-outfit-updated');
+    assert.equal(messages[0].payload.clothing.length, 2);
+    assert.equal(messages[0].payload.clothing[0].id, 'hat');
+    assert.equal(messages[0].payload.clothing[1].id, 'shirt');
+    context.invisibleSocketIds.add('target');
+    messages.length = 0;
+    await context.refresh('2');
+    assert.equal(messages.length, 0);
+});

@@ -2244,21 +2244,23 @@ async function startServer() {
         }
     }
 
-    async function getUserClothing(userId) {
+    async function getUsersClothing(userIds) {
+        if (!userIds.length) return new Map();
         const { rows } = await pool.query(`
-            SELECT item.id, item.name, item.category, item.image_version, item.transform_json, item.animation_json,
+            SELECT assignment.target_user_id::text AS user_id, item.id, item.name, item.category, item.image_version, item.transform_json, item.animation_json,
                    target.wardrobe_category_order
             FROM chat_clothing_assignments assignment
             JOIN chat_clothing_catalog item ON item.id = assignment.clothing_item_id
             JOIN chat_users target ON target.id = assignment.target_user_id
-            WHERE assignment.target_user_id = $1 AND assignment.is_equipped = TRUE
+            WHERE assignment.target_user_id = ANY($1::bigint[]) AND assignment.is_equipped = TRUE
               AND item.target_avatar_type = target.avatar_type
             ORDER BY item.id
-        `, [userId]);
-        const categoryOrder = normalizeWardrobeCategoryOrder(rows[0]?.wardrobe_category_order);
-        return rows.map((item) => {
+        `, [userIds]);
+        const clothingByUser = new Map();
+        for (const item of rows) {
+            const categoryOrder = normalizeWardrobeCategoryOrder(item.wardrobe_category_order);
             const transform = normalizeClothingTransform(item.transform_json, item.category);
-            return {
+            const clothing = {
                 id: String(item.id),
                 name: item.name,
                 category: item.category,
@@ -2276,12 +2278,24 @@ async function startServer() {
                 layerPosition: transform.layerPosition,
                 ...(categoryOrder ? { layerOrder: WARDROBE_CATEGORIES.length - categoryOrder.indexOf(item.category) } : {})
             };
-        });
+            if (!clothingByUser.has(item.user_id)) clothingByUser.set(item.user_id, []);
+            clothingByUser.get(item.user_id).push(clothing);
+        }
+        return clothingByUser;
+    }
+
+    async function getUserClothing(userId) {
+        return (await getUsersClothing([userId])).get(String(userId)) || [];
     }
 
     async function refreshOnlineUserClothing(userId) {
         const clothing = await getUserClothing(userId);
+        const isVisibleOnline = [...activeSocketUsers.entries()].some(([id, accountId]) =>
+            String(accountId) === String(userId) && activeSocketIds.has(id) && !invisibleSocketIds.has(id));
         for (const viewer of io.sockets.sockets.values()) {
+            if (activeSocketIds.has(viewer.id) && viewer.data.viewingOnlineList && isVisibleOnline) {
+                viewer.emit('online-user-outfit-updated', { userId: String(userId), clothing: clothing.filter((item) => ['headwear', 'hair', 'beard', 'glasses', 'clothing'].includes(item.category)) });
+            }
             if (activeSocketIds.has(viewer.id) && viewer.data.viewingProfileUserId === String(userId)) {
                 viewer.emit('profile-outfit-updated', { userId: String(userId), clothing });
             }
@@ -5067,14 +5081,19 @@ async function startServer() {
             }
         });
 
+        socket.on('online-list-close', () => {
+            delete socket.data.viewingOnlineList;
+        });
+
         socket.on('online-users-request', async () => {
             if (!activeSocketIds.has(socket.id)) return;
+            socket.data.viewingOnlineList = true;
             try {
                 const [roomIds, { rows: apartments }, publicRooms, { rows: sessions }] = await Promise.all([
                     getAllRoomIds(),
                     pool.query('SELECT a.id, a.apartment_number, a.apartment_name, u.username FROM chat_apartments a JOIN chat_users u ON u.id = a.owner_id'),
                     getPublicRooms(),
-                    pool.query('SELECT s.socket_id, s.user_id::text AS user_id, s.room_id, u.username FROM chat_online_sessions s JOIN chat_users u ON u.id = s.user_id ORDER BY u.username')
+                    pool.query('SELECT s.socket_id, s.user_id::text AS user_id, s.room_id, u.username, u.avatar_type FROM chat_online_sessions s JOIN chat_users u ON u.id = s.user_id ORDER BY u.username')
                 ]);
                 const roomNames = new Map([
                     ...publicRooms.map((room) => [room.id, formatPublicRoomName(room)]),
@@ -5092,14 +5111,16 @@ async function startServer() {
                         unresolved.delete(playerId);
                     }
                 }
-                const users = sessions
-                    .filter((session) => !invisibleSocketIds.has(session.socket_id))
-                    .map((session) => {
+                const visibleSessions = sessions.filter((session) => !invisibleSocketIds.has(session.socket_id));
+                const clothingByUser = await getUsersClothing([...new Set(visibleSessions.map((session) => session.user_id))]);
+                const users = visibleSessions.map((session) => {
                     const roomId = roomBySocketId.get(session.socket_id) || null;
                     const isPrivate = Boolean(roomId && hiddenRoomIds.has(roomId) && !socket.data.isChatAdmin);
                     return {
                         userId: session.user_id,
                         name: session.username,
+                        avatarType: session.avatar_type === 'girl' ? 'girl' : 'boy',
+                        clothing: (clothingByUser.get(session.user_id) || []).filter((item) => ['headwear', 'hair', 'beard', 'glasses', 'clothing'].includes(item.category)),
                         id: session.socket_id,
                         roomId: isPrivate ? null : roomId,
                         roomName: isPrivate ? 'Privat omraade' : roomNames.get(roomId) || 'Ukendt rum',
