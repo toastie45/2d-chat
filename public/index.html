@@ -135,6 +135,7 @@
         .level-topbar-track { height: 4px; overflow: hidden; border-radius: 5px; background: #363a30; }
         .level-topbar-fill { display: block; width: 0; height: 100%; border-radius: inherit; background: #a9d66b; transition: width .25s ease; }
         .level-topbar-total { color: #d8dacd; font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .level-topbar-bobs { color: #c9ee8b; font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
         .room-strip-logout {
             min-height: 32px;
             padding: 0 11px;
@@ -470,7 +471,9 @@
         .shop-variant-options { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
         .shop-variant-button { min-height: 26px; padding: 4px 9px; border: 1px solid #41463a; border-radius: 999px; background: #22251f; color: #d9ddcf; font: inherit; font-size: 10px; cursor: pointer; }
         .shop-variant-button:hover, .shop-variant-button[aria-pressed="true"] { border-color: #a8c879; background: #2b3423; color: #c9ee8b; }
-        .shop-coming-soon { padding: 6px 8px; border: 1px solid #41463a; border-radius: 6px; color: #a8c879; font-size: 9px; white-space: nowrap; }
+        .shop-buy-button { min-width: 86px; padding: 7px 10px; border: 1px solid #729242; border-radius: 6px; background: #a8c879; color: #11150d; font: inherit; font-size: 9px; font-weight: 800; white-space: nowrap; cursor: pointer; }
+        .shop-buy-button:hover:not(:disabled) { background: #b9df83; }
+        .shop-buy-button:disabled { border-color: #41463a; background: #252821; color: #858a7c; cursor: not-allowed; }
         .admin-shop-note { margin: 8px 0 12px; color: var(--muted); font-size: 10px; line-height: 1.5; }
         .admin-shop-copy-editor { margin: 12px 0; padding: 10px 12px; border: 1px solid #383d32; border-radius: 8px; background: #191b18; }
         .admin-shop-copy-editor > summary { color: #e8e9e2; font-size: 11px; font-weight: 700; cursor: pointer; }
@@ -1636,6 +1639,7 @@
                                 <span class="level-topbar-track"><span class="level-topbar-fill" id="level-message-progress-fill"></span></span>
                             </div>
                             <span class="level-topbar-total" id="level-total-online">Total: 0t</span>
+                            <span class="level-topbar-bobs" id="level-bobs-balance">0 Bobs</span>
                         </div>
                         <span class="room-strip-divider" aria-hidden="true"></span>
                         <div class="friend-menu-wrap">
@@ -1748,7 +1752,7 @@
                         </section>
                         <section class="side-panel" id="shop-panel" aria-labelledby="shop-title" hidden>
                             <h2 class="side-title" id="shop-title">Butik</h2>
-                            <p class="shop-intro" id="shop-intro">Find tøj og tilbehør til din figur. Køb bliver åbnet, når chatten har en valuta.</p>
+                            <p class="shop-intro" id="shop-intro">Find tøj og tilbehør til din figur, og betal sikkert med dine Bobs.</p>
                             <button class="admin-row-button shop-back" id="shop-back-button" type="button" hidden>← Kategorier</button>
                             <p class="admin-status" id="shop-status" aria-live="polite">Henter butikkens varer…</p>
                             <div class="shop-list" id="shop-list" role="list"></div>
@@ -2678,6 +2682,7 @@
             const levelMessageProgressLabel = document.getElementById('level-message-progress-label');
             const levelMessageProgressFill = document.getElementById('level-message-progress-fill');
             const levelTotalOnline = document.getElementById('level-total-online');
+            const levelBobsBalance = document.getElementById('level-bobs-balance');
             const roomStripUser = document.getElementById('room-strip-user');
             const friendMenuTrigger = document.getElementById('friend-menu-trigger');
             const friendMenu = document.getElementById('friend-menu');
@@ -2708,9 +2713,10 @@
             let activeRoomIsShop = false;
             let shopItemsCache = [];
             let activeShopCategory = '';
+            let currentBobsBalance = 0;
             const DEFAULT_SHOP_CONTENT = {
                 title: 'Butik',
-                intro: 'Find tøj og tilbehør til din figur. Køb bliver åbnet, når chatten har en valuta.',
+                intro: 'Find tøj og tilbehør til din figur, og betal sikkert med dine Bobs.',
                 welcome: 'Velkommen! Vælg en kategori for at se varerne.',
                 categories: {
                     level_1_8: { title: 'Level 1-8', description: 'Kom godt i gang med chatten og find styles, der passer til de første levels.' },
@@ -3280,6 +3286,8 @@
 
             function resetTopbarProgress() {
                 currentUserProgress = null;
+                currentBobsBalance = 0;
+                levelBobsBalance.textContent = '0 Bobs';
                 levelTopbarStats.hidden = true;
                 levelTimeProgressFill.style.width = '0%';
                 levelMessageProgressFill.style.width = '0%';
@@ -6355,16 +6363,38 @@
                             option.addEventListener('click', () => {
                                 selected = variant;
                                 updateVariantDetails();
+                                updateBuyButton();
                             });
                             options.append(option);
                         }
                         details.append(options);
                     }
-                    const future = document.createElement('span');
-                    future.className = 'shop-coming-soon';
-                    future.textContent = 'Køb senere';
-                    card.append(image, details, future);
+                    const buy = document.createElement('button');
+                    buy.type = 'button';
+                    buy.className = 'shop-buy-button';
+                    const updateBuyButton = () => {
+                        const level = Number(currentUserProgress?.level || 1);
+                        buy.disabled = Boolean(selected.owned)
+                            || (!isAdminUser && level < Number(selected.requiredLevel))
+                            || currentBobsBalance < Number(selected.price);
+                        buy.textContent = selected.owned
+                            ? 'Ejet'
+                            : (!isAdminUser && level < Number(selected.requiredLevel))
+                                ? `Kræver level ${selected.requiredLevel}`
+                                : currentBobsBalance < Number(selected.price)
+                                    ? 'Ikke nok Bobs'
+                                    : Number(selected.price) === 0 ? 'Hent gratis' : `Køb · ${Number(selected.price).toLocaleString('da-DK')}`;
+                    };
+                    buy.addEventListener('click', () => {
+                        if (buy.disabled || !socket.connected) return;
+                        buy.disabled = true;
+                        buy.textContent = 'Køber…';
+                        shopStatus.textContent = `Køber ${selected.name}…`;
+                        socket.emit('shop-purchase', { itemId: selected.id });
+                    });
+                    card.append(image, details, buy);
                     updateVariantDetails();
+                    updateBuyButton();
                     shopList.append(card);
                 }
             }
@@ -8905,6 +8935,20 @@
                 setOnlineDuration(viewProfileOnlineDuration, progress.totalOnlineMs);
                 if (levelOverviewDialog.open) renderLevelOverview(viewedProfileProgress);
                 if (nextLevel > previousLevel) setRoomNotice(`Tillykke! Du er steget til Level ${nextLevel}.`);
+            });
+
+            socket.on('user-bobs', ({ balance } = {}) => {
+                const nextBalance = Number(balance);
+                if (!Number.isSafeInteger(nextBalance) || nextBalance < 0) return;
+                currentBobsBalance = nextBalance;
+                levelBobsBalance.textContent = `${nextBalance.toLocaleString('da-DK')} Bobs`;
+                if (activeSidePanel === 'shop' && !shopPanel.hidden) renderShopItems(shopItemsCache);
+            });
+
+            socket.on('shop-purchase-result', ({ success, message } = {}) => {
+                shopStatus.textContent = message || (success ? 'Købet er gennemført.' : 'Købet kunne ikke gennemføres.');
+                if (success) socket.emit('shop-request');
+                else renderShopItems(shopItemsCache);
             });
 
             socket.on('progression-message-filtered', () => {

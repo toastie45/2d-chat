@@ -33,6 +33,7 @@ const { USER_SEARCH_RESULT_LIMIT, getUserSearchPatterns } = require('./lib/user-
 const GRID_LAYOUT = require('./public/grid-layout');
 const { prepareRoomBackgroundBundle } = require('./lib/room-background-bundle');
 const { LEVEL_REQUIREMENTS, getUserLevel } = require('./public/level-progression');
+const { getEarnedBobs } = require('./lib/bobs-economy');
 const PRIVATE_MAIL_SUBJECT_MAX_LENGTH = 100;
 const PRIVATE_MAIL_MESSAGE_MAX_LENGTH = 2000;
 
@@ -808,6 +809,22 @@ async function startServer() {
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ');
     await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS accepted_chat_messages BIGINT NOT NULL DEFAULT 0');
     await pool.query("ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS wardrobe_category_order JSONB NOT NULL DEFAULT '[]'::jsonb");
+    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS bobs_balance BIGINT NOT NULL DEFAULT 0 CHECK (bobs_balance >= 0)');
+    await pool.query('ALTER TABLE chat_users ADD COLUMN IF NOT EXISTS bobs_online_units_credited BIGINT NOT NULL DEFAULT 0 CHECK (bobs_online_units_credited >= 0)');
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS chat_bobs_transactions (
+            id BIGSERIAL PRIMARY KEY,
+            user_id BIGINT NOT NULL REFERENCES chat_users(id) ON DELETE CASCADE,
+            amount BIGINT NOT NULL CHECK (amount <> 0),
+            balance_after BIGINT NOT NULL CHECK (balance_after >= 0),
+            transaction_type VARCHAR(24) NOT NULL CHECK (transaction_type IN ('online_time', 'shop_purchase')),
+            reference_key VARCHAR(100) NOT NULL,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (user_id, reference_key)
+        )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS chat_bobs_transactions_user_idx ON chat_bobs_transactions (user_id, created_at DESC)');
     await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_avatar_assets (
             avatar_type VARCHAR(8) PRIMARY KEY CHECK (avatar_type = 'girl'),
@@ -1364,6 +1381,7 @@ async function startServer() {
 
     async function accountOnlineSession(socketId, finish = false, accountedUntil = new Date()) {
         const client = await pool.connect();
+        let economyUpdate = null;
         try {
             await client.query('BEGIN');
             const { rows: [targetSession] } = await client.query(
@@ -1386,14 +1404,36 @@ async function startServer() {
                     !earliest || new Date(row.last_accounted_at) < earliest
                         ? new Date(row.last_accounted_at)
                         : earliest, null);
-                await client.query(`
+                const { rows: [updatedUser] } = await client.query(`
                     UPDATE chat_users
                     SET total_online_ms = total_online_ms + GREATEST(
                         0,
                         FLOOR(EXTRACT(EPOCH FROM ($2::timestamptz - $3::timestamptz)) * 1000)::bigint
                     )
                     WHERE id = $1
+                    RETURNING total_online_ms::text AS total_online_ms,
+                              bobs_balance::text AS bobs_balance,
+                              bobs_online_units_credited::text AS bobs_online_units_credited
                 `, [targetSession.user_id, accountedUntil, previousAccountedAt]);
+                const earnedUnits = getEarnedBobs(updatedUser?.total_online_ms);
+                const creditedUnits = Number(updatedUser?.bobs_online_units_credited || 0);
+                const newBobs = Math.max(0, earnedUnits - creditedUnits);
+                if (newBobs > 0) {
+                    const { rows: [credited] } = await client.query(`
+                        UPDATE chat_users
+                        SET bobs_balance = bobs_balance + $2,
+                            bobs_online_units_credited = $3
+                        WHERE id = $1
+                        RETURNING bobs_balance::text AS bobs_balance
+                    `, [targetSession.user_id, newBobs, earnedUnits]);
+                    await client.query(`
+                        INSERT INTO chat_bobs_transactions
+                            (user_id, amount, balance_after, transaction_type, reference_key, metadata)
+                        VALUES ($1, $2, $3, 'online_time', $4, $5::jsonb)
+                        ON CONFLICT (user_id, reference_key) DO NOTHING
+                    `, [targetSession.user_id, newBobs, credited.bobs_balance, `online:${earnedUnits}`, JSON.stringify({ totalOnlineMs: Number(updatedUser.total_online_ms) })]);
+                    economyUpdate = { userId: String(targetSession.user_id), balance: Number(credited.bobs_balance), earned: newBobs };
+                }
                 await client.query(
                     'UPDATE chat_online_sessions SET last_accounted_at = $2 WHERE user_id = $1 AND last_accounted_at <= $2',
                     [targetSession.user_id, accountedUntil]
@@ -1403,6 +1443,12 @@ async function startServer() {
                 }
             }
             await client.query('COMMIT');
+            if (economyUpdate) {
+                io.to(`chat-progress:${economyUpdate.userId}`).emit('user-bobs', {
+                    balance: economyUpdate.balance,
+                    earned: economyUpdate.earned
+                });
+            }
             return Boolean(targetSession);
         } catch (error) {
             await client.query('ROLLBACK');
@@ -3076,6 +3122,10 @@ async function startServer() {
                 const { rows } = await pool.query(`
                     SELECT item.id, item.name, item.description, item.category, item.target_avatar_type,
                            item.required_level, item.price, item.image_version, item.animation_json,
+                           EXISTS (
+                               SELECT 1 FROM chat_clothing_assignments owned
+                               WHERE owned.target_user_id = $1 AND owned.clothing_item_id = item.id
+                           ) AS owned,
                            listed.variant_group, listed.variant_label, listed.shop_section_key
                     FROM chat_clothing_catalog item
                     JOIN chat_shop_room_items listed ON listed.clothing_item_id = item.id AND listed.room_id = $2
@@ -3090,13 +3140,101 @@ async function startServer() {
                         ? 'custom'
                         : Number(item.required_level) <= 8 ? 'level_1_8' : Number(item.required_level) <= 16 ? 'level_9_16' : 'level_17_20',
                     category: item.category, avatarType: item.target_avatar_type, requiredLevel: Number(item.required_level),
-                    price: Number(item.price), imageVersion: Number(item.image_version || 1),
+                    price: Number(item.price), owned: item.owned === true, imageVersion: Number(item.image_version || 1),
                     imageUrl: `/api/clothing-items/${encodeURIComponent(item.id)}/image?v=${item.image_version || 1}`,
                     animation: normalizeClothingAnimation(item.animation_json)
                 })) });
             } catch (error) {
                 console.error('Could not load shop listings:', getSafeErrorCode(error));
                 socket.emit('shop-items', { items: [], error: 'Butikken kunne ikke hentes lige nu.' });
+            }
+        });
+
+        socket.on('shop-purchase', async ({ itemId } = {}) => {
+            if (!activeSocketIds.has(socket.id) || typeof itemId !== 'string' || !/^[1-9]\d{0,18}$/.test(itemId)) return;
+            try {
+                await accountOnlineSession(socket.id, false);
+            } catch (error) {
+                console.error('Could not account online time before purchase:', getSafeErrorCode(error));
+            }
+            const roomId = socket.data.roomId;
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+                const { rows: [user] } = await client.query(`
+                    SELECT id, avatar_type, accepted_chat_messages,
+                           total_online_ms::text AS total_online_ms,
+                           bobs_balance::text AS bobs_balance
+                    FROM chat_users WHERE id = $1 FOR UPDATE
+                `, [socket.data.user.id]);
+                const { rows: [item] } = await client.query(`
+                    SELECT item.id, item.name, item.price, item.required_level, item.target_avatar_type
+                    FROM chat_clothing_catalog item
+                    JOIN chat_shop_room_items listed ON listed.clothing_item_id = item.id AND listed.room_id = $2
+                    JOIN chat_public_rooms room ON room.id = listed.room_id
+                    WHERE item.id = $1 AND room.is_shop = TRUE AND room.shop_is_open = TRUE
+                `, [itemId, roomId]);
+                if (!user || !item) {
+                    await client.query('ROLLBACK');
+                    socket.emit('shop-purchase-result', { success: false, message: 'Varen findes ikke i denne åbne butik.' });
+                    return;
+                }
+                if (item.target_avatar_type !== user.avatar_type) {
+                    await client.query('ROLLBACK');
+                    socket.emit('shop-purchase-result', { success: false, message: 'Varen passer ikke til din avatar.' });
+                    return;
+                }
+                const level = getUserLevel(Number(user.total_online_ms), Number(user.accepted_chat_messages || 0));
+                if (!socket.data.isChatAdmin && level < Number(item.required_level)) {
+                    await client.query('ROLLBACK');
+                    socket.emit('shop-purchase-result', { success: false, message: `Du skal være level ${item.required_level} for at købe varen.` });
+                    return;
+                }
+                const { rowCount: alreadyOwned } = await client.query(
+                    'SELECT 1 FROM chat_clothing_assignments WHERE target_user_id = $1 AND clothing_item_id = $2',
+                    [user.id, item.id]
+                );
+                if (alreadyOwned) {
+                    await client.query('ROLLBACK');
+                    socket.emit('shop-purchase-result', { success: false, message: 'Du har allerede denne vare i garderoben.' });
+                    return;
+                }
+                const price = Number(item.price);
+                if (Number(user.bobs_balance) < price) {
+                    await client.query('ROLLBACK');
+                    socket.emit('shop-purchase-result', { success: false, message: `Du mangler ${price - Number(user.bobs_balance)} Bobs.` });
+                    return;
+                }
+                const { rows: [assignment] } = await client.query(`
+                    INSERT INTO chat_clothing_assignments (target_user_id, clothing_item_id)
+                    VALUES ($1, $2)
+                    RETURNING id
+                `, [user.id, item.id]);
+                let balance = Number(user.bobs_balance);
+                if (price > 0) {
+                    const { rows: [updated] } = await client.query(`
+                        UPDATE chat_users SET bobs_balance = bobs_balance - $2
+                        WHERE id = $1 AND bobs_balance >= $2
+                        RETURNING bobs_balance::text AS bobs_balance
+                    `, [user.id, price]);
+                    if (!updated) throw new Error('BOBS_BALANCE_CHANGED');
+                    balance = Number(updated.bobs_balance);
+                    await client.query(`
+                        INSERT INTO chat_bobs_transactions
+                            (user_id, amount, balance_after, transaction_type, reference_key, metadata)
+                        VALUES ($1, $2, $3, 'shop_purchase', $4, $5::jsonb)
+                    `, [user.id, -price, balance, `purchase:${assignment.id}`, JSON.stringify({ itemId: String(item.id), itemName: item.name, roomId })]);
+                }
+                await client.query('COMMIT');
+                socket.emit('user-bobs', { balance });
+                socket.emit('shop-purchase-result', { success: true, itemId: String(item.id), balance, message: `${item.name} er lagt i din garderobe.` });
+                await sendUserWardrobe();
+            } catch (error) {
+                try { await client.query('ROLLBACK'); } catch {}
+                console.error('Could not purchase shop item:', getSafeErrorCode(error));
+                socket.emit('shop-purchase-result', { success: false, message: 'Købet kunne ikke gennemføres.' });
+            } finally {
+                client.release();
             }
         });
 
@@ -6269,9 +6407,10 @@ async function startServer() {
                     canEditPublicRoom,
                     ...welcome
                 });
+                await accountOnlineSession(socket.id, false);
                 const [totalOnlineMs, { rows: [progress] }] = await Promise.all([
                     getTotalOnlineMs(socket.data.user.id),
-                    pool.query('SELECT accepted_chat_messages FROM chat_users WHERE id = $1', [socket.data.user.id])
+                    pool.query('SELECT accepted_chat_messages, bobs_balance::text AS bobs_balance FROM chat_users WHERE id = $1', [socket.data.user.id])
                 ]);
                 const acceptedChatMessages = Number(progress?.accepted_chat_messages || 0);
                 socket.emit('user-progress', {
@@ -6280,6 +6419,7 @@ async function startServer() {
                     level: getUserLevel(totalOnlineMs, acceptedChatMessages),
                     levelRequirements: LEVEL_REQUIREMENTS.map(([timeMs, messageCount], index) => ({ level: index + 1, timeMs, messageCount }))
                 });
+                socket.emit('user-bobs', { balance: Number(progress?.bobs_balance || 0) });
                 // currentPlayers was refreshed from the saved wardrobe above.
                 // The original `player` came from before that refresh and could
                 // make other clients see an outdated outfit after a room join.
