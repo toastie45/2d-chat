@@ -199,15 +199,18 @@ test('requires a usable IP and secret to create an IP hash', () => {
 });
 
 test('builds escaped username search patterns', () => {
-    assert.deepEqual(getUserSearchPatterns('  BoD '), { query: 'bod', contains: '%bod%', prefix: 'bod%' });
+    assert.deepEqual(getUserSearchPatterns('  BoD '), { query: 'bod', mode: 'contains', contains: '%bod%', prefix: 'bod%' });
     assert.deepEqual(getUserSearchPatterns('a_b%c\\'), {
         query: 'a_b%c\\',
+        mode: 'contains',
         contains: '%a\\_b\\%c\\\\%',
         prefix: 'a\\_b\\%c\\\\%'
     });
     assert.equal(getUserSearchPatterns('ＢＯＤ').query, 'bod');
+    assert.equal(getUserSearchPatterns('BoD', 'prefix').mode, 'prefix');
+    assert.equal(getUserSearchPatterns('BoD', 'unknown').mode, 'contains');
     assert.equal(getUserSearchPatterns('   '), null);
     assert.equal(getUserSearchPatterns('x'.repeat(19)), null);
     assert.equal(getUserSearchPatterns(42), null);
-    assert.equal(USER_SEARCH_RESULT_LIMIT, 20);
+    assert.equal(USER_SEARCH_RESULT_LIMIT, 100);
 });

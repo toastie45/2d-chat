@@ -1560,6 +1560,32 @@
             .admin-room-animation { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .admin-room-overlay-transform { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
+        .chat-panel-heading { padding-right: 44px; min-height: 32px; }
+        .chat-panel-detached .chat-panel-heading { padding-right: 0; }
+        .profile-identity { display: flex; align-items: center; gap: 12px; min-height: 150px; padding: 14px 16px; margin-bottom: 14px; border: 1px solid #353930; border-radius: 12px; background: #191c17; }
+        #profile-face-preview { width: 46px; height: 46px; flex: 0 0 46px; border-radius: 12px; background: #10130f; border: 1px solid #3a4132; }
+        .profile-identity-text { min-width: 0; flex: 1; }
+        .profile-identity-text p { margin: 0 0 6px; font-size: 17px; font-weight: 650; overflow-wrap: anywhere; }
+        .profile-identity-text span { color: var(--muted); font-size: 11px; }
+        #profile-outfit-preview { width: 126px; height: 140px; flex: 0 0 126px; object-fit: contain; }
+        .admin-room-level { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+        .admin-room-level input[type=number] { width: 64px; min-height: 32px; padding: 5px 8px; }
+        .admin-room-level input[type=checkbox] { width: auto; min-height: auto; }
+        .admin-room-create-options, .admin-room-policy { align-items: center; flex-wrap: wrap; }
+        .admin-row-actions { flex-wrap: wrap; justify-content: flex-end; }
+        .admin-row-button.prison { border-color: #786c44; color: #ded1a4; }
+        #admin-section-select { margin-bottom: 20px; }
+        #admin-catalog-title { margin: 0 0 8px; font-size: 16px; }
+        #admin-catalog-view .admin-clothing-row { padding: 14px; gap: 12px; background: #191c17; border-radius: 10px; }
+        #admin-catalog-view .admin-clothing-thumb { width: 56px; height: 64px; border-radius: 8px; }
+        .admin-row-button { transition: background-color .18s ease, border-color .18s ease; }
+        .admin-row-button:hover:not(:disabled) { background: #30362a; border-color: #75875b; }
+        @media (max-width: 480px) {
+            .profile-identity { gap: 8px; padding: 12px; }
+            .profile-identity-text p { font-size: 15px; }
+            #profile-outfit-preview { width: 90px; height: 112px; flex-basis: 90px; }
+            .admin-user-row { align-items: flex-start; flex-direction: column; }
+        }
     </style>
 </head>
 <body>
@@ -1906,7 +1932,11 @@
                         </section>
                         <section class="side-panel profile-panel" id="profile-view-panel" aria-labelledby="profile-view-title" hidden>
                             <h2 class="side-title" id="profile-view-title">Profil</h2>
-                            <p class="profile-section-title" id="profile-view-name">Henter profil…</p>
+                            <div class="profile-identity">
+                                <canvas id="profile-face-preview" width="112" height="112" aria-label="Avatarens ansigt"></canvas>
+                                <div class="profile-identity-text"><p id="profile-view-name">Henter profil…</p><span>Profil &amp; garderobe</span></div>
+                                <canvas id="profile-outfit-preview" width="252" height="280" aria-label="Avatar med gemt outfit"></canvas>
+                            </div>
                             <div class="profile-actions" aria-label="Profilhandlinger">
                                 <button class="profile-level-icon" id="view-profile-level" type="button" title="Vis leveloversigt" aria-label="Vis leveloversigt" aria-haspopup="dialog" aria-controls="level-overview-dialog" disabled>1</button>
                                 <button class="profile-action" id="profile-friend-button" type="button" aria-label="Tilføj til venneliste" title="Tilføj til venneliste" aria-pressed="false"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M3 20v-1.5a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5V20M19 8v6M22 11h-6"/></svg></button>
@@ -1964,6 +1994,7 @@
                                 <option value="users">Brugerkontrol</option>
                                 <option value="rooms">Navigator - etager og rum</option>
                                 <option value="clothing">Tøj og tilbehør</option>
+                                <option value="catalog">Tøjkatalog</option>
                                 <option value="shop">Butik</option>
                                 <option value="avatars">Avatarer</option>
                             </select>
@@ -1988,7 +2019,7 @@
                             </section>
                             <section class="admin-section" id="admin-rooms-view" aria-labelledby="admin-rooms-title" hidden>
                                 <h3 class="visually-hidden" id="admin-rooms-title">Navigator - etager og rum</h3>
-                                <p class="admin-status">Opret og rediger offentlige rum, upload baggrunde og læg gennemsigtige overlays oven på figurerne. Overlays tilpasses rummets 3:2-format. Fællesrum og Diskoteket er faste rum.</p>
+                                <p class="admin-status">Opret og rediger offentlige rum, upload baggrunde og læg gennemsigtige overlays oven på figurerne. Overlays tilpasses rummets 3:2-format. Systemrum kan omdøbes, men ikke slettes.</p>
                                 <h4 class="admin-subsection-title">Opret et offentligt rum</h4>
                                 <p class="admin-status">Giv rummet navn og etage. Rumnummer udfyldes automatisk, hvis feltet står tomt.</p>
                                 <form class="admin-room-create" id="admin-room-create-form">
@@ -2005,6 +2036,7 @@
                                         <label class="admin-room-check"><input id="admin-room-create-locked" type="checkbox"> Låst for ikke-admins</label>
                                         <label class="admin-room-check"><input id="admin-room-create-hidden" type="checkbox"> Skjul for ikke-admins</label>
                                         <label class="admin-room-check"><input id="admin-room-create-shop" type="checkbox"> Opret som butik</label>
+                                        <label class="admin-room-level"><input id="admin-room-create-level-enabled" type="checkbox"> Levelkrav <input id="admin-room-create-level" type="number" min="1" max="20" step="1" value="1" aria-label="Levelkrav for nyt rum" disabled></label>
                                     </div>
                                     <button class="admin-row-button" type="submit">Opret rum</button>
                                 </form>
@@ -2063,10 +2095,7 @@
                                         <p>Systemet gætter ikke automatisk på opdelingen: angiv Frames og Kolonner. Rækker beregnes ud fra dem. 1 frame og 1 kolonne betyder et almindeligt, statisk billede.</p>
                                         <p id="admin-clothing-animation-summary" aria-live="polite">Et almindeligt billede bruger 1 frame.</p>
                                     </fieldset>
-                                    <label>Levelkrav (1–20)
-                                        <input id="admin-clothing-level" type="number" min="1" max="20" value="1" required>
-                                    </label>
-                                    <label>Pris (mønter)
+                                    <label>Pris (Bobs)
                                         <input id="admin-clothing-price" type="number" min="0" max="100000000" value="0" required>
                                     </label>
                                     <details class="admin-clothing-refine">
@@ -2098,7 +2127,9 @@
                                     </div>
                                     <p class="admin-status wide" id="admin-clothing-status" aria-live="polite"></p>
                                 </form>
-                                <h3 class="admin-subsection-title">T&oslash;jkatalog</h3>
+                            </section>
+                            <section class="admin-section" id="admin-catalog-view" aria-labelledby="admin-catalog-title" hidden>
+                                <h3 id="admin-catalog-title">Tøjkatalog</h3>
                                 <p class="admin-status">Find, rediger og tildel gemte tøjdele. Brug infoikonet for at se, hvem der har fået hver del.</p>
                                 <div class="admin-clothing-catalog-tools" role="search">
                                     <input id="admin-clothing-catalog-search" type="search" placeholder="Søg på navn eller beskrivelse" aria-label="Søg i tøjkataloget">
@@ -2130,9 +2161,9 @@
                                         <label>Velkomst over kategorierne<textarea id="admin-shop-copy-welcome" maxlength="240" rows="2"></textarea></label>
                                     </div>
                                     <div class="admin-shop-copy-grid admin-shop-copy-categories">
-                                        <fieldset><legend>Level 1-8</legend><label>Overskrift<input data-shop-copy-category="level_1_8" data-shop-copy-field="title" maxlength="40"></label><label>Beskrivelse<textarea data-shop-copy-category="level_1_8" data-shop-copy-field="description" maxlength="180" rows="2"></textarea></label></fieldset>
-                                        <fieldset><legend>Level 9-16</legend><label>Overskrift<input data-shop-copy-category="level_9_16" data-shop-copy-field="title" maxlength="40"></label><label>Beskrivelse<textarea data-shop-copy-category="level_9_16" data-shop-copy-field="description" maxlength="180" rows="2"></textarea></label></fieldset>
-                                        <fieldset><legend>Level 17-20</legend><label>Overskrift<input data-shop-copy-category="level_17_20" data-shop-copy-field="title" maxlength="40"></label><label>Beskrivelse<textarea data-shop-copy-category="level_17_20" data-shop-copy-field="description" maxlength="180" rows="2"></textarea></label></fieldset>
+                                        <fieldset><legend>Level 1-8</legend><label>Kategorinavn<input data-shop-copy-category="level_1_8" data-shop-copy-field="title" maxlength="40"></label><label>Beskrivelse<textarea data-shop-copy-category="level_1_8" data-shop-copy-field="description" maxlength="180" rows="2"></textarea></label></fieldset>
+                                        <fieldset><legend>Level 9-16</legend><label>Kategorinavn<input data-shop-copy-category="level_9_16" data-shop-copy-field="title" maxlength="40"></label><label>Beskrivelse<textarea data-shop-copy-category="level_9_16" data-shop-copy-field="description" maxlength="180" rows="2"></textarea></label></fieldset>
+                                        <fieldset><legend>Level 17-20</legend><label>Kategorinavn<input data-shop-copy-category="level_17_20" data-shop-copy-field="title" maxlength="40"></label><label>Beskrivelse<textarea data-shop-copy-category="level_17_20" data-shop-copy-field="description" maxlength="180" rows="2"></textarea></label></fieldset>
                                         <fieldset><legend>Tilbehør</legend><label>Kategorinavn<input data-shop-copy-category="custom" data-shop-copy-field="title" maxlength="40" placeholder="Tilbehør"></label><label>Beskrivelse<textarea data-shop-copy-category="custom" data-shop-copy-field="description" maxlength="180" rows="2"></textarea></label></fieldset>
                                     </div>
                                     <button class="admin-row-button" id="admin-shop-copy-save" type="button">Gem tekster</button>
@@ -2204,6 +2235,7 @@
             <p class="avatar-context-admin-heading" id="avatar-context-admin-heading" hidden>Admin</p>
             <button class="avatar-context-action" id="avatar-context-admin-swap" type="button" role="menuitem" hidden>Skift plads</button>
             <button class="avatar-context-action danger" id="avatar-context-admin-kick" type="button" role="menuitem" hidden>Kick bruger</button>
+            <button class="avatar-context-action" id="avatar-context-admin-prison" type="button" role="menuitem" hidden>Fængsel</button>
             <button class="avatar-context-action danger" id="avatar-context-admin-ban" type="button" role="menuitem" hidden>Ban bruger</button>
         </div>
         <dialog class="level-overview-dialog" id="level-overview-dialog" aria-labelledby="level-overview-title">
@@ -2219,6 +2251,15 @@
                     <tbody id="level-overview-rows"></tbody>
                 </table>
             </div>
+        </dialog>
+        <dialog class="admin-ban-dialog" id="admin-prison-dialog" aria-labelledby="admin-prison-title">
+            <h2 id="admin-prison-title">Send til fængsel</h2>
+            <form class="admin-ban-form" id="admin-prison-form">
+                <p id="admin-prison-target"></p>
+                <label>Destination <input id="admin-prison-room" placeholder="/tr 99" maxlength="24" required pattern="(?:/tr\s+)?[1-9][0-9]*"></label>
+                <p class="admin-status">Vælg rumnummeret til dit advarselsrum. Brugeren flyttes dertil og bliver ikke bannet.</p>
+                <div class="admin-ban-actions"><button type="button" id="admin-prison-cancel">Annuller</button><button type="submit">Send til rum</button></div>
+            </form>
         </dialog>
         <dialog class="admin-ban-dialog" id="admin-ban-dialog" aria-labelledby="admin-ban-title">
             <h2 id="admin-ban-title">Ban bruger</h2>
@@ -2736,7 +2777,6 @@
             const adminClothingAnimationFps = document.getElementById('admin-clothing-animation-fps');
             const adminClothingAnimationSummary = document.getElementById('admin-clothing-animation-summary');
             const adminClothingAssignmentField = document.getElementById('admin-clothing-assignment-field');
-            const adminClothingLevel = document.getElementById('admin-clothing-level');
             const adminClothingPrice = document.getElementById('admin-clothing-price');
             const adminClothingX = document.getElementById('admin-clothing-x');
             const adminClothingY = document.getElementById('admin-clothing-y');
@@ -2954,6 +2994,7 @@
             const avatarContextAdminSwap = document.getElementById('avatar-context-admin-swap');
             const avatarContextAdminKick = document.getElementById('avatar-context-admin-kick');
             const avatarContextAdminBan = document.getElementById('avatar-context-admin-ban');
+            const avatarContextAdminPrison = document.getElementById('avatar-context-admin-prison');
             const avatarContextInvisible = document.getElementById('avatar-context-invisible');
             const avatarContextEditApartment = document.getElementById('avatar-context-edit-apartment');
             const avatarContextStatus = document.getElementById('avatar-context-status');
@@ -3406,6 +3447,7 @@
                 }
                 activeSidePanel = panel;
                 if (panel !== 'profile-view') {
+                    if (viewingProfileUserId && socket.connected) socket.emit('profile-view-close');
                     viewingProfilePlayerId = null;
                     viewingProfileUserId = null;
                 }
@@ -3512,6 +3554,7 @@
                     ? `${roomBackgroundAnimation.columns * 100}% ${roomBackgroundAnimation.rows * 100}%`
                     : '';
                 updateRoomEditorBackgroundFrame();
+                drawProfileAvatar();
                 const tileSide = cellSize / Math.SQRT2;
                 for (const cell of gridCells) {
                     const key = `${cell.col}:${cell.row}`;
@@ -3628,6 +3671,13 @@
                         detail.textContent = lockedForUser
                             ? 'Låst for deltagere'
                             : room.isShop ? 'Butik' : room.id === activeRoomId ? 'Du er her nu' : 'Offentligt rum';
+                        const requiredLevel = Number(room.requiredLevel) || 1;
+                        const levelRestricted = !isAdminUser && Number(currentUserProgress?.level || 1) < requiredLevel;
+                        if (requiredLevel > 1) detail.textContent += ' · Level ' + requiredLevel + '+';
+                        if (levelRestricted) {
+                            button.disabled = true;
+                            button.title = 'Kræver level ' + requiredLevel;
+                        }
                         if (lockedForUser) {
                             button.disabled = true;
                             button.title = 'Rummet er låst for deltagere lige nu.';
@@ -3815,6 +3865,7 @@
                 avatarContextAdminHeading.hidden = !canAdminTarget;
                 avatarContextAdminSwap.hidden = !canAdminTarget;
                 avatarContextAdminKick.hidden = !canAdminTarget;
+                avatarContextAdminPrison.hidden = !canAdminTarget;
                 avatarContextAdminBan.hidden = !canAdminTarget;
                 avatarContextInvisible.hidden = !player || !isSelf || !isFullAdminUser;
                 avatarContextInvisible.textContent = isAdminInvisible ? 'Bliv synlig' : 'Usynlig';
@@ -4022,6 +4073,11 @@
                 profileMailButton.hidden = true;
                 profileTeleportButton.hidden = true;
                 selectSidePanel('profile-view');
+                viewedProfileProgress = null;
+                for (const id of ['profile-face-preview', 'profile-outfit-preview']) {
+                    const canvas = document.getElementById(id);
+                    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+                }
                 viewProfileName.textContent = 'Henter profil…';
                 viewedProfileProgress = null;
                 viewProfileLevel.disabled = true;
@@ -4229,6 +4285,24 @@
                 }).format(date);
             }
 
+            let pendingPrisonTarget = null;
+            function openPrisonDialog(socketId, username) {
+                if (!isFullAdminUser || !socketId || socketId === myId) return;
+                pendingPrisonTarget = { socketId, username };
+                document.getElementById('admin-prison-target').textContent = 'Send ' + username + ' til dit advarselsrum';
+                document.getElementById('admin-prison-dialog').showModal();
+                document.getElementById('admin-prison-room').focus();
+            }
+            document.getElementById('admin-prison-cancel').addEventListener('click', () => document.getElementById('admin-prison-dialog').close());
+            document.getElementById('admin-prison-form').addEventListener('submit', (event) => {
+                event.preventDefault();
+                if (!pendingPrisonTarget || !isFullAdminUser) return;
+                pendingAdminContextAction = 'Fængsel: ' + pendingPrisonTarget.username;
+                socket.emit('admin-user-prison', { targetSocketId: pendingPrisonTarget.socketId, destination: document.getElementById('admin-prison-room').value.trim() });
+                document.getElementById('admin-prison-dialog').close();
+                pendingPrisonTarget = null;
+            });
+
             function requestAdminUserList() {
                 const query = adminUserSearch.value.normalize('NFKC').trim().slice(0, 18);
                 socket.emit('admin-online-users-request', { query });
@@ -4237,19 +4311,21 @@
             function selectAdminSection() {
                 if (adminSectionSelect.value === 'users' && !isFullAdminUser
                     || adminSectionSelect.value === 'rooms' && !canManagePublicRooms
-                    || ['clothing', 'shop'].includes(adminSectionSelect.value) && !canManageClothing
+                    || ['clothing', 'catalog', 'shop'].includes(adminSectionSelect.value) && !canManageClothing
                     || adminSectionSelect.value === 'avatars' && !isFullAdminUser) {
                     adminSectionSelect.value = '';
                 }
                 const showUsers = adminSectionSelect.value === 'users' && isFullAdminUser;
                 const showRooms = adminSectionSelect.value === 'rooms' && canManagePublicRooms;
                 const showClothing = adminSectionSelect.value === 'clothing' && canManageClothing;
+                const showCatalog = adminSectionSelect.value === 'catalog' && canManageClothing;
                 const showAdminShop = adminSectionSelect.value === 'shop' && canManageClothing;
                 const showAvatars = adminSectionSelect.value === 'avatars' && isFullAdminUser;
-                adminWelcomeView.hidden = showUsers || showRooms || showClothing || showAdminShop || showAvatars;
+                adminWelcomeView.hidden = showUsers || showRooms || showClothing || showCatalog || showAdminShop || showAvatars;
                 adminUsersView.hidden = !showUsers;
                 adminRoomsView.hidden = !showRooms;
                 adminClothingView.hidden = !showClothing;
+                document.getElementById('admin-catalog-view').hidden = !showCatalog;
                 adminShopView.hidden = !showAdminShop;
                 adminAvatarsView.hidden = !showAvatars;
                 if (showUsers) {
@@ -4257,7 +4333,7 @@
                     socket.emit('admin-ip-bans-request');
                 }
                 if (showRooms) socket.emit('admin-public-rooms-request');
-                if (showClothing) socket.emit('admin-clothing-items-request');
+                if (showClothing || showCatalog) socket.emit('admin-clothing-items-request');
                 if (showAdminShop) socket.emit('admin-shop-rooms-request');
             }
 
@@ -4607,6 +4683,8 @@
             }
 
             function editAdminClothingItem(item) {
+                adminSectionSelect.value = 'clothing';
+                selectAdminSection();
                 adminClothingEditingId = String(item.id);
                 adminClothingUsername.value = '';
                 adminClothingAssignmentField.hidden = true;
@@ -4617,7 +4695,6 @@
                     || (['left_hand', 'right_hand'].includes(item.category) ? 'front' : 'normal');
                 adminClothingLayerField.hidden = !['left_hand', 'right_hand'].includes(item.category);
                 adminClothingAvatarType.value = item.avatarType === 'girl' ? 'girl' : 'boy';
-                adminClothingLevel.value = String(item.requiredLevel || 1);
                 adminClothingPrice.value = String(item.price || 0);
                 const animation = normalizeClothingAnimation(item.animation || {});
                 adminClothingAnimationColumns.value = String(animation.columns);
@@ -4674,7 +4751,6 @@
                         category: adminClothingCategory.value,
                         layerPosition: adminClothingLayerPosition.value,
                         targetAvatarType: adminClothingAvatarType.value,
-                        requiredLevel: Number(adminClothingLevel.value),
                         price: Number(adminClothingPrice.value),
                         x: Number(adminClothingX.value),
                         y: Number(adminClothingY.value),
@@ -4942,7 +5018,17 @@
                     shop.type = 'checkbox';
                     shop.checked = Boolean(room.isShop);
                     shopLabel.append(shop, document.createTextNode(' Butik med vareside'));
-                    policy.append(lockedLabel, hiddenLabel, shopLabel);
+                    const levelLabel = document.createElement('label');
+                    levelLabel.className = 'admin-room-level';
+                    const levelEnabled = document.createElement('input');
+                    levelEnabled.type = 'checkbox'; levelEnabled.checked = Number(room.requiredLevel) > 1;
+                    const levelInput = document.createElement('input');
+                    levelInput.type = 'number'; levelInput.min = '1'; levelInput.max = '20'; levelInput.step = '1';
+                    levelInput.value = String(room.requiredLevel || 1); levelInput.disabled = !levelEnabled.checked;
+                    levelInput.setAttribute('aria-label', 'Levelkrav for ' + room.name);
+                    levelEnabled.addEventListener('change', () => { levelInput.disabled = !levelEnabled.checked; });
+                    levelLabel.append(levelEnabled, document.createTextNode(' Levelkrav '), levelInput);
+                    policy.append(lockedLabel, hiddenLabel, shopLabel, levelLabel);
                     const details = document.createElement('div');
                     details.className = 'admin-room-details';
                     const meta = document.createElement('div');
@@ -5509,7 +5595,8 @@
                             floorNumber: Number(floor.value),
                             isLocked: locked.checked,
                             isHidden: hidden.checked,
-                            isShop: shop.checked
+                            isShop: shop.checked,
+                            requiredLevel: levelEnabled.checked ? Number(levelInput.value) : 1
                         });
                     });
                     save.addEventListener('click', () => form.requestSubmit());
@@ -5518,6 +5605,42 @@
                     });
                     adminPublicRooms.append(row);
                 }
+            }
+
+            const profileRenderCanvas = document.createElement('canvas');
+            profileRenderCanvas.width = 432; profileRenderCanvas.height = 480;
+            function drawProfileAvatar() {
+                if (activeSidePanel !== 'profile-view' || !viewedProfileProgress) return;
+                const profile = viewedProfileProgress;
+                const avatar = getAvatarImageForPlayer(profile);
+                const full = document.getElementById('profile-outfit-preview');
+                const face = document.getElementById('profile-face-preview');
+                const fullContext = full.getContext('2d');
+                const faceContext = face.getContext('2d');
+                full.setAttribute('aria-label', 'Gemt outfit for ' + profile.avatarName);
+                face.setAttribute('aria-label', 'Ansigt for ' + profile.avatarName);
+                fullContext.clearRect(0, 0, full.width, full.height);
+                faceContext.clearRect(0, 0, face.width, face.height);
+                if (!avatar) return;
+                const context = profileRenderCanvas.getContext('2d');
+                context.clearRect(0, 0, 432, 480);
+                context.drawImage(avatar, 108, 90, 216, 300);
+                const clothing = (Array.isArray(profile.clothing) ? [...profile.clothing] : [])
+                    .sort((a, b) => getClothingDrawOrder(a) - getClothingDrawOrder(b));
+                for (const item of clothing) {
+                    const image = getClothingImage(item);
+                    if (image) drawClothingLayer(context, image, item, 216, 240, 216, 300);
+                }
+                fullContext.drawImage(profileRenderCanvas, 0, 0, 432, 480, 0, 0, full.width, full.height);
+                // Keep handheld props out of the small face icon.
+                context.clearRect(0, 0, 432, 480);
+                context.drawImage(avatar, 108, 90, 216, 300);
+                for (const item of clothing) {
+                    if (!['headwear', 'hair', 'beard', 'glasses'].includes(item.category)) continue;
+                    const image = getClothingImage(item);
+                    if (image) drawClothingLayer(context, image, item, 216, 240, 216, 300);
+                }
+                faceContext.drawImage(profileRenderCanvas, 98, 65, 236, 236, 0, 0, face.width, face.height);
             }
 
             function drawWardrobeAvatarPreview() {
@@ -5673,7 +5796,7 @@
                         const meta = document.createElement('span');
                         meta.textContent = selected ? 'Valgt · klik for at tage af' : locked
                             ? `Level ${item.requiredLevel}`
-                            : `${Number(item.price).toLocaleString('da-DK')} mønter`;
+                            : `${Number(item.price).toLocaleString('da-DK')} Bobs`;
                         const activeCount = document.createElement('span');
                         activeCount.className = 'wardrobe-item-live-count';
                         const owners = Math.max(0, Number(item.wardrobeCount) || 0);
@@ -5744,7 +5867,7 @@
                     empty.className = 'admin-status';
                     empty.textContent = adminClothingCatalogItems.length
                         ? 'Ingen tøjdele passer til din søgning eller filtrering.'
-                        : 'Kataloget er tomt. Gem en tøjdel ovenfor, så den kan genbruges og tildeles senere.';
+                        : 'Kataloget er tomt. Gem din første tøjdel under Tøj og tilbehør.';
                     adminClothingCatalog.append(empty);
                     return;
                 }
@@ -5766,7 +5889,7 @@
                     name.textContent = item.name;
                     const meta = document.createElement('span');
                     const avatarLabel = item.avatarType === 'girl' ? 'Kvindeavatar' : 'Mandeavatar';
-                    meta.textContent = `${avatarLabel} · ${categoryNames[item.category] || item.category} · Level ${item.requiredLevel} · ${Number(item.price).toLocaleString('da-DK')} mønter · ${item.assignmentCount} tildelt`;
+                    meta.textContent = `${avatarLabel} · ${categoryNames[item.category] || item.category} · ${Number(item.price).toLocaleString('da-DK')} Bobs · ${item.assignmentCount} tildelt`;
                     details.append(name, meta);
                     if (item.description) {
                         const description = document.createElement('span');
@@ -5928,7 +6051,7 @@
                     name.textContent = item.name;
                     const meta = document.createElement('span');
                     const avatarLabel = item.avatarType === 'girl' ? 'Kvindeavatar' : 'Mandeavatar';
-                    meta.textContent = `${avatarLabel} · ${shopCategoryNames[item.category] || item.category} · Level ${item.requiredLevel} · ${Number(item.price).toLocaleString('da-DK')} mønter`;
+                    meta.textContent = `${avatarLabel} · ${shopCategoryNames[item.category] || item.category} · Level ${item.requiredLevel} · ${Number(item.price).toLocaleString('da-DK')} Bobs`;
                     details.append(name, meta);
                     if (item.description) {
                         const description = document.createElement('span');
@@ -6231,7 +6354,7 @@
                     const description = document.createElement('span');
                     description.className = 'shop-variant-description';
                     const updateVariantDetails = () => {
-                        meta.textContent = `Level ${selected.requiredLevel} · ${Number(selected.price).toLocaleString('da-DK')} mønter${selected.variantLabel ? ` · ${selected.variantLabel}` : ''}`;
+                        meta.textContent = `Level ${selected.requiredLevel} · ${Number(selected.price).toLocaleString('da-DK')} Bobs${selected.variantLabel ? ` · ${selected.variantLabel}` : ''}`;
                         setClothingThumbnail(image, selected);
                         image.alt = selected.name || '';
                         name.textContent = variants.length > 1 ? selected.variantGroup : selected.name;
@@ -6372,7 +6495,11 @@
                         adminBanCreatedAt.textContent = formatAdminDate(new Date());
                         adminBanDialog.showModal();
                     });
-                    actions.append(bring, kick, ban);
+                    const prison = document.createElement('button');
+                    prison.className = 'admin-row-button prison'; prison.type = 'button'; prison.textContent = 'Fængsel';
+                    prison.disabled = kick.disabled || Boolean(user.isAdmin);
+                    prison.addEventListener('click', () => openPrisonDialog(user.socketId, user.username));
+                    actions.append(bring, kick, prison, ban);
                     row.append(details, actions);
                     adminOnlineUsers.append(row);
                 }
@@ -7000,6 +7127,12 @@
                     const animation = getAdminClothingAnimation();
                     if (animation.frames > 1) clothingFps = Math.max(clothingFps, animation.fps);
                 }
+                if (activeSidePanel === 'profile-view' && viewedProfileProgress) {
+                    for (const item of viewedProfileProgress.clothing || []) {
+                        const animation = normalizeClothingAnimation(item.animation);
+                        if (animation.frames > 1) clothingFps = Math.max(clothingFps, animation.fps);
+                    }
+                }
                 if (clothingFps > 0) nextAt = Math.min(nextAt, now + 1000 / clothingFps);
                 return { animate, nextAt };
             }
@@ -7157,6 +7290,7 @@
                 adminUsersView.hidden = true;
                 adminRoomsView.hidden = true;
                 adminClothingView.hidden = true;
+                document.getElementById('admin-catalog-view').hidden = true;
                 adminShopView.hidden = true;
                 adminAvatarsView.hidden = true;
             });
@@ -7251,6 +7385,9 @@
                 }
             });
             adminClothingOwnersClose.addEventListener('click', () => adminClothingOwnersDialog.close());
+            document.getElementById('admin-room-create-level-enabled').addEventListener('change', (event) => {
+                document.getElementById('admin-room-create-level').disabled = !event.target.checked;
+            });
             adminRoomCreateForm.addEventListener('submit', (event) => {
                 event.preventDefault();
                 adminRoomsStatus.textContent = 'Opretter rum…';
@@ -7260,7 +7397,8 @@
                     floorNumber: Number(adminRoomFloor.value),
                     isLocked: adminRoomCreateLocked.checked,
                     isHidden: adminRoomCreateHidden.checked,
-                    isShop: adminRoomCreateShop.checked
+                    isShop: adminRoomCreateShop.checked,
+                    requiredLevel: document.getElementById('admin-room-create-level-enabled').checked ? Number(document.getElementById('admin-room-create-level').value) : 1
                 });
             });
             adminUsersRefresh.addEventListener('click', requestAdminUserList);
@@ -7562,6 +7700,11 @@
                 pendingAdminContextAction = `Skift plads med ${target.name}`;
                 setRoomNotice(`Bytter plads med ${target.name}…`);
                 socket.emit('admin-user-swap-position', { targetSocketId });
+                closeAvatarContextMenu();
+            });
+            avatarContextAdminPrison.addEventListener('click', () => {
+                if (!contextPlayerId || avatarContextAdminPrison.hidden) return;
+                openPrisonDialog(contextPlayerId, players[contextPlayerId]?.name || 'bruger');
                 closeAvatarContextMenu();
             });
             avatarContextAdminBan.addEventListener('click', () => {
@@ -8254,6 +8397,7 @@
                 adminSectionSelect.querySelector('option[value="users"]').hidden = !isFullAdminUser;
                 adminSectionSelect.querySelector('option[value="rooms"]').hidden = !canManagePublicRooms;
                 adminSectionSelect.querySelector('option[value="clothing"]').hidden = !canManageClothing;
+                adminSectionSelect.querySelector('option[value="catalog"]').hidden = !canManageClothing;
                 adminSectionSelect.querySelector('option[value="shop"]').hidden = !canManageClothing;
                 adminSectionSelect.querySelector('option[value="avatars"]').hidden = !isFullAdminUser;
                 selectAdminSection();
@@ -8583,6 +8727,12 @@
                 addChatSystemEntry(`${player.name} er kommet ind i chatten.`);
             });
 
+            socket.on('profile-outfit-updated', ({ userId, clothing = [] } = {}) => {
+                if (!viewedProfileProgress || String(userId) !== String(viewingProfileUserId)) return;
+                viewedProfileProgress.clothing = Array.isArray(clothing) ? clothing : [];
+                drawProfileAvatar();
+                requestBoardRender();
+            });
             socket.on('player-clothing-updated', ({ id, clothing = [] } = {}) => {
                 if (!players[id]) return;
                 players[id].clothing = Array.isArray(clothing) ? clothing : [];
@@ -8694,6 +8844,8 @@
             socket.on('profile-info', (profile) => {
                 if (profile.playerId !== viewingProfilePlayerId) return;
                 viewedProfileProgress = profile;
+                drawProfileAvatar();
+                requestBoardRender();
                 viewProfileLevel.disabled = false;
                 viewingProfileUserId = profile.userId || null;
                 viewProfileName.textContent = profile.online ? profile.avatarName : `${profile.avatarName} (offline)`;

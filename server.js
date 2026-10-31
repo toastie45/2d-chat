@@ -10,6 +10,7 @@ const { Pool } = require('pg');
 const { createClient } = require('redis');
 const { createAdapter } = require('@socket.io/redis-adapter');
 const { Server } = require('socket.io');
+const { normalizeRoomLevel, publicRoomAccessError, parsePrisonRoomNumber } = require('./lib/room-access');
 const {
     MAX_MESSAGE_LENGTH,
     isValidPassword,
@@ -687,7 +688,7 @@ async function startServer() {
                    background_type, background_version, background_spritesheet_version, background_animation_json,
                    background_spritesheet_animation_json,
                    overlay_image IS NOT NULL AS has_overlay, overlay_version, overlay_transform,
-                   is_locked, is_hidden, is_shop, shop_is_open
+                   is_locked, is_hidden, is_shop, shop_is_open, required_level
             FROM chat_public_rooms ORDER BY floor_number, room_number
         `);
         return rows;
@@ -934,6 +935,7 @@ async function startServer() {
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS welcome_title VARCHAR(100)');
     await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS welcome_text VARCHAR(500)');
     await pool.query("ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS layout_json JSONB NOT NULL DEFAULT '{}'::jsonb");
+    await pool.query('ALTER TABLE chat_public_rooms ADD COLUMN IF NOT EXISTS required_level SMALLINT NOT NULL DEFAULT 1 CHECK (required_level BETWEEN 1 AND 20)');
     await pool.query(`
         INSERT INTO chat_public_rooms (id, room_number, floor_number, name, is_system)
         VALUES ('common', 1, 1, 'Fællesrum', TRUE), ('disco', 2, 1, 'Diskoteket', TRUE)
@@ -2279,6 +2281,11 @@ async function startServer() {
 
     async function refreshOnlineUserClothing(userId) {
         const clothing = await getUserClothing(userId);
+        for (const viewer of io.sockets.sockets.values()) {
+            if (activeSocketIds.has(viewer.id) && viewer.data.viewingProfileUserId === String(userId)) {
+                viewer.emit('profile-outfit-updated', { userId: String(userId), clothing });
+            }
+        }
         for (const socketId of activeSocketIds) {
             if (String(activeSocketUsers.get(socketId) || '') !== String(userId)) continue;
             const roomId = activeSocketRooms.get(socketId);
@@ -2323,7 +2330,7 @@ async function startServer() {
         const accountMatch = /^user:([1-9]\d{0,18})$/.exec(playerId);
         if (accountMatch) {
             const { rows: [profile] } = await pool.query(
-                'SELECT id, username, real_name, profile_text, discord_name, interests, steam_name, birth_date::text AS birth_date, region, created_at, last_login_at FROM chat_users WHERE id = $1',
+                'SELECT id, username, avatar_type, real_name, profile_text, discord_name, interests, steam_name, birth_date::text AS birth_date, region, created_at, last_login_at FROM chat_users WHERE id = $1',
                 [accountMatch[1]]
             );
             return profile ? { player: null, profile } : null;
@@ -2334,7 +2341,7 @@ async function startServer() {
         const account = normalizeUsername(player.name);
         if (!account) return null;
         const { rows: [profile] } = await pool.query(
-            'SELECT id, username, real_name, profile_text, discord_name, interests, steam_name, birth_date::text AS birth_date, region, created_at, last_login_at FROM chat_users WHERE username_normalized = $1',
+            'SELECT id, username, avatar_type, real_name, profile_text, discord_name, interests, steam_name, birth_date::text AS birth_date, region, created_at, last_login_at FROM chat_users WHERE username_normalized = $1',
             [account.normalized]
         );
         return profile ? { player, profile } : null;
@@ -2356,16 +2363,22 @@ async function startServer() {
     async function getPublicRoomPolicy(roomId) {
         if (!isPublicChatRoomId(roomId)) return null;
         const { rows: [room] = [] } = await pool.query(
-            'SELECT is_locked, is_hidden FROM chat_public_rooms WHERE id = $1', [roomId]
+            'SELECT is_locked, is_hidden, required_level FROM chat_public_rooms WHERE id = $1', [roomId]
         );
         return room || null;
     }
 
-    function publicRoomAccessError(policy, isAdmin) {
-        if (!policy) return 'Rummet findes ikke.';
-        if (policy.is_hidden && !isAdmin) return 'Rummet findes ikke.';
-        if (policy.is_locked && !isAdmin) return 'Rummet er låst for deltagere lige nu.';
-        return '';
+    async function getPublicRoomAccessError(roomId, socket, bypass = false) {
+        if (!isPublicChatRoomId(roomId)) return '';
+        const policy = await getPublicRoomPolicy(roomId);
+        const isAdmin = bypass || Boolean(socket.data.isChatAdmin);
+        const policyError = publicRoomAccessError(policy, isAdmin, 20);
+        if (policyError || isAdmin || Number(policy.required_level) <= 1) return policyError;
+        const [onlineMs, { rows: [progress] }] = await Promise.all([
+            getTotalOnlineMs(socket.data.user.id),
+            pool.query('SELECT accepted_chat_messages FROM chat_users WHERE id = $1', [socket.data.user.id])
+        ]);
+        return publicRoomAccessError(policy, false, getUserLevel(onlineMs, Number(progress?.accepted_chat_messages || 0)));
     }
 
     async function canEditApartmentRoom(userId, roomId) {
@@ -2460,8 +2473,7 @@ async function startServer() {
 
     async function placeSocketInRoom(socket, roomId, { bypassRoomAccess = false } = {}) {
         if (isPublicChatRoomId(roomId)) {
-            const policy = await getPublicRoomPolicy(roomId);
-        if (publicRoomAccessError(policy, bypassRoomAccess || Boolean(socket.data.isChatAdmin))) return null;
+            if (await getPublicRoomAccessError(roomId, socket, bypassRoomAccess)) return null;
         }
         const keys = roomKeys(roomId);
         const apartmentTiles = await loadApartmentTiles(roomId);
@@ -2634,6 +2646,7 @@ async function startServer() {
                 welcomeText: room.welcome_text || 'Her kan du møde andre og chatte sammen. God fornøjelse!',
                 isSystem: room.is_system,
                 isLocked: room.is_locked,
+                requiredLevel: Number(room.required_level || 1),
                 isHidden: room.is_hidden,
                 isShop: room.is_shop === true,
                 shopIsOpen: room.shop_is_open === true,
@@ -3203,7 +3216,7 @@ async function startServer() {
                 ? payload.layerPosition
                 : ['left_hand', 'right_hand'].includes(category) ? 'front' : 'normal';
             const animation = payload.animation;
-            const requiredLevel=Number(payload.requiredLevel), price=Number(payload.price);
+            const requiredLevel=1, price=Number(payload.price);
             const x=Number(payload.x), y=Number(payload.y), rotation=Number(payload.rotation), scale=Number(payload.scale);
             const scaleX=Number(payload.scaleX ?? 1), scaleY=Number(payload.scaleY ?? 1);
             const skewX=Number(payload.skewX ?? 0), skewY=Number(payload.skewY ?? 0);
@@ -3249,7 +3262,7 @@ async function startServer() {
                 ? payload.layerPosition
                 : ['left_hand', 'right_hand'].includes(category) ? 'front' : 'normal';
             const animation = payload.animation;
-            const requiredLevel = Number(payload.requiredLevel), price = Number(payload.price);
+            const price = Number(payload.price);
             const x = Number(payload.x), y = Number(payload.y), rotation = Number(payload.rotation), scale = Number(payload.scale);
             const scaleX = Number(payload.scaleX ?? 1), scaleY = Number(payload.scaleY ?? 1);
             const skewX = Number(payload.skewX ?? 0), skewY = Number(payload.skewY ?? 0);
@@ -3273,7 +3286,6 @@ async function startServer() {
                 || Boolean(variantGroup) !== Boolean(variantLabel)
                 || !['boy', 'girl'].includes(targetAvatarType)
                 || !['headwear', 'hair', 'beard', 'glasses', 'clothing', 'left_hand', 'right_hand', 'accessory'].includes(category)
-                || !Number.isInteger(requiredLevel) || requiredLevel < 1 || requiredLevel > 20
                 || !Number.isInteger(price) || price < 0 || price > 100000000 || !validTransform
                 || !isValidClothingAnimation(animation)
                 || (hasImage && (!image || image.length > 950000 || (!isPng && !isWebp)))) {
@@ -3298,59 +3310,30 @@ async function startServer() {
                 const { rows: [item] } = await pool.query(`
                     UPDATE chat_clothing_catalog
                     SET name = $2, description = $3, category = $4, target_avatar_type = $5,
-                        required_level = $6, price = $7, transform_json = $8::jsonb,
-                        animation_json = $9::jsonb, variant_group = $10, variant_label = $11,
-                        image = COALESCE($12, image), mime_type = COALESCE($13, mime_type),
-                        image_version = image_version + CASE WHEN $12::bytea IS NULL THEN 0 ELSE 1 END
+                        price = $6, transform_json = $7::jsonb,
+                        animation_json = $8::jsonb, variant_group = $9, variant_label = $10,
+                        image = COALESCE($11, image), mime_type = COALESCE($12, mime_type),
+                        image_version = image_version + CASE WHEN $11::bytea IS NULL THEN 0 ELSE 1 END
                     WHERE id = $1
-                    RETURNING id
-                `, [id, name, description, category, targetAvatarType, requiredLevel, price,
+                    RETURNING id, required_level
+                `, [id, name, description, category, targetAvatarType, price,
                     JSON.stringify({ x, y, rotation, scale, scaleX, scaleY, skewX, skewY, layerPosition }),
                     JSON.stringify(animation), variantGroup, variantLabel, image, isPng ? 'image/png' : isWebp ? 'image/webp' : null]);
                 if (!item) {
                     socket.emit('admin-clothing-action-result', { success: false, message: 'Tøjdelen findes ikke længere.' });
                     return;
                 }
-                const { rows: variantRows } = await pool.query(`
-                    SELECT DISTINCT sibling.clothing_item_id::text AS id
-                    FROM chat_shop_room_items selected
-                    JOIN chat_shop_room_items sibling
-                      ON sibling.room_id = selected.room_id
-                     AND sibling.variant_group = selected.variant_group
-                    WHERE selected.clothing_item_id = $1
-                      AND selected.variant_group <> ''
-                `, [id]);
-                const affectedItemIds = [...new Set([id, ...variantRows.map((row) => row.id)])];
-                if (affectedItemIds.length > 1) {
-                    await pool.query(
-                        'UPDATE chat_clothing_catalog SET required_level = $2 WHERE id = ANY($1::bigint[])',
-                        [affectedItemIds, requiredLevel]
-                    );
-                }
-                await pool.query(`
-                    UPDATE chat_shop_room_items listed
-                    SET shop_section_key = CASE
-                        WHEN $2 <= 8 THEN 'level_1_8'
-                        WHEN $2 <= 16 THEN 'level_9_16'
-                        ELSE 'level_17_20'
-                    END
-                    WHERE listed.clothing_item_id = ANY($1::bigint[])
-                      AND listed.shop_section_key IN ('level_1_8', 'level_9_16', 'level_17_20')
-                `, [affectedItemIds, requiredLevel]);
                 const { rows: shopRooms } = await pool.query(
-                    'SELECT DISTINCT room_id FROM chat_shop_room_items WHERE clothing_item_id = ANY($1::bigint[])', [affectedItemIds]
+                    'SELECT DISTINCT room_id FROM chat_shop_room_items WHERE clothing_item_id = $1', [id]
                 );
                 for (const shopRoom of shopRooms) {
                     io.to(roomChannel(shopRoom.room_id)).emit('shop-items-refresh', { roomId: shopRoom.room_id });
                     socket.emit('admin-shop-room-data-refresh', { roomId: shopRoom.room_id });
                 }
-                try {
-                    for (const affectedItemId of affectedItemIds) {
-                        await enforceClothingLevelForAssignments(affectedItemId, requiredLevel);
-                    }
-                } catch (error) {
-                    console.error('Could not refresh clothing assignments after item edit:', getSafeErrorCode(error));
-                }
+                const { rows: owners } = await pool.query(
+                    'SELECT DISTINCT target_user_id::text AS user_id FROM chat_clothing_assignments WHERE clothing_item_id = $1', [id]
+                );
+                await Promise.all(owners.map((owner) => refreshOnlineUserClothing(owner.user_id)));
                 socket.emit('admin-clothing-action-result', { success: true, action: 'update', message: `${name} blev opdateret.` });
                 await sendAdminClothingItems();
             } catch (error) {
@@ -3967,7 +3950,7 @@ async function startServer() {
             }
         });
 
-        socket.on('admin-public-room-create', async ({ name, roomNumber, floorNumber, isLocked = false, isHidden = false, isShop = false } = {}) => {
+        socket.on('admin-public-room-create', async ({ name, roomNumber, floorNumber, isLocked = false, isHidden = false, isShop = false, requiredLevel = 1 } = {}) => {
             if (!socket.data.canManagePublicRooms || !activeSocketIds.has(socket.id)) return;
             const cleanName = typeof name === 'string' ? name.normalize('NFKC').trim() : '';
             const requestedRoomNumber = roomNumber === null || roomNumber === undefined || roomNumber === '' ? null : Number(roomNumber);
@@ -3975,7 +3958,7 @@ async function startServer() {
             if (!cleanName || cleanName.length > 60 || /[\u0000-\u001f\u007f]/.test(cleanName)
                 || !Number.isInteger(floor) || floor < 1 || floor > 100
                 || requestedRoomNumber !== null && (!Number.isInteger(requestedRoomNumber) || requestedRoomNumber < 3 || requestedRoomNumber > 100)
-                || typeof isLocked !== 'boolean' || typeof isHidden !== 'boolean' || typeof isShop !== 'boolean') {
+                || normalizeRoomLevel(requiredLevel) === null || typeof isLocked !== 'boolean' || typeof isHidden !== 'boolean' || typeof isShop !== 'boolean') {
                 socket.emit('admin-room-action-result', { success: false, message: 'Angiv et rumnavn, en etage og eventuelt et ledigt rumnummer fra 3 til 100.' });
                 return;
             }
@@ -4010,9 +3993,9 @@ async function startServer() {
                 const selectedRoomNumber = Number(numberRow.room_number);
                 const id = `public:${selectedRoomNumber}`;
                 await client.query(`
-                    INSERT INTO chat_public_rooms (id, room_number, floor_number, name, is_locked, is_hidden, is_shop)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
-                `, [id, selectedRoomNumber, floor, cleanName, isLocked, isHidden, isShop]);
+                    INSERT INTO chat_public_rooms (id, room_number, floor_number, name, is_locked, is_hidden, is_shop, required_level)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                `, [id, selectedRoomNumber, floor, cleanName, isLocked, isHidden, isShop, Number(requiredLevel)]);
                 await client.query('COMMIT');
                 socket.emit('admin-room-action-result', { success: true, message: `Rum #${selectedRoomNumber} blev oprettet på etage ${floor}.` });
                 await sendAdminPublicRooms();
@@ -4026,20 +4009,20 @@ async function startServer() {
             }
         });
 
-        socket.on('admin-public-room-update', async ({ id, name, floorNumber, isLocked, isHidden, isShop } = {}) => {
+        socket.on('admin-public-room-update', async ({ id, name, floorNumber, isLocked, isHidden, isShop, requiredLevel = 1 } = {}) => {
             if (!socket.data.canManagePublicRooms || !activeSocketIds.has(socket.id)) return;
             const cleanName = typeof name === 'string' ? name.normalize('NFKC').trim() : '';
             const floor = Number(floorNumber);
             if (typeof id !== 'string' || cleanName.length < 1 || cleanName.length > 60
                 || /[\u0000-\u001f\u007f]/.test(cleanName) || !Number.isInteger(floor) || floor < 1 || floor > 100
-                || typeof isLocked !== 'boolean' || typeof isHidden !== 'boolean' || typeof isShop !== 'boolean') {
+                || normalizeRoomLevel(requiredLevel) === null || typeof isLocked !== 'boolean' || typeof isHidden !== 'boolean' || typeof isShop !== 'boolean') {
                 socket.emit('admin-room-action-result', { success: false, message: 'Kontrollér rumnavn og etagenummer (1–100).' });
                 return;
             }
             try {
                 const { rowCount } = await pool.query(
-                    'UPDATE chat_public_rooms SET name = $2, floor_number = $3, is_locked = $4, is_hidden = $5, is_shop = $6, shop_is_open = CASE WHEN $6 THEN shop_is_open ELSE FALSE END WHERE id = $1',
-                    [id, cleanName, floor, isLocked, isHidden, isShop]
+                    'UPDATE chat_public_rooms SET name = $2, floor_number = $3, is_locked = $4, is_hidden = $5, is_shop = $6, required_level = $7, shop_is_open = CASE WHEN $6 THEN shop_is_open ELSE FALSE END WHERE id = $1',
+                    [id, cleanName, floor, isLocked, isHidden, isShop, Number(requiredLevel)]
                 );
                 if (!rowCount) {
                     socket.emit('admin-room-action-result', { success: false, message: 'Rummet findes ikke længere.' });
@@ -4248,6 +4231,7 @@ async function startServer() {
                             isInvisible: Boolean(session && invisibleSocketIds.has(session.socket_id)),
                             hasKnownIp: Boolean(session?.ip_hash || account.has_known_ip),
                             ipSource: session?.ip_hash ? 'aktuel IP' : account.has_last_login_ip ? 'seneste login' : account.has_registration_ip ? 'oprettelses-IP' : '',
+                            isAdmin: getAdminRole({ username: account.username }) !== 'none',
                             isSelf: account.user_id === String(socket.data.user.id)
                         };
                     });
@@ -4274,6 +4258,7 @@ async function startServer() {
                             isConnected: true,
                             isInvisible: invisibleSocketIds.has(socketId),
                             hasKnownIp: Boolean(onlineSession?.ip_hash),
+                            isAdmin: getAdminRole({ username: onlineSession?.username || player.name }) !== 'none',
                             isSelf: String(onlineSession?.user_id || activeSocketUsers.get(socketId) || '') === String(socket.data.user.id)
                         });
                     }
@@ -4372,6 +4357,30 @@ async function startServer() {
                 console.error('Could not kick chat participant:', getSafeErrorCode(error));
                 socket.emit('admin-action-result', { success: false, message: 'Brugeren kunne ikke kicket. Prøv igen.' });
             }
+        });
+
+        socket.on('admin-user-prison', async ({ targetSocketId, destination } = {}) => {
+            if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
+            const number = parsePrisonRoomNumber(destination);
+            const target = typeof targetSocketId === 'string' ? io.sockets.sockets.get(targetSocketId) : null;
+            const fail = (message) => socket.emit('admin-action-result', { success: false, message });
+            if (!number) return fail('Angiv et rumnummer, fx /tr 99.');
+            if (!target || !activeSocketIds.has(target.id) || target.id === socket.id || target.data.isChatAdmin || target.data.switchingRoom) {
+                return fail('Vælg en online bruger, som ikke er admin.');
+            }
+            target.data.switchingRoom = true;
+            try {
+                const { rows: [room] } = await pool.query('SELECT id FROM chat_public_rooms WHERE room_number = $1', [number]);
+                if (!room) return fail('Fængselsrummet findes ikke. Opret det under Navigator først.');
+                if (activeSocketRooms.get(target.id) === room.id) return fail('Brugeren er allerede i det valgte rum.');
+                const joined = await placeSocketInRoom(target, room.id, { bypassRoomAccess: true });
+                if (!joined) return fail('Brugeren kunne ikke flyttes. Rummet kan være fyldt.');
+                target.emit('profile-teleport-result', { message: 'En administrator har sendt dig til et advarselsrum.' });
+                socket.emit('admin-action-result', { success: true, message: `${target.data.user.username} blev sendt til rum #${number}.` });
+            } catch (error) {
+                console.error('Could not send participant to warning room:', getSafeErrorCode(error));
+                fail('Brugeren kunne ikke flyttes. Prøv igen.');
+            } finally { target.data.switchingRoom = false; }
         });
 
         socket.on('admin-user-bring', async ({ targetSocketId } = {}) => {
@@ -4580,7 +4589,7 @@ async function startServer() {
             if (!await isValidRoomId(roomId)) return;
             if (activeSocketRooms.get(socket.id) === roomId) return;
             if (isPublicChatRoomId(roomId)) {
-                const accessError = publicRoomAccessError(await getPublicRoomPolicy(roomId), Boolean(socket.data.isChatAdmin));
+                const accessError = await getPublicRoomAccessError(roomId, socket);
                 if (accessError) {
                     socket.emit('room-error', { message: accessError });
                     return;
@@ -5021,6 +5030,7 @@ async function startServer() {
                     roomNumber: Number(room.room_number),
                     floorNumber: Number(room.floor_number),
                     isLocked: room.is_locked,
+                requiredLevel: Number(room.required_level || 1),
                     isShop: room.is_shop === true
                 }));
                 const { rows: apartmentRows } = await pool.query(`
@@ -5403,9 +5413,7 @@ async function startServer() {
                                 socket.emit('profile-teleport-result', { message: `Du er allerede i #${rawTarget} ${publicRoom.name}.` });
                                 return;
                             }
-                            const accessError = publicRoomAccessError(
-                                await getPublicRoomPolicy(publicRoom.id), Boolean(socket.data.canManagePublicRooms)
-                            );
+                            const accessError = await getPublicRoomAccessError(publicRoom.id, socket);
                             if (accessError) {
                                 socket.emit('profile-teleport-result', { message: accessError });
                                 return;
@@ -5551,6 +5559,10 @@ async function startServer() {
             }
         });
 
+        socket.on('profile-view-close', () => {
+            delete socket.data.viewingProfileUserId;
+        });
+
         socket.on('profile-request', async (payload) => {
             const playerId = payload && payload.playerId;
             if (!activeSocketIds.has(socket.id) || typeof playerId !== 'string' || playerId.length > 128) return;
@@ -5568,6 +5580,7 @@ async function startServer() {
                     return;
                 }
                 const { player, profile } = target;
+                socket.data.viewingProfileUserId = String(profile.id);
                 if (String(profile.id) !== String(socket.data.user.id)) {
                     socket.data.lastProfileTeleportUserId = String(profile.id);
                 }
@@ -5579,16 +5592,19 @@ async function startServer() {
                     'SELECT relationship FROM chat_profile_relationships WHERE user_id = $1 AND target_user_id = $2',
                     [socket.data.user.id, profile.id]
                 );
-                const [totalOnlineMs, progression, apartment] = await Promise.all([
+                const [totalOnlineMs, progression, apartment, clothing] = await Promise.all([
                     getTotalOnlineMs(profile.id),
                     pool.query('SELECT accepted_chat_messages FROM chat_users WHERE id = $1', [profile.id]),
-                    getApartmentForUser(profile.id)
+                    getApartmentForUser(profile.id),
+                    getUserClothing(profile.id)
                 ]);
                 const acceptedChatMessages = Number(progression.rows[0]?.accepted_chat_messages || 0);
                 socket.emit('profile-info', {
                     playerId,
                     userId: String(profile.id),
                     avatarName: player ? player.name : profile.username,
+                    avatarType: profile.avatar_type === 'girl' ? 'girl' : 'boy',
+                    clothing,
                     online,
                     room: 'Fællesrum',
                     realName: profile.real_name || '',
@@ -6196,7 +6212,17 @@ async function startServer() {
             socket.data.joining = true;
             try {
                 const apartment = await getApartmentForUser(socket.data.user.id);
-                const initialRoomId = apartment ? `apartment:${apartment.id}` : 'common';
+                let initialRoomId = apartment ? `apartment:${apartment.id}` : 'common';
+                if (await getPublicRoomAccessError(initialRoomId, socket)) {
+                    initialRoomId = null;
+                    for (const room of await getPublicRooms()) {
+                        if (!await getPublicRoomAccessError(room.id, socket)) { initialRoomId = room.id; break; }
+                    }
+                    if (!initialRoomId) {
+                        socket.emit('room-error', { message: 'Der er ingen tilgængelige rum for dit level lige nu.' });
+                        return;
+                    }
+                }
                 socket.data.roomId = initialRoomId;
                 const initialRoomKeys = roomKeys(initialRoomId);
                 const apartmentTiles = await loadApartmentTiles(initialRoomId);
