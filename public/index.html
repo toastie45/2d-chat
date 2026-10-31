@@ -488,9 +488,6 @@
         .admin-shop-item-select { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 10px; }
         .admin-shop-item-select input { flex: 0 0 auto; min-width: auto; padding: 0; border: 0; background: transparent; accent-color: #b5d982; }
         .admin-shop-item-select select { min-width: 150px; min-height: 28px; padding: 4px 7px; border: 1px solid #383d32; border-radius: 6px; background: #141613; color: #f2f0e9; font: inherit; font-size: 10px; }
-        .admin-shop-level-control { display: grid; grid-template-columns: auto minmax(90px, 1fr) auto; align-items: center; gap: 8px; width: 100%; margin-top: 7px; color: var(--muted); font-size: 10px; }
-        .admin-shop-level-control input { width: 100%; min-width: 80px; accent-color: #b5d982; }
-        .admin-shop-level-control output { min-width: 48px; color: #f2f0e9; font-weight: 700; text-align: right; }
         @media (max-width: 600px) { .admin-shop-variant-bulk { grid-template-columns: 1fr; } .admin-shop-variant-bulk p { grid-column: auto; } }
         @media (max-width: 600px) { .admin-shop-copy-grid { grid-template-columns: 1fr; } }
         .admin-shop-groups { display: grid; gap: 9px; }
@@ -1589,6 +1586,7 @@
         .member-face { width: 36px; height: 36px; flex: 0 0 36px; border: 1px solid #353d2d; border-radius: 10px; background: #10130f; }
         #member-list .member { padding: 5px 0; }
         #member-list .member-room { max-width: 50%; overflow-wrap: anywhere; }
+        .admin-clothing-pricing { display: grid; align-content: start; gap: 9px; min-width: 0; }
     </style>
 </head>
 <body>
@@ -2076,15 +2074,23 @@
                                             <option value="girl">Kvinde</option>
                                         </select>
                                     </label>
+                                    <label id="admin-clothing-image-field"><span>Billede eller spritesheet (PNG/WebP, maks. 950 KB)</span>
+                                        <input id="admin-clothing-image" type="file" accept="image/png,image/webp">
+                                    </label>
+                                    <div class="admin-clothing-pricing">
+                                        <label>Pris (Bobs)
+                                            <input id="admin-clothing-price" type="number" min="0" max="100000000" value="0" required>
+                                        </label>
+                                        <label>Levelkrav (1–20)
+                                            <input id="admin-clothing-level" type="number" min="1" max="20" step="1" value="1" required>
+                                        </label>
+                                    </div>
                                     <label id="admin-clothing-layer-field" hidden>Lag på figuren
                                         <select id="admin-clothing-layer-position">
                                             <option value="front">Foran tøjet</option>
                                             <option value="normal">Normal rækkefølge</option>
                                             <option value="back">Bag tøjet</option>
                                         </select>
-                                    </label>
-                                    <label id="admin-clothing-image-field"><span>Billede eller spritesheet (PNG/WebP, maks. 950 KB)</span>
-                                        <input id="admin-clothing-image" type="file" accept="image/png,image/webp">
                                     </label>
                                     <fieldset class="admin-clothing-animation wide">
                                         <legend>Spritesheet-opsætning</legend>
@@ -2097,9 +2103,6 @@
                                         <p>Systemet gætter ikke automatisk på opdelingen: angiv Frames og Kolonner. Rækker beregnes ud fra dem. 1 frame og 1 kolonne betyder et almindeligt, statisk billede.</p>
                                         <p id="admin-clothing-animation-summary" aria-live="polite">Et almindeligt billede bruger 1 frame.</p>
                                     </fieldset>
-                                    <label>Pris (Bobs)
-                                        <input id="admin-clothing-price" type="number" min="0" max="100000000" value="0" required>
-                                    </label>
                                     <details class="admin-clothing-refine">
                                         <summary>Finjuster med tal (valgfrit)</summary>
                                     <div class="admin-clothing-transform">
@@ -2780,6 +2783,7 @@
             const adminClothingAnimationSummary = document.getElementById('admin-clothing-animation-summary');
             const adminClothingAssignmentField = document.getElementById('admin-clothing-assignment-field');
             const adminClothingPrice = document.getElementById('admin-clothing-price');
+            const adminClothingLevel = document.getElementById('admin-clothing-level');
             const adminClothingX = document.getElementById('admin-clothing-x');
             const adminClothingY = document.getElementById('admin-clothing-y');
             const adminClothingRotation = document.getElementById('admin-clothing-rotation');
@@ -4707,6 +4711,7 @@
                 adminClothingLayerField.hidden = !['left_hand', 'right_hand'].includes(item.category);
                 adminClothingAvatarType.value = item.avatarType === 'girl' ? 'girl' : 'boy';
                 adminClothingPrice.value = String(item.price || 0);
+                adminClothingLevel.value = String(item.requiredLevel || 1);
                 const animation = normalizeClothingAnimation(item.animation || {});
                 adminClothingAnimationColumns.value = String(animation.columns);
                 adminClothingAnimationRows.value = String(animation.rows);
@@ -4763,6 +4768,7 @@
                         layerPosition: adminClothingLayerPosition.value,
                         targetAvatarType: adminClothingAvatarType.value,
                         price: Number(adminClothingPrice.value),
+                        requiredLevel: Number(adminClothingLevel.value),
                         x: Number(adminClothingX.value),
                         y: Number(adminClothingY.value),
                         rotation: Number(adminClothingRotation.value),
@@ -6124,35 +6130,14 @@
                         const option = document.createElement('option');
                         option.value = key;
                         option.textContent = title;
+                        const levelSection = Number(item.requiredLevel) <= 8 ? 'level_1_8' : Number(item.requiredLevel) <= 16 ? 'level_9_16' : 'level_17_20';
+                        option.disabled = key !== 'custom' && key !== levelSection;
                         if (key === 'custom') option.dataset.shopCustomCategory = 'true';
                         sectionSelect.append(option);
                     }
                     sectionSelect.value = getSectionForItem(item);
                     sectionSelect.addEventListener('change', () => {
                         item.shopSectionKey = sectionSelect.value;
-                        const levelRange = {
-                            level_1_8: [1, 8],
-                            level_9_16: [9, 16],
-                            level_17_20: [17, 20]
-                        }[sectionSelect.value];
-                        const currentLevel = Number(item.requiredLevel) || 1;
-                        const adjustedLevel = levelRange
-                            ? Math.max(levelRange[0], Math.min(levelRange[1], currentLevel))
-                            : currentLevel;
-                        if (adjustedLevel !== currentLevel) {
-                            item.requiredLevel = adjustedLevel;
-                            levelSlider.value = String(adjustedLevel);
-                            levelValue.textContent = `Level ${adjustedLevel}`;
-                            adminShopStatus.textContent = 'Gemmer varegruppe og niveaukrav…';
-                            socket.emit('admin-shop-item-level-set', {
-                                roomId: adminShopRoomSelect.value,
-                                id: item.id,
-                                requiredLevel: adjustedLevel,
-                                sectionKey: sectionSelect.value
-                            });
-                            renderAdminShopCatalog();
-                            return;
-                        }
                         if (item.shopListed) {
                             adminShopStatus.textContent = 'Gemmer varens gruppe…';
                             socket.emit('admin-shop-room-item-set', {
@@ -6163,40 +6148,6 @@
                     });
                     sectionLabel.append(sectionSelect);
                     sectionControls.append(sectionLabel);
-                    const levelControl = document.createElement('label');
-                    levelControl.className = 'admin-shop-level-control';
-                    const levelLabel = document.createElement('span');
-                    levelLabel.textContent = 'Niveaukrav';
-                    const levelSlider = document.createElement('input');
-                    levelSlider.type = 'range';
-                    levelSlider.min = '1';
-                    levelSlider.max = '20';
-                    levelSlider.step = '1';
-                    levelSlider.value = String(Math.max(1, Math.min(20, Number(item.requiredLevel) || 1)));
-                    levelSlider.setAttribute('aria-label', `Niveaukrav for ${item.name}`);
-                    const levelValue = document.createElement('output');
-                    levelValue.textContent = `Level ${levelSlider.value}`;
-                    levelSlider.addEventListener('input', () => {
-                        levelValue.textContent = `Level ${levelSlider.value}`;
-                    });
-                    levelSlider.addEventListener('change', () => {
-                        const requiredLevel = Number(levelSlider.value);
-                        item.requiredLevel = requiredLevel;
-                        // The three level groups follow the level requirement. The custom group stays custom.
-                        if (sectionSelect.value !== 'custom') {
-                            sectionSelect.value = requiredLevel <= 8 ? 'level_1_8' : requiredLevel <= 16 ? 'level_9_16' : 'level_17_20';
-                            item.shopSectionKey = sectionSelect.value;
-                        }
-                        adminShopStatus.textContent = 'Gemmer niveaukrav…';
-                        socket.emit('admin-shop-item-level-set', {
-                            roomId: adminShopRoomSelect.value,
-                            id: item.id,
-                            requiredLevel,
-                            sectionKey: sectionSelect.value
-                        });
-                    });
-                    levelControl.append(levelLabel, levelSlider, levelValue);
-                    sectionControls.append(levelControl);
                     details.append(sectionControls);
                     const toggle = document.createElement('button');
                     toggle.className = item.shopListed ? 'admin-row-button ban' : 'admin-row-button';

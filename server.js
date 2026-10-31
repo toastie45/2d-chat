@@ -2321,9 +2321,9 @@ async function startServer() {
         await Promise.all(assignments.map(async ({ user_id: userId }) => {
             const [onlineMs, { rows: [progress] }] = await Promise.all([
                 getTotalOnlineMs(userId),
-                pool.query('SELECT accepted_chat_messages FROM chat_users WHERE id = $1', [userId])
+                pool.query('SELECT username, accepted_chat_messages FROM chat_users WHERE id = $1', [userId])
             ]);
-            if (getUserLevel(onlineMs, Number(progress?.accepted_chat_messages || 0)) < requiredLevel) {
+            if (getAdminRole(progress) === 'none' && getUserLevel(onlineMs, Number(progress?.accepted_chat_messages || 0)) < requiredLevel) {
                 await pool.query(
                     'UPDATE chat_clothing_assignments SET is_equipped = FALSE WHERE target_user_id = $1 AND clothing_item_id = $2',
                     [userId, itemId]
@@ -2836,96 +2836,6 @@ async function startServer() {
             }
         });
 
-        socket.on('admin-shop-item-level-set', async ({ roomId, id, requiredLevel, sectionKey = '' } = {}) => {
-            if (!socket.data.canManageClothing || !activeSocketIds.has(socket.id)) return;
-            if (typeof roomId !== 'string' || !/^(common|disco|public:[1-9]\d{0,18})$/.test(roomId)
-                || typeof id !== 'string' || !/^[1-9]\d{0,18}$/.test(id)
-                || !Number.isInteger(requiredLevel) || requiredLevel < 1 || requiredLevel > 20
-                || !['level_1_8', 'level_9_16', 'level_17_20', 'custom'].includes(sectionKey)) return;
-            const expectedSection = requiredLevel <= 8 ? 'level_1_8' : requiredLevel <= 16 ? 'level_9_16' : 'level_17_20';
-            if (sectionKey !== 'custom' && sectionKey !== expectedSection) {
-                socket.emit('admin-shop-action-result', { success: false, message: 'Niveauet skal passe til den valgte varegruppe.' });
-                return;
-            }
-
-            const client = await pool.connect();
-            let transactionStarted = false;
-            let affectedItemIds = [id];
-            try {
-                await client.query('BEGIN');
-                transactionStarted = true;
-                const { rowCount: shopExists } = await client.query(
-                    'SELECT 1 FROM chat_public_rooms WHERE id = $1 AND is_shop = TRUE FOR UPDATE', [roomId]
-                );
-                if (!shopExists) throw new Error('NOT_A_SHOP');
-                const { rows: variantRows } = await client.query(`
-                    SELECT sibling.clothing_item_id::text AS id
-                    FROM chat_shop_room_items selected
-                    JOIN chat_shop_room_items sibling
-                      ON sibling.room_id = selected.room_id
-                     AND sibling.variant_group = selected.variant_group
-                    WHERE selected.clothing_item_id = $1
-                      AND selected.variant_group <> ''
-                `, [id]);
-                if (variantRows.length) affectedItemIds = [...new Set(variantRows.map((row) => row.id))];
-                const { rowCount: itemUpdated } = await client.query(
-                    'UPDATE chat_clothing_catalog SET required_level = $2 WHERE id = ANY($1::bigint[])',
-                    [affectedItemIds, requiredLevel]
-                );
-                if (!itemUpdated) throw new Error('ITEM_MISSING');
-                // Level groups are shared across shops and follow the item's actual unlock level.
-                // A custom fourth group remains where the shop owner placed it.
-                await client.query(`
-                    UPDATE chat_shop_room_items
-                    SET shop_section_key = CASE
-                        WHEN $2 <= 8 THEN 'level_1_8'
-                        WHEN $2 <= 16 THEN 'level_9_16'
-                        ELSE 'level_17_20'
-                    END
-                    WHERE clothing_item_id = ANY($1::bigint[])
-                      AND shop_section_key IN ('level_1_8', 'level_9_16', 'level_17_20')
-                `, [affectedItemIds, requiredLevel]);
-                await client.query(
-                    'UPDATE chat_shop_room_items SET shop_section_key = $3 WHERE room_id = $1 AND clothing_item_id = ANY($2::bigint[])',
-                    [roomId, affectedItemIds, sectionKey]
-                );
-                const { rows: shopRows } = await client.query(
-                    'SELECT DISTINCT room_id FROM chat_shop_room_items WHERE clothing_item_id = ANY($1::bigint[])', [affectedItemIds]
-                );
-                await client.query('COMMIT');
-                transactionStarted = false;
-                socket.emit('admin-shop-action-result', {
-                    success: true,
-                    message: `Niveaukravet er gemt: Level ${requiredLevel}. Varegruppen følger niveauet${affectedItemIds.length > 1 ? ` for alle ${affectedItemIds.length} farver` : ''}.`
-                });
-                socket.emit('admin-shop-room-data-refresh', { roomId });
-                for (const row of shopRows) {
-                    if (row.room_id !== roomId) socket.emit('admin-shop-room-data-refresh', { roomId: row.room_id });
-                    io.to(roomChannel(row.room_id)).emit('shop-items-refresh', { roomId: row.room_id });
-                }
-                try {
-                    for (const affectedItemId of affectedItemIds) {
-                        await enforceClothingLevelForAssignments(affectedItemId, requiredLevel);
-                    }
-                } catch (error) {
-                    console.error('Could not refresh clothing assignments after level change:', getSafeErrorCode(error));
-                }
-            } catch (error) {
-                if (transactionStarted) await client.query('ROLLBACK').catch(() => {});
-                const messages = {
-                    NOT_A_SHOP: 'Vælg et rum, der er markeret som butik.',
-                    ITEM_MISSING: 'Tøjdelen findes ikke længere.'
-                };
-                socket.emit('admin-shop-action-result', {
-                    success: false,
-                    message: messages[error.message] || 'Niveaukravet kunne ikke gemmes.'
-                });
-                if (!messages[error.message]) console.error('Could not update clothing level:', getSafeErrorCode(error));
-            } finally {
-                client.release();
-            }
-        });
-
         socket.on('admin-shop-room-item-set', async ({ roomId, id, listed, sectionKey = '' } = {}) => {
             if (!socket.data.canManageClothing || !activeSocketIds.has(socket.id)) return;
             if (typeof roomId !== 'string' || !/^(common|disco|public:[1-9]\d{0,18})$/.test(roomId)
@@ -3230,7 +3140,7 @@ async function startServer() {
                 ? payload.layerPosition
                 : ['left_hand', 'right_hand'].includes(category) ? 'front' : 'normal';
             const animation = payload.animation;
-            const requiredLevel=1, price=Number(payload.price);
+            const requiredLevel=Number(payload.requiredLevel ?? 1), price=Number(payload.price);
             const x=Number(payload.x), y=Number(payload.y), rotation=Number(payload.rotation), scale=Number(payload.scale);
             const scaleX=Number(payload.scaleX ?? 1), scaleY=Number(payload.scaleY ?? 1);
             const skewX=Number(payload.skewX ?? 0), skewY=Number(payload.skewY ?? 0);
@@ -3276,7 +3186,7 @@ async function startServer() {
                 ? payload.layerPosition
                 : ['left_hand', 'right_hand'].includes(category) ? 'front' : 'normal';
             const animation = payload.animation;
-            const price = Number(payload.price);
+            const requiredLevel = Number(payload.requiredLevel ?? 1), price = Number(payload.price);
             const x = Number(payload.x), y = Number(payload.y), rotation = Number(payload.rotation), scale = Number(payload.scale);
             const scaleX = Number(payload.scaleX ?? 1), scaleY = Number(payload.scaleY ?? 1);
             const skewX = Number(payload.skewX ?? 0), skewY = Number(payload.skewY ?? 0);
@@ -3300,6 +3210,7 @@ async function startServer() {
                 || Boolean(variantGroup) !== Boolean(variantLabel)
                 || !['boy', 'girl'].includes(targetAvatarType)
                 || !['headwear', 'hair', 'beard', 'glasses', 'clothing', 'left_hand', 'right_hand', 'accessory'].includes(category)
+                || !Number.isInteger(requiredLevel) || requiredLevel < 1 || requiredLevel > 20
                 || !Number.isInteger(price) || price < 0 || price > 100000000 || !validTransform
                 || !isValidClothingAnimation(animation)
                 || (hasImage && (!image || image.length > 950000 || (!isPng && !isWebp)))) {
@@ -3324,30 +3235,59 @@ async function startServer() {
                 const { rows: [item] } = await pool.query(`
                     UPDATE chat_clothing_catalog
                     SET name = $2, description = $3, category = $4, target_avatar_type = $5,
-                        price = $6, transform_json = $7::jsonb,
-                        animation_json = $8::jsonb, variant_group = $9, variant_label = $10,
-                        image = COALESCE($11, image), mime_type = COALESCE($12, mime_type),
-                        image_version = image_version + CASE WHEN $11::bytea IS NULL THEN 0 ELSE 1 END
+                        required_level = $6, price = $7, transform_json = $8::jsonb,
+                        animation_json = $9::jsonb, variant_group = $10, variant_label = $11,
+                        image = COALESCE($12, image), mime_type = COALESCE($13, mime_type),
+                        image_version = image_version + CASE WHEN $12::bytea IS NULL THEN 0 ELSE 1 END
                     WHERE id = $1
-                    RETURNING id, required_level
-                `, [id, name, description, category, targetAvatarType, price,
+                    RETURNING id
+                `, [id, name, description, category, targetAvatarType, requiredLevel, price,
                     JSON.stringify({ x, y, rotation, scale, scaleX, scaleY, skewX, skewY, layerPosition }),
                     JSON.stringify(animation), variantGroup, variantLabel, image, isPng ? 'image/png' : isWebp ? 'image/webp' : null]);
                 if (!item) {
                     socket.emit('admin-clothing-action-result', { success: false, message: 'Tøjdelen findes ikke længere.' });
                     return;
                 }
+                const { rows: variantRows } = await pool.query(`
+                    SELECT DISTINCT sibling.clothing_item_id::text AS id
+                    FROM chat_shop_room_items selected
+                    JOIN chat_shop_room_items sibling
+                      ON sibling.room_id = selected.room_id
+                     AND sibling.variant_group = selected.variant_group
+                    WHERE selected.clothing_item_id = $1
+                      AND selected.variant_group <> ''
+                `, [id]);
+                const affectedItemIds = [...new Set([id, ...variantRows.map((row) => row.id)])];
+                if (affectedItemIds.length > 1) {
+                    await pool.query(
+                        'UPDATE chat_clothing_catalog SET required_level = $2 WHERE id = ANY($1::bigint[])',
+                        [affectedItemIds, requiredLevel]
+                    );
+                }
+                await pool.query(`
+                    UPDATE chat_shop_room_items listed
+                    SET shop_section_key = CASE
+                        WHEN $2 <= 8 THEN 'level_1_8'
+                        WHEN $2 <= 16 THEN 'level_9_16'
+                        ELSE 'level_17_20'
+                    END
+                    WHERE listed.clothing_item_id = ANY($1::bigint[])
+                      AND listed.shop_section_key IN ('level_1_8', 'level_9_16', 'level_17_20')
+                `, [affectedItemIds, requiredLevel]);
                 const { rows: shopRooms } = await pool.query(
-                    'SELECT DISTINCT room_id FROM chat_shop_room_items WHERE clothing_item_id = $1', [id]
+                    'SELECT DISTINCT room_id FROM chat_shop_room_items WHERE clothing_item_id = ANY($1::bigint[])', [affectedItemIds]
                 );
                 for (const shopRoom of shopRooms) {
                     io.to(roomChannel(shopRoom.room_id)).emit('shop-items-refresh', { roomId: shopRoom.room_id });
                     socket.emit('admin-shop-room-data-refresh', { roomId: shopRoom.room_id });
                 }
-                const { rows: owners } = await pool.query(
-                    'SELECT DISTINCT target_user_id::text AS user_id FROM chat_clothing_assignments WHERE clothing_item_id = $1', [id]
-                );
-                await Promise.all(owners.map((owner) => refreshOnlineUserClothing(owner.user_id)));
+                try {
+                    for (const affectedItemId of affectedItemIds) {
+                        await enforceClothingLevelForAssignments(affectedItemId, requiredLevel);
+                    }
+                } catch (error) {
+                    console.error('Could not refresh clothing assignments after item edit:', getSafeErrorCode(error));
+                }
                 socket.emit('admin-clothing-action-result', { success: true, action: 'update', message: `${name} blev opdateret.` });
                 await sendAdminClothingItems();
             } catch (error) {

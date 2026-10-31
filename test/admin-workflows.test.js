@@ -110,7 +110,7 @@ test('profile outfit changes notify only authenticated watchers of the matching 
     assert.equal(notifications[0].payload.clothing[0].id, 'shirt');
 });
 
-test('editing catalog appearance preserves shop levels and refreshes every assigned outfit', async () => {
+test('clothing editor sets unlock levels, synchronizes shop groups and revalidates assigned variants', async () => {
     const queries = [], refreshed = [], events = [];
     const context = {
         Buffer, Uint8Array, console, isValidClothingAnimation: () => true,
@@ -120,24 +120,26 @@ test('editing catalog appearance preserves shop levels and refreshes every assig
             queries.push({ sql, values });
             if (sql.includes('incompatible') || sql.includes('SELECT 1')) return { rowCount: 0 };
             if (sql.includes('UPDATE chat_clothing_catalog')) return { rows: [{ id: '7', required_level: 17 }] };
+            if (sql.includes('SELECT DISTINCT sibling')) return { rows: [{ id: '8' }] };
             if (sql.includes('SELECT DISTINCT target_user_id')) return { rows: [{ user_id: '2' }, { user_id: '3' }] };
             return { rows: [] };
         } },
         io: { to: () => ({ emit() {} }) }, roomChannel: (id) => id,
-        refreshOnlineUserClothing: async (id) => refreshed.push(id), sendAdminClothingItems: async () => {},
+        enforceClothingLevelForAssignments: async (id, level) => refreshed.push(`${id}:${level}`), sendAdminClothingItems: async () => {},
         getSafeErrorCode: () => 'test'
     };
     await getHandler('admin-clothing-item-update', context)({
-        id: '7', name: 'Trøje', category: 'clothing', targetAvatarType: 'boy', requiredLevel: 1,
+        id: '7', name: 'Trøje', category: 'clothing', targetAvatarType: 'boy', requiredLevel: 17,
         price: 42, x: 0, y: 0, rotation: 0, scale: 1, animation: { frames: 1, columns: 1, rows: 1, fps: 8 }
     });
     const update = queries.find(({ sql }) => sql.includes('UPDATE chat_clothing_catalog'));
     assert.ok(update);
-    assert.equal(update.values[5], 42);
-    assert.equal(update.values.length, 12);
-    assert.doesNotMatch(update.sql, /required_level\s*=/);
-    assert.ok(!queries.some(({ sql }) => sql.includes('UPDATE chat_shop_room_items')));
-    assert.deepEqual(refreshed.sort(), ['2', '3']);
+    assert.equal(update.values[5], 17);
+    assert.equal(update.values[6], 42);
+    assert.equal(update.values.length, 13);
+    assert.match(update.sql, /required_level = \$6/);
+    assert.ok(queries.some(({ sql }) => sql.includes('UPDATE chat_shop_room_items')));
+    assert.deepEqual(refreshed.sort(), ['7:17', '8:17']);
     assert.ok(events.some((event) => event.success));
 });
 
