@@ -4381,15 +4381,20 @@ async function startServer() {
             }
         });
 
-        socket.on('admin-user-bobs-adjust', async ({ targetUserId, amount } = {}) => {
+        socket.on('admin-user-bobs-adjust', async ({ targetUserId, amount, initials: rawInitials } = {}) => {
             if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
             const userId = typeof targetUserId === 'string' && /^[1-9]\d{0,18}$/.test(targetUserId)
                 ? targetUserId
                 : null;
             const adjustment = Number(amount);
-            const fail = (message) => socket.emit('admin-action-result', { success: false, message });
+            const initials = typeof rawInitials === 'string' ? rawInitials.normalize('NFKC').trim().toUpperCase() : '';
+            const fail = (message) => socket.emit('admin-user-bobs-result', { success: false, message });
             if (!userId || !Number.isSafeInteger(adjustment) || adjustment === 0 || Math.abs(adjustment) > 1_000_000) {
                 fail('Angiv et helt beløb mellem -1.000.000 og 1.000.000 Bobs.');
+                return;
+            }
+            if (!/^[A-ZÆØÅ]{1,8}$/.test(initials)) {
+                fail('Skriv 1-8 gyldige admin-initialer.');
                 return;
             }
             const client = await pool.connect();
@@ -4421,7 +4426,7 @@ async function startServer() {
                     adjustment,
                     nextBalance,
                     `admin:${socket.data.user.id}:${Date.now()}:${crypto.randomUUID()}`,
-                    JSON.stringify({ adminUserId: String(socket.data.user.id), adminUsername: socket.data.user.username })
+                    JSON.stringify({ adminUserId: String(socket.data.user.id), adminUsername: socket.data.user.username, adminInitials: initials })
                 ]);
                 await client.query('COMMIT');
                 io.to(`chat-progress:${userId}`).emit('user-bobs', { balance: nextBalance });
