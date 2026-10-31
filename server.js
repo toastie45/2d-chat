@@ -1242,6 +1242,22 @@ async function startServer() {
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS chat_account_logs_recent_idx ON chat_account_logs (created_at DESC)');
     await pool.query('CREATE INDEX IF NOT EXISTS chat_account_logs_user_recent_idx ON chat_account_logs (user_id, created_at DESC)');
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS chat_audit_logs (
+            id BIGSERIAL PRIMARY KEY,
+            category VARCHAR(24) NOT NULL,
+            event_type VARCHAR(40) NOT NULL,
+            actor_user_id BIGINT REFERENCES chat_users(id) ON DELETE SET NULL,
+            actor_username VARCHAR(18),
+            target_user_id BIGINT REFERENCES chat_users(id) ON DELETE SET NULL,
+            target_username VARCHAR(18),
+            message VARCHAR(500) NOT NULL,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS chat_audit_logs_recent_idx ON chat_audit_logs (created_at DESC)');
+    await pool.query('CREATE INDEX IF NOT EXISTS chat_audit_logs_category_recent_idx ON chat_audit_logs (category, created_at DESC)');
 
     async function writeAccountLog(user, eventType, message) {
         if (!user?.id || !user?.username) return;
@@ -1252,6 +1268,24 @@ async function startServer() {
             );
         } catch (error) {
             console.error('Could not write account log:', getSafeErrorCode(error));
+        }
+    }
+
+    async function writeAuditLog({ category, eventType, actor, target, message, metadata = {} }) {
+        if (!category || !eventType || !message) return;
+        try {
+            await pool.query(`
+                INSERT INTO chat_audit_logs
+                    (category, event_type, actor_user_id, actor_username, target_user_id, target_username, message, metadata)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+            `, [
+                String(category).slice(0, 24), String(eventType).slice(0, 40),
+                actor?.id || null, actor?.username || null,
+                target?.id || null, target?.username || null,
+                redactSecrets(String(message)).slice(0, 500), JSON.stringify(metadata || {})
+            ]);
+        } catch (error) {
+            console.error('Could not write audit log:', getSafeErrorCode(error));
         }
     }
 
@@ -3274,12 +3308,24 @@ async function startServer() {
                     `, [user.id, -price, balance, `purchase:${assignment.id}`, JSON.stringify({ itemId: String(item.id), itemName: item.name, roomId })]);
                 }
                 await client.query('COMMIT');
+                await writeAuditLog({
+                    category: 'shop', eventType: 'purchase', actor: socket.data.user,
+                    target: socket.data.user,
+                    message: `${socket.data.user.username} købte ${item.name} for ${price} Bobs.`,
+                    metadata: { itemId: String(item.id), roomId, price, balance }
+                });
                 socket.emit('user-bobs', { balance });
                 socket.emit('shop-purchase-result', { success: true, itemId: String(item.id), balance, message: `${item.name} er lagt i din garderobe.` });
                 await sendUserWardrobe();
             } catch (error) {
                 try { await client.query('ROLLBACK'); } catch {}
                 console.error('Could not purchase shop item:', getSafeErrorCode(error));
+                await writeAuditLog({
+                    category: 'shop', eventType: 'purchase_error', actor: socket.data.user,
+                    target: socket.data.user,
+                    message: `Butikskøb fejlede for ${socket.data.user.username} i rum ${roomId || 'ukendt'}.`,
+                    metadata: { itemId, errorCode: getSafeErrorCode(error) }
+                });
                 socket.emit('shop-purchase-result', { success: false, message: 'Købet kunne ikke gennemføres.' });
             } finally {
                 client.release();
@@ -4417,7 +4463,8 @@ async function startServer() {
 
         socket.on('admin-logs-request', async (payload = {}) => {
             if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
-            const logType = ['account', 'chat', 'all'].includes(payload.type) ? payload.type : 'all';
+            const logTypes = ['account', 'chat', 'bobs', 'moderation', 'shop', 'system', 'room', 'clothing', 'all'];
+            const logType = logTypes.includes(payload.type) ? payload.type : 'all';
             const query = typeof payload.query === 'string' ? payload.query.normalize('NFKC').trim().slice(0, 100) : '';
             const fromDate = typeof payload.fromDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(payload.fromDate) ? payload.fromDate : null;
             const toDate = typeof payload.toDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(payload.toDate) ? payload.toDate : null;
@@ -4428,7 +4475,29 @@ async function startServer() {
             const escapedQuery = `%${query.replace(/[\\%_]/g, '\\$&')}%`;
             const accountSource = `SELECT 'account'::text AS source, username, event_type, message, created_at FROM chat_account_logs`;
             const chatSource = `SELECT 'chat'::text AS source, username, 'chat_message'::varchar AS event_type, message, created_at FROM chat_messages`;
-            const selectedSource = logType === 'account' ? accountSource : logType === 'chat' ? chatSource : `${accountSource} UNION ALL ${chatSource}`;
+            const bobsSource = `
+                SELECT 'bobs'::text AS source, users.username, transactions.transaction_type AS event_type,
+                    CASE transactions.transaction_type
+                        WHEN 'online_time' THEN '+' || transactions.amount || ' Bobs for online-tid · saldo: ' || transactions.balance_after
+                        WHEN 'shop_purchase' THEN transactions.amount || ' Bobs ved køb af ' || COALESCE(transactions.metadata->>'itemName', 'en butiksvare') || ' · saldo: ' || transactions.balance_after
+                        WHEN 'admin_adjustment' THEN (CASE WHEN transactions.amount > 0 THEN '+' ELSE '' END) || transactions.amount || ' Bobs ændret af ' || COALESCE(transactions.metadata->>'adminUsername', 'en admin') || ' (' || COALESCE(transactions.metadata->>'adminInitials', '?') || ') · saldo: ' || transactions.balance_after
+                        ELSE transactions.amount || ' Bobs · saldo: ' || transactions.balance_after
+                    END AS message,
+                    transactions.created_at
+                FROM chat_bobs_transactions transactions
+                JOIN chat_users users ON users.id = transactions.user_id`;
+            const auditSource = (category) => `
+                SELECT category::text AS source, COALESCE(target_username, actor_username, 'System') AS username,
+                       event_type, message, created_at
+                FROM chat_audit_logs${category ? ` WHERE category = '${category}'` : ''}`;
+            const sources = {
+                account: accountSource, chat: chatSource, bobs: bobsSource,
+                moderation: auditSource('moderation'), shop: auditSource('shop'), system: auditSource('system'),
+                room: auditSource('room'), clothing: auditSource('clothing')
+            };
+            const selectedSource = logType === 'all'
+                ? [accountSource, chatSource, bobsSource, auditSource(null)].join(' UNION ALL ')
+                : sources[logType];
             try {
                 const { rows } = await pool.query(`
                     SELECT source, username, event_type, message, created_at
@@ -4594,6 +4663,11 @@ async function startServer() {
                     return;
                 }
                 await kickPlayer(targetSocketId, 'Du blev fjernet fra chatten af en administrator. Du kan logge ind igen.');
+                await writeAuditLog({
+                    category: 'moderation', eventType: 'kick', actor: socket.data.user,
+                    target: { id: targetSession.user_id, username: targetSession.username },
+                    message: `${socket.data.user.username} kickede ${targetSession.username}.`
+                });
                 socket.emit('admin-action-result', { success: true, message: `${targetSession.username} blev kicket.` });
             } catch (error) {
                 console.error('Could not kick chat participant:', getSafeErrorCode(error));
@@ -4618,6 +4692,12 @@ async function startServer() {
                 const joined = await placeSocketInRoom(target, room.id, { bypassRoomAccess: true });
                 if (!joined) return fail('Brugeren kunne ikke flyttes. Rummet kan være fyldt.');
                 target.emit('profile-teleport-result', { message: 'En administrator har sendt dig til et advarselsrum.' });
+                if (typeof writeAuditLog === 'function') await writeAuditLog({
+                    category: 'moderation', eventType: 'prison', actor: socket.data.user,
+                    target: target.data.user,
+                    message: `${socket.data.user.username} sendte ${target.data.user.username} til advarselsrum #${number}.`,
+                    metadata: { roomNumber: number }
+                });
                 socket.emit('admin-action-result', { success: true, message: `${target.data.user.username} blev sendt til rum #${number}.` });
             } catch (error) {
                 console.error('Could not send participant to warning room:', getSafeErrorCode(error));
@@ -4799,6 +4879,12 @@ async function startServer() {
                     .filter((session) => getAdminRole({ username: session.username }) === 'none')
                     .map((session) => session.socket_id);
                 for (const id of affectedSockets) await kickPlayer(id, banMessage);
+                await writeAuditLog({
+                    category: 'moderation', eventType: 'ban', actor: socket.data.user,
+                    target: { id: targetAccount.user_id, username: targetAccount.username },
+                    message: `${socket.data.user.username} (${cleanInitials}) bannede ${targetAccount.username}: ${cleanReason} · ${permanent ? 'permanent' : `${minutes} minutter`}.`,
+                    metadata: { permanent, durationMinutes: permanent ? null : minutes, initials: cleanInitials }
+                });
                 socket.emit('admin-action-result', {
                     success: true,
                     message: `${targetAccount.username} blev IP-bannet${affectedSockets.length ? `, og ${affectedSockets.length} aktive forbindelse(r) blev afbrudt` : ''}.`
@@ -4813,7 +4899,15 @@ async function startServer() {
             if (!socket.data.isAdmin || !activeSocketIds.has(socket.id)) return;
             if (typeof banId !== 'string' || !/^[1-9]\d{0,18}$/.test(banId)) return;
             try {
-                const { rowCount } = await pool.query('DELETE FROM chat_ip_bans WHERE id = $1', [banId]);
+                const { rows: [removedBan], rowCount } = await pool.query(
+                    'DELETE FROM chat_ip_bans WHERE id = $1 RETURNING username, reason, admin_initials', [banId]
+                );
+                if (removedBan) await writeAuditLog({
+                    category: 'moderation', eventType: 'unban', actor: socket.data.user,
+                    target: { username: removedBan.username },
+                    message: `${socket.data.user.username} fjernede banlysningen af ${removedBan.username}.`,
+                    metadata: { originalReason: removedBan.reason, originalAdminInitials: removedBan.admin_initials }
+                });
                 socket.emit('admin-action-result', {
                     success: rowCount > 0,
                     message: rowCount > 0 ? 'Banlysningen er fjernet.' : 'Banlysningen findes ikke længere.'

@@ -929,6 +929,12 @@
         .admin-log-entry { padding: 10px 12px; border: 1px solid #393b33; border-radius: 11px 11px 11px 3px; background: #20211d; }
         .admin-log-entry.chat { border-left: 3px solid #9fc65f; }
         .admin-log-entry.account { border-left: 3px solid #71837f; }
+        .admin-log-entry.bobs { border-left: 3px solid #d9b65f; }
+        .admin-log-entry.moderation { border-left: 3px solid #d56b62; }
+        .admin-log-entry.shop { border-left: 3px solid #70b9a2; }
+        .admin-log-entry.room { border-left: 3px solid #7799c9; }
+        .admin-log-entry.clothing { border-left: 3px solid #a47ac2; }
+        .admin-log-entry.system { border-left: 3px solid #d17d43; }
         .admin-log-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-bottom: 5px; }
         .admin-log-user { color: #f2f0e9; font-size: 11px; font-weight: 750; }
         .admin-log-time { margin-left: auto; color: var(--muted); font-size: 9px; }
@@ -1756,7 +1762,7 @@
                                     <p class="wardrobe-preview-label">Din figur</p>
                                     <div class="wardrobe-avatar-stage">
                                         <canvas class="wardrobe-avatar-preview" id="wardrobe-avatar-preview" width="216" height="300" aria-label="Preview af din avatar med tøjet på"></canvas>
-                                        <button class="wardrobe-hand-layer-toggle" id="wardrobe-hand-layer-toggle" type="button" aria-label="Fremhæv laget foran tøjet" aria-pressed="true" title="Fremhæv laget foran tøjet" disabled hidden>
+                                        <button class="wardrobe-hand-layer-toggle" id="wardrobe-hand-layer-toggle" type="button" aria-label="Flyt den valgte kategori ét lag frem" title="Flyt den valgte kategori ét lag frem" disabled hidden>
                                             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 4.5-8 4.5-8-4.5L12 3Z"/><path d="m4 12 8 4.5 8-4.5"/><path d="m4 16.5 8 4.5 8-4.5"/></svg>
                                         </button>
                                     </div>
@@ -2058,6 +2064,12 @@
                                             <option value="all">Alle logkategorier</option>
                                             <option value="account">Kontohændelser</option>
                                             <option value="chat">Chatbeskeder</option>
+                                            <option value="bobs">Bobs-transaktioner</option>
+                                            <option value="moderation">Moderation</option>
+                                            <option value="shop">Butik og købsfejl</option>
+                                            <option value="room">Rum og navigator</option>
+                                            <option value="clothing">Tøj og katalog</option>
+                                            <option value="system">Systemfejl</option>
                                         </select>
                                     </label>
                                     <label>Fra dato<input id="admin-logs-from" type="date"></label>
@@ -2806,7 +2818,7 @@
             const wardrobeCategoryTitle = document.getElementById('wardrobe-category-title');
             const wardrobeCategoryItems = document.getElementById('wardrobe-category-items');
             const wardrobeCategoryKeys = ['headwear', 'hair', 'beard', 'glasses', 'clothing', 'left_hand', 'right_hand', 'accessory'];
-            const defaultWardrobeCategoryOrder = ['headwear', 'hair', 'beard', 'glasses', 'left_hand', 'right_hand', 'clothing', 'accessory'];
+            const defaultWardrobeCategoryOrder = ['headwear', 'hair', 'glasses', 'beard', 'left_hand', 'right_hand', 'clothing', 'accessory'];
             let wardrobeItems = [];
             let wardrobeSavedIds = new Set();
             let wardrobeDraftIds = new Set();
@@ -5959,23 +5971,17 @@
                 const outfitDirty = wardrobeDraftIds.size !== wardrobeSavedIds.size || [...wardrobeDraftIds].some((id) => !wardrobeSavedIds.has(id));
                 const orderDirty = JSON.stringify(wardrobeDraftCategoryOrder) !== JSON.stringify(wardrobeSavedCategoryOrder || defaultWardrobeCategoryOrder);
                 const isDirty = outfitDirty || orderDirty;
-                const handItemsEquipped = wardrobeItems.some((item) =>
-                    ['left_hand', 'right_hand'].includes(item.category) && wardrobeDraftIds.has(String(item.id))
+                const equippedCategories = wardrobeDraftCategoryOrder.filter((category) =>
+                    wardrobeItems.some((item) => item.category === category && wardrobeDraftIds.has(String(item.id)))
                 );
-                const handIndexes = ['left_hand', 'right_hand']
-                    .map((category) => wardrobeDraftCategoryOrder.indexOf(category))
-                    .filter((index) => index >= 0);
-                const otherIndexes = wardrobeDraftCategoryOrder
-                    .map((category, index) => ({ category, index }))
-                    .filter(({ category }) => !['left_hand', 'right_hand'].includes(category))
-                    .map(({ index }) => index);
-                const handsOnTop = handIndexes.length > 0
-                    && Math.max(...handIndexes) < Math.min(...otherIndexes);
-                wardrobeHandLayerToggle.hidden = !handItemsEquipped;
-                wardrobeHandLayerToggle.disabled = !handItemsEquipped;
-                wardrobeHandLayerToggle.setAttribute('aria-pressed', String(handsOnTop));
-                wardrobeHandLayerToggle.setAttribute('aria-label', handsOnTop ? 'Håndlaget er øverst; tryk for at lægge det bag tøjet' : 'Flyt håndlaget helt øverst');
-                wardrobeHandLayerToggle.title = handsOnTop ? 'Håndlaget er øverst · tryk for at lægge det bag tøjet' : 'Flyt håndlaget helt øverst';
+                const activeLayerCanMove = Boolean(activeWardrobeCategory)
+                    && equippedCategories.includes(activeWardrobeCategory)
+                    && equippedCategories.length > 1;
+                const activeLayerName = categoryNames[activeWardrobeCategory] || 'laget';
+                wardrobeHandLayerToggle.hidden = !activeLayerCanMove;
+                wardrobeHandLayerToggle.disabled = !activeLayerCanMove;
+                wardrobeHandLayerToggle.setAttribute('aria-label', `Flyt ${activeLayerName} ét lag frem`);
+                wardrobeHandLayerToggle.title = `Flyt ${activeLayerName} ét lag frem foran den næste del`;
                 wardrobeSaveButton.disabled = !isDirty;
                 wardrobeDiscardButton.disabled = !isDirty;
                 if (!isDirty && wardrobeStatus.textContent.startsWith('Outfit ikke gemt endnu')) {
@@ -7411,19 +7417,24 @@
                 });
             });
             wardrobeHandLayerToggle.addEventListener('click', () => {
-                const shouldMoveOnTop = wardrobeHandLayerToggle.getAttribute('aria-pressed') !== 'true';
-                const handCategories = wardrobeDraftCategoryOrder.filter((category) => ['left_hand', 'right_hand'].includes(category));
-                const order = wardrobeDraftCategoryOrder.filter((category) => !['left_hand', 'right_hand'].includes(category));
-                if (shouldMoveOnTop) {
-                    order.unshift(...handCategories);
+                const equippedCategories = wardrobeDraftCategoryOrder.filter((category) =>
+                    wardrobeItems.some((item) => item.category === category && wardrobeDraftIds.has(String(item.id)))
+                );
+                const equippedIndex = equippedCategories.indexOf(activeWardrobeCategory);
+                if (equippedIndex < 0 || equippedCategories.length < 2) return;
+                const order = [...wardrobeDraftCategoryOrder];
+                const currentIndex = order.indexOf(activeWardrobeCategory);
+                if (equippedIndex > 0) {
+                    const previousCategory = equippedCategories[equippedIndex - 1];
+                    const previousIndex = order.indexOf(previousCategory);
+                    [order[currentIndex], order[previousIndex]] = [order[previousIndex], order[currentIndex]];
                 } else {
-                    const clothingIndex = order.indexOf('clothing');
-                    order.splice(clothingIndex + 1, 0, ...handCategories);
+                    order.splice(currentIndex, 1);
+                    const lastEquippedCategory = equippedCategories.at(-1);
+                    order.splice(order.indexOf(lastEquippedCategory) + 1, 0, activeWardrobeCategory);
                 }
                 wardrobeDraftCategoryOrder = order;
-                wardrobeStatus.textContent = shouldMoveOnTop
-                    ? 'Håndlaget vises øverst i previewet. Gem outfittet for at bruge rækkefølgen i chatten.'
-                    : 'Håndlaget vises bag tøjet i previewet. Gem outfittet for at bruge rækkefølgen i chatten.';
+                wardrobeStatus.textContent = 'Lagets placering er ændret i previewet. Gem outfittet for at vise det i chatten.';
                 renderWardrobeItems(wardrobeItems, wardrobeLevel, true);
             });
             wardrobeDiscardButton.addEventListener('click', () => {
@@ -8576,7 +8587,7 @@
                     : 'Ingen logs matcher dit valg.';
                 for (const entry of entries) {
                     const article = document.createElement('article');
-                    article.className = `admin-log-entry ${entry.source === 'chat' ? 'chat' : 'account'}`;
+                    article.className = `admin-log-entry ${entry.source || 'system'}`;
                     article.setAttribute('role', 'listitem');
                     const meta = document.createElement('div');
                     meta.className = 'admin-log-meta';
@@ -8592,9 +8603,13 @@
                         password_changed: 'Konto · Adgangskode',
                         account_deleted: 'Konto · Slettet'
                     };
-                    badge.textContent = entry.source === 'chat'
-                        ? 'Brugerchat'
-                        : accountEventLabels[entry.eventType] || 'Konto';
+                    const sourceLabels = {
+                        chat: 'Brugerchat', bobs: 'Bobs', moderation: 'Moderation', shop: 'Butik',
+                        room: 'Rum', clothing: 'Tøj', system: 'System'
+                    };
+                    badge.textContent = entry.source === 'account'
+                        ? accountEventLabels[entry.eventType] || 'Konto'
+                        : sourceLabels[entry.source] || 'Log';
                     const time = document.createElement('time');
                     time.className = 'admin-log-time';
                     const createdAt = new Date(entry.createdAt);
@@ -8637,7 +8652,7 @@
             socket.on('wardrobe-items', ({ items = [], level = 1, categoryOrder } = {}) => {
                 renderWardrobeItems(Array.isArray(items) ? items : [], Math.max(1, Number(level) || 1), false, categoryOrder);
                 if (wardrobeStatus.textContent.startsWith('Henter')) {
-                    wardrobeStatus.textContent = 'Tryk på ikonet i previewet for at fremhæve laget.';
+                    wardrobeStatus.textContent = 'Åbn en valgt kategori, og tryk på lagikonet i previewet for at flytte den frem.';
                 }
             });
             socket.on('clothing-ownership-counts', (counts = {}) => {
